@@ -7,7 +7,7 @@ description: Drive the Atlas web app on localhost and prove sign-up, sign-in, th
 
 Drive the running Atlas app the way a person does. The recipes shell out to Playwright and curl. They print raw status lines. They do not print `ADMIN_API_SECRET`, passwords, session cookies, or database URLs.
 
-On load, every driver refuses a `BASE_URL` whose scheme is not `http` or whose host is not `localhost`, `127.0.0.1`, or `::1`.
+On load, every driver refuses a `BASE_URL` whose scheme is not `http` or whose host is not `localhost`, `127.0.0.1`, or `::1`. The recipe script applies the same host check to `DATABASE_URL` before `psql` or Docker uses it. The scheme has to be `postgres` or `postgresql`.
 
 ## Launch
 
@@ -29,7 +29,7 @@ docker run -d --name atlas-verify --network host \
 
 Ready means `curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/sign-in` prints `200`. A database health check is not enough. The sign-in page has to answer.
 
-`ADMIN_API_SECRET` must be at least 32 characters or the reset route returns an empty 404. Leave it unset only when the recipe under test is `5e`.
+`ADMIN_API_SECRET` must be at least 32 characters or the reset route returns an empty 404. Leave it unset or empty for recipe `5a`. Recipe `5e` sets a 12-character secret and a 31-character secret.
 
 Teardown is in Cleanup. Do not point `DATABASE_URL` at a database you need to keep. Recipe `all` drops the `public` schema.
 
@@ -50,15 +50,20 @@ Prefer the recipe script. It is the maintained check for issue 1.
 ./scripts/verify-fail-conditions.sh 2
 ./scripts/verify-fail-conditions.sh 3
 ./scripts/verify-fail-conditions.sh 4
+./scripts/verify-fail-conditions.sh 5a
 ./scripts/verify-fail-conditions.sh 5e
 ./scripts/verify-fail-conditions.sh 5b
+./scripts/verify-fail-conditions.sh 5c
+./scripts/verify-fail-conditions.sh 5d
 ./scripts/verify-fail-conditions.sh 5f
 ./scripts/verify-fail-conditions.sh 5g
 ./scripts/verify-fail-conditions.sh 5h
+./scripts/verify-fail-conditions.sh forgot-password
+./scripts/verify-fail-conditions.sh design-lock
 ./scripts/verify-fail-conditions.sh 6
 ```
 
-Each recipe prints `START <utc> sha=<head>` and `END <utc> sha=<head>`. A non-zero exit means that check failed. `5f` reads `docker logs` for `ATLAS_CONTAINER` after the reset and the password change. `5e`, `5b`, `5h`, and `6` start their own containers from `ATLAS_IMAGE` (default `atlas-app`). `5h` uses a fresh process so the in-memory rate limit starts at zero.
+Each recipe prints `START <utc> sha=<head>` and `END <utc> sha=<head>`. A non-zero exit means that check failed. `5d` reads `docker logs` for its own container and greps the full `admin_audit` row. `5f` and `5g` grep that audit row for the secret, the temporary password, and the new password. `5a`, `5e`, `5b`, `5c`, `5d`, `5h`, and `6` start their own containers from `ATLAS_IMAGE` (default `atlas-app`). `5h` uses a fresh process so the in-memory rate limit starts at zero. `5f` performs two resets on the shared app. `5g` performs one more. That stays under the limit of five. Recipe `5b` does not time requests. Constant-time comparison is the unit test `rejects a wrong secret, returns a temp password once, locks the user, and audits` in `tests/admin-reset.test.ts`.
 
 Screenshots, one command:
 
@@ -68,7 +73,7 @@ BASE_URL=http://127.0.0.1:3000 pnpm visual-shots
 
 PNGs land in `artifacts/<head sha>/`. Loading shots hold a `_serverFn` request open. Error shots fulfill that request with HTTP 500. The 390 run opens the drawer, scrolls the toolbar sideways, and prints `scrollWidth` and `innerWidth`. If `scrollWidth` is greater than `innerWidth`, the command exits non-zero.
 
-Screenshot baselines use `pnpm verify:baselines` and run only inside `mcr.microsoft.com/playwright:v1.64.1-noble` with `ATLAS_PLAYWRIGHT_IMAGE` set to that name. The clock is frozen at `2026-01-15T12:00:00Z`, the user is `Ada Baseline`, and animations are disabled.
+Screenshot baselines use `pnpm verify:baselines` and run only inside `mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea` with `ATLAS_PLAYWRIGHT_IMAGE` set to that same reference. The clock is frozen at `2026-01-15T12:00:00Z`, the user is `Ada Baseline`, and animations are disabled. There are 12 baselines. The empty-page shot is not one of them.
 
 Stable handles: headings `Create an account`, `Sign in`, `Forgot your password?`, `Set a new password`, `No pages yet`, `Move page`, `Couldn't load this page.`, `Page not found.`. Buttons `Create account`, `Sign in`, `+ New page`, `Open pages`, `Move`, `Archive`, `Retry`, `Try again`, `Save password`. Fields `#name`, `#email`, `#password`, `#confirm`, `#page-title`. Editor `.doc-editor`. Banner `.retry` reads `Couldn't save.` plus `Retry`.
 
@@ -78,14 +83,14 @@ Read `features/README.md` before a journey. A path the map lists and the run did
 
 Keep proof in `artifacts/<head sha>/`. Recipes write `logs/<recipe>.log` when CI runs them. Screenshots and `scrollwidth.log` sit next to those logs. Cleanup must not delete this directory.
 
-A proof shows the action and the result. For a page, that is the HTTP status and the following read of the row or the reloaded editor text. For reset, that is the status, `temporaryPassword_len`, the session count, and `secret_not_in_logs`, `temp_not_in_logs`, `new_not_in_logs`. A screenshot without those lines does not pass a fail condition.
+A proof shows the action and the result. For a page, that is the HTTP status and the following read of the row or the reloaded editor text. For reset, that is the status, `temporaryPassword_len`, the session count, `password_hash_shape`, `user_fields_unchanged`, and the `secret_not_in_logs`, `temp_not_in_logs`, `new_not_in_logs`, and `*_not_in_audit` lines. A screenshot without those lines does not pass a fail condition.
 
 ## Cleanup
 
 Stop only the containers this run started:
 
 ```bash
-docker rm -f atlas-verify atlas-verify-pg atlas-5e-unset atlas-5e-empty atlas-5e-short atlas-5b atlas-5h atlas-fail6-app atlas-fail6-pg
+docker rm -f atlas-verify atlas-verify-pg atlas-5a-unset atlas-5a-empty atlas-5e-short atlas-5e-boundary atlas-5b atlas-5c atlas-5d atlas-5h atlas-fail6-app atlas-fail6-pg
 ```
 
 Ignore missing names. Do not kill by process name. Leave `artifacts/<head sha>/` in place.

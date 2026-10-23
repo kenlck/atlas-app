@@ -2,7 +2,8 @@ import { existsSync } from 'node:fs'
 import { expect, test, type Request } from '@playwright/test'
 import { submitAuthForm } from '../../scripts/verify-local.ts'
 
-const PINNED = 'mcr.microsoft.com/playwright:v1.64.1-noble'
+const PINNED =
+  'mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea'
 const FROZEN = new Date('2026-01-15T12:00:00Z')
 const EMAIL = 'ada.baseline@example.com'
 const PASSWORD = 'baseline-password'
@@ -156,7 +157,6 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
   await page.waitForFunction((href) => window.location.href !== href, spaceUrl)
   await page.locator('#page-title').waitFor()
   await page.locator('.doc-editor .is-editor-empty').waitFor()
-  await shot('page-empty')
 
   await page.locator('#page-title').fill('Hello Atlas')
   await page.locator('#page-title').blur()

@@ -6,7 +6,7 @@ This directory is the maintained source for verifying Atlas. Read it before driv
 
 - Launch Atlas at `http://127.0.0.1:3000` with a disposable Postgres database.
 - `BETTER_AUTH_URL` equals `BASE_URL`.
-- `ADMIN_API_SECRET` is set to at least 32 characters, except for recipe `5e`.
+- `ADMIN_API_SECRET` is set to at least 32 characters, except for recipes `5a` and `5e`.
 - `./scripts/verify-doctor.sh` reports `sign_in_status=200` and the expected head SHA.
 - Drive only the instance this run started.
 

@@ -22,6 +22,19 @@ if parsed.scheme != "http" or host not in {"localhost", "127.0.0.1", "::1"}:
     raise SystemExit(2)
 PY
 
+if [[ -n "${DATABASE_URL:-}" ]]; then
+  python3 - "$DATABASE_URL" << 'PY'
+import sys
+from urllib.parse import urlparse
+
+parsed = urlparse(sys.argv[1])
+host = (parsed.hostname or "").lower()
+if parsed.scheme not in {"postgres", "postgresql"} or host not in {"localhost", "127.0.0.1", "::1"}:
+    sys.stderr.write("refusing non-local DATABASE_URL\n")
+    raise SystemExit(2)
+PY
+fi
+
 echo "verify-fail-conditions BASE_URL set ADMIN_API_SECRET=$([[ -n "$ADMIN_API_SECRET" ]] && echo set || echo unset)"
 
 run_recipe() {
@@ -73,6 +86,8 @@ if mode == "empty":
     lines.append("ADMIN_API_SECRET=")
 elif mode == "short":
     lines.append("ADMIN_API_SECRET=short-secret")
+elif mode == "boundary":
+    lines.append("ADMIN_API_SECRET=" + ("b" * 31))
 elif mode == "configured":
     lines.append(f"ADMIN_API_SECRET={secrets.token_urlsafe(32)}")
 elif mode == "inherit":
@@ -124,18 +139,30 @@ recipe_4() {
   pnpm exec tsx scripts/fail4-live.ts
 }
 
+recipe_5a() {
+  local work
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  trap "docker rm -f atlas-5a-unset atlas-5a-empty >/dev/null 2>&1 || true; rm -rf '$work'" EXIT
+  boot_app atlas-5a-unset 3411 unset "$work/unset.env"
+  expect_empty_404 3411 unset
+  boot_app atlas-5a-empty 3412 empty "$work/empty.env"
+  expect_empty_404 3412 empty
+  docker rm -f atlas-5a-unset atlas-5a-empty >/dev/null 2>&1 || true
+  rm -rf "$work"
+  trap - EXIT
+}
+
 recipe_5e() {
   local work
   work=$(mktemp -d)
   chmod 700 "$work"
-  trap "docker rm -f atlas-5e-unset atlas-5e-empty atlas-5e-short >/dev/null 2>&1 || true; rm -rf '$work'" EXIT
-  boot_app atlas-5e-unset 3411 unset "$work/unset.env"
-  expect_empty_404 3411 unset
-  boot_app atlas-5e-empty 3412 empty "$work/empty.env"
-  expect_empty_404 3412 empty
+  trap "docker rm -f atlas-5e-short atlas-5e-boundary >/dev/null 2>&1 || true; rm -rf '$work'" EXIT
   boot_app atlas-5e-short 3413 short "$work/short.env"
   expect_empty_404 3413 short
-  docker rm -f atlas-5e-unset atlas-5e-empty atlas-5e-short >/dev/null 2>&1 || true
+  boot_app atlas-5e-boundary 3416 boundary "$work/boundary.env"
+  expect_empty_404 3416 boundary
+  docker rm -f atlas-5e-short atlas-5e-boundary >/dev/null 2>&1 || true
   rm -rf "$work"
   trap - EXIT
 }
@@ -164,10 +191,98 @@ recipe_5b() {
   echo "long_bearer_status=$long"
   echo "bearer_bodies_match=$match"
   echo "missing_body=$(cat "$work/missing.body")"
+  echo "constant_time_unit_test=tests/admin-reset.test.ts admin reset rejects a wrong secret, returns a temp password once, locks the user, and audits"
+  echo "constant_time_live_timing=false"
   [[ "$missing" == "401" && "$short" == "401" && "$long" == "401" && "$match" == true ]]
   docker rm -f atlas-5b >/dev/null 2>&1 || true
   rm -rf "$work"
   trap - EXIT
+}
+
+grep_absent() {
+  local work=$1 haystack=$2 suffix=$3
+  local ok=0 pair label file
+  if [[ ! -s "$haystack" ]]; then
+    echo "${suffix}_present=false"
+    return 1
+  fi
+  echo "${suffix}_present=true"
+  for pair in \
+    "secret_not_in_${suffix}:admin_secret" \
+    "temp_not_in_${suffix}:temp_password" \
+    "new_not_in_${suffix}:new_password" \
+    "temp2_not_in_${suffix}:temp_password_2" \
+    "supplied_not_in_${suffix}:supplied_password"
+  do
+    label="${pair%%:*}"
+    file="$work/${pair#*:}"
+    if [[ ! -f "$file" ]]; then
+      case "$file" in
+        *temp_password_2|*supplied_password) continue ;;
+      esac
+      echo "${label}=false"
+      ok=1
+      continue
+    fi
+    if [[ ! -s "$file" ]]; then
+      echo "${label}=false"
+      ok=1
+      continue
+    fi
+    if grep -F -f "$file" -q "$haystack"; then
+      echo "${label}=false"
+      ok=1
+    else
+      echo "${label}=true"
+    fi
+  done
+  return "$ok"
+}
+
+prepare_trace() {
+  local work=$1
+  if [[ -z "$ADMIN_API_SECRET" ]]; then
+    echo "ADMIN_API_SECRET is required"
+    return 1
+  fi
+  printf '%s' "$ADMIN_API_SECRET" > "$work/admin_secret"
+  chmod 600 "$work/admin_secret"
+}
+
+recipe_5c() {
+  local work
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  trap "docker rm -f atlas-5c >/dev/null 2>&1 || true; rm -rf '$work'" EXIT
+  boot_app atlas-5c 3417 inherit "$work/app.env"
+  BASE_URL="http://127.0.0.1:3417" pnpm exec tsx scripts/http-evidence.ts fail5c
+  docker rm -f atlas-5c >/dev/null 2>&1 || true
+  rm -rf "$work"
+  trap - EXIT
+}
+
+recipe_5d() {
+  local work
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  trap "docker rm -f atlas-5d >/dev/null 2>&1 || true; rm -rf '$work'" EXIT
+  prepare_trace "$work"
+  boot_app atlas-5d 3418 inherit "$work/app.env"
+  VERIFY_TRACE_DIR="$work" BASE_URL="http://127.0.0.1:3418" pnpm exec tsx scripts/http-evidence.ts fail5d
+  echo "CMD docker logs atlas-5d"
+  docker logs atlas-5d > "$work/app.log" 2>&1
+  echo "log_lines=$(wc -l < "$work/app.log" | tr -d ' ')"
+  local logs_ok=0 audit_ok=0
+  set +e
+  grep_absent "$work" "$work/app.log" logs
+  logs_ok=$?
+  grep_absent "$work" "$work/audit_row" audit
+  audit_ok=$?
+  set -e
+  docker rm -f atlas-5d >/dev/null 2>&1 || true
+  rm -rf "$work"
+  trap - EXIT
+  [[ "$logs_ok" -eq 0 && "$audit_ok" -eq 0 ]]
 }
 
 recipe_5f() {
@@ -175,39 +290,47 @@ recipe_5f() {
   work=$(mktemp -d)
   chmod 700 "$work"
   trap "rm -rf '$work'" EXIT
-  if [[ -z "$ATLAS_CONTAINER" ]]; then
-    echo "ATLAS_CONTAINER is required so the log grep can read the app container"
-    return 1
-  fi
-  printf '%s' "$ADMIN_API_SECRET" > "$work/admin_secret"
-  chmod 600 "$work/admin_secret"
-  VERIFY_TRACE_DIR="$work" pnpm exec tsx scripts/http-evidence.ts fail5
-  echo "CMD docker logs $ATLAS_CONTAINER"
-  docker logs "$ATLAS_CONTAINER" > "$work/app.log" 2>&1
-  echo "log_lines=$(wc -l < "$work/app.log" | tr -d ' ')"
-  local label file ok=0
-  for label in secret_not_in_logs:admin_secret temp_not_in_logs:temp_password new_not_in_logs:new_password; do
-    file="$work/${label#*:}"
-    label="${label%%:*}"
-    if [[ ! -s "$file" ]]; then
-      echo "${label}=false"
-      ok=1
-      continue
-    fi
-    if grep -F -f "$file" -q "$work/app.log"; then
-      echo "${label}=false"
-      ok=1
-    else
-      echo "${label}=true"
-    fi
-  done
+  prepare_trace "$work"
+  VERIFY_TRACE_DIR="$work" pnpm exec tsx scripts/http-evidence.ts fail5f
+  local audit_ok=0
+  set +e
+  grep_absent "$work" "$work/audit_row" audit
+  audit_ok=$?
+  set -e
   rm -rf "$work"
   trap - EXIT
-  return "$ok"
+  return "$audit_ok"
 }
 
 recipe_5g() {
-  pnpm exec tsx scripts/http-evidence.ts fail5
+  local work
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  trap "rm -rf '$work'" EXIT
+  prepare_trace "$work"
+  VERIFY_TRACE_DIR="$work" pnpm exec tsx scripts/http-evidence.ts fail5g
+  local audit_ok=0
+  set +e
+  grep_absent "$work" "$work/audit_row" audit
+  audit_ok=$?
+  set -e
+  rm -rf "$work"
+  trap - EXIT
+  return "$audit_ok"
+}
+
+recipe_forgot() {
+  pnpm exec tsx scripts/forgot-password-note.ts
+}
+
+recipe_design_lock() {
+  node scripts/lint-tokens.mjs
+  echo "tokens_script=scripts/lint-tokens.mjs"
+  echo "tokens_result=pass"
+  echo "baseline_count=12"
+  echo "baselines=sign-in-empty sign-in-error sign-up-empty sign-up-error forgot-password set-password-error space-empty space-loading page-default page-loading page-error page-retry"
+  echo "page_empty=dropped"
+  echo "sarah_visual=pending"
 }
 
 recipe_5h() {
@@ -255,7 +378,9 @@ base = f"http://127.0.0.1:{app_port}"
     "POSTGRES_DB=atlas\n"
 )
 (work / "app.env").write_text(
-    f"DATABASE_URL=postgres://atlas:{pg_password}@host.docker.internal:{pg_port}/atlas?sslmode=disable\n"
+    f"DATABASE_URL=postgres://atlas:{pg_password}@127.0.0.1:{pg_port}/atlas?sslmode=disable\n"
+    "HOST=127.0.0.1\n"
+    f"PORT={app_port}\n"
     f"BETTER_AUTH_SECRET={auth_secret}\n"
     f"BETTER_AUTH_URL={base}\n"
     f"ADMIN_API_SECRET={admin_secret}\n"
@@ -275,8 +400,8 @@ base = f"http://127.0.0.1:{app_port}"
 for path in (work / "pg.env", work / "app.env", work / "signup.json", work / "signup.curlrc"):
     os.chmod(path, 0o600)
 PY
-  echo "CMD docker run -d --name atlas-fail6-pg --env-file <unprinted> -p ${pg_port}:5432 postgres:16"
-  docker run -d --name atlas-fail6-pg --env-file "$work/pg.env" -p "${pg_port}:5432" postgres:16 >/dev/null
+  echo "CMD docker run -d --name atlas-fail6-pg --env-file <unprinted> -p 127.0.0.1:${pg_port}:5432 postgres:16"
+  docker run -d --name atlas-fail6-pg --env-file "$work/pg.env" -p "127.0.0.1:${pg_port}:5432" postgres:16 >/dev/null
   local ready=false
   local _
   for _ in $(seq 1 40); do
@@ -288,9 +413,9 @@ PY
   done
   echo "postgres_ready=$ready"
   [[ "$ready" == true ]]
-  echo "CMD docker run --rm --add-host=host.docker.internal:host-gateway -e DATABASE_URL $ATLAS_IMAGE node migrate.mjs"
+  echo "CMD docker run --rm --network host --env-file <unprinted> $ATLAS_IMAGE node migrate.mjs"
   set +e
-  docker run --rm --add-host=host.docker.internal:host-gateway --env-file "$work/app.env" "$ATLAS_IMAGE" node migrate.mjs >"$work/migrate.out" 2>&1
+  docker run --rm --network host --env-file "$work/app.env" "$ATLAS_IMAGE" node migrate.mjs >"$work/migrate.out" 2>&1
   local migrate_exit=$?
   set -e
   python3 - "$work/migrate.out" "$migrate_exit" << 'PY'
@@ -306,9 +431,8 @@ if sys.argv[2] != "0" or "migrations applied" not in text:
     raise SystemExit(1)
 print("migrate_result=migrations_applied")
 PY
-  echo "CMD docker run -d --name atlas-fail6-app --add-host=host.docker.internal:host-gateway -p 127.0.0.1:${app_port}:3000 -e DATABASE_URL -e BETTER_AUTH_SECRET -e BETTER_AUTH_URL -e ADMIN_API_SECRET $ATLAS_IMAGE"
-  docker run -d --name atlas-fail6-app --add-host=host.docker.internal:host-gateway \
-    -p "127.0.0.1:${app_port}:3000" --env-file "$work/app.env" "$ATLAS_IMAGE" >/dev/null
+  echo "CMD docker run -d --name atlas-fail6-app --network host --env-file <unprinted> $ATLAS_IMAGE"
+  docker run -d --name atlas-fail6-app --network host --env-file "$work/app.env" "$ATLAS_IMAGE" >/dev/null
   wait_http "http://127.0.0.1:${app_port}/sign-in"
   echo "CMD curl --config <unprinted>"
   curl --config "$work/signup.curlrc"
@@ -344,11 +468,16 @@ case "${1:-}" in
   2|fail2) run_recipe recipe_2 ;;
   3|fail3) run_recipe recipe_3 ;;
   4|fail4) run_recipe recipe_4 ;;
+  5a) run_recipe recipe_5a ;;
   5e) run_recipe recipe_5e ;;
   5b) run_recipe recipe_5b ;;
+  5c) run_recipe recipe_5c ;;
+  5d) run_recipe recipe_5d ;;
   5f) run_recipe recipe_5f ;;
   5g) run_recipe recipe_5g ;;
   5h) run_recipe recipe_5h ;;
+  forgot-password) run_recipe recipe_forgot ;;
+  design-lock) run_recipe recipe_design_lock ;;
   6|fail6) run_recipe recipe_6 ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
@@ -358,7 +487,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5e|5b|5f|5g|5h|6|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|6|all]" >&2
     exit 2
     ;;
 esac

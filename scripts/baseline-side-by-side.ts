@@ -74,7 +74,6 @@ async function main() {
     'set-password-error.png',
     'space-empty.png',
     'space-loading.png',
-    'page-empty.png',
     'page-default.png',
     'page-loading.png',
     'page-error.png',

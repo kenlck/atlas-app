@@ -155,11 +155,16 @@ jobs:
           run_one fail2 ./scripts/verify-fail-conditions.sh 2
           run_one fail3 ./scripts/verify-fail-conditions.sh 3
           run_one fail4 ./scripts/verify-fail-conditions.sh 4
+          run_one fail5a ./scripts/verify-fail-conditions.sh 5a
           run_one fail5e ./scripts/verify-fail-conditions.sh 5e
           run_one fail5b ./scripts/verify-fail-conditions.sh 5b
           run_one fail5h ./scripts/verify-fail-conditions.sh 5h
+          run_one fail5c ./scripts/verify-fail-conditions.sh 5c
+          run_one fail5d ./scripts/verify-fail-conditions.sh 5d
           run_one fail5f ./scripts/verify-fail-conditions.sh 5f
           run_one fail5g ./scripts/verify-fail-conditions.sh 5g
+          run_one forgot-password ./scripts/verify-fail-conditions.sh forgot-password
+          run_one design-lock ./scripts/verify-fail-conditions.sh design-lock
           run_one fail6 ./scripts/verify-fail-conditions.sh 6
       - name: Screenshots
         run: |
@@ -178,11 +183,11 @@ jobs:
           set +e
           docker run --rm --network host \
             -v "$PWD:/work" -w /work \
-            -e ATLAS_PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble \
+            -e ATLAS_PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea \
             -e BASE_URL=http://127.0.0.1:3000 \
             -e ADMIN_API_SECRET \
             -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-            mcr.microsoft.com/playwright:v1.64.1-noble \
+            mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea \
             node node_modules/@playwright/test/cli.js test -c playwright.visual.config.ts \
             > "artifacts/${sha}/logs/baselines.log" 2>&1
           code=$?
