@@ -1,4 +1,4 @@
-import { and, eq, isNull, max } from 'drizzle-orm'
+import { and, eq, isNull, max, sql } from 'drizzle-orm'
 import { assertAccess } from './access'
 import { emptyDoc, tiptapToText, type Json } from './body-text'
 import { getDb } from './db'
@@ -66,32 +66,37 @@ async function loadPageRow(pageId: string) {
   return rows[0] ?? null
 }
 
-async function descendantIds(spaceId: string, rootId: string) {
-  const db = getDb()
-  const rows = await db
-    .select({ id: page.id, parentId: page.parentId })
-    .from(page)
-    .where(eq(page.spaceId, spaceId))
-  const children = new Map<string, string[]>()
-  for (const row of rows) {
-    if (!row.parentId) continue
-    const list = children.get(row.parentId) ?? []
-    list.push(row.id)
-    children.set(row.parentId, list)
+type MoveTx = {
+  execute: (query: ReturnType<typeof sql>) => unknown
+}
+
+async function lockSpaces(tx: MoveTx, spaceIds: string[]) {
+  const unique = [...new Set(spaceIds)].sort()
+  for (const spaceId of unique) {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${spaceId}))`)
   }
-  const out = new Set<string>()
-  const stack = [rootId]
-  while (stack.length > 0) {
-    const current = stack.pop()
-    if (!current) break
-    for (const child of children.get(current) ?? []) {
-      if (!out.has(child)) {
-        out.add(child)
-        stack.push(child)
-      }
-    }
+}
+
+function executeHasRow(result: unknown) {
+  if (Array.isArray(result)) return result.length > 0
+  if (result && typeof result === 'object' && 'count' in result) {
+    const count = (result as { count?: unknown }).count
+    return typeof count === 'number' && count > 0
   }
-  return out
+  return false
+}
+
+async function targetIsSelfOrDescendant(tx: MoveTx, pageId: string, parentId: string) {
+  const result = await tx.execute(sql`
+    with recursive descendants as (
+      select id from page where id = ${pageId}
+      union all
+      select p.id from page p
+      inner join descendants d on p.parent_id = d.id
+    )
+    select id from descendants where id = ${parentId} limit 1
+  `)
+  return executeHasRow(result)
 }
 
 async function breadcrumbsFor(row: Page) {
@@ -206,28 +211,45 @@ export async function movePage(
 ) {
   const { page: row } = await assertAccess(userId, { pageId: input.pageId })
   if (!row) notFound()
-  if (input.parentId === row.id) {
-    throw new HttpError(400, 'Cannot move a page under itself')
-  }
+  let parentSpaceId = row.spaceId
   if (input.parentId) {
     const parent = await assertAccess(userId, { pageId: input.parentId })
     if (!parent.page || parent.page.spaceId !== row.spaceId) notFound()
-    const down = await descendantIds(row.spaceId, row.id)
-    if (down.has(input.parentId)) {
-      throw new HttpError(400, 'Cannot move a page under its child')
-    }
+    parentSpaceId = parent.page.spaceId
   }
+
   const db = getDb()
-  const position = await nextPosition(row.spaceId, input.parentId)
-  await db
-    .update(page)
-    .set({
-      parentId: input.parentId,
-      position,
-      updatedBy: userId,
-      updatedAt: new Date(),
-    })
-    .where(eq(page.id, row.id))
+  await db.transaction(async (tx) => {
+    await lockSpaces(tx, [row.spaceId, parentSpaceId])
+    const currentRows = await tx.select().from(page).where(eq(page.id, row.id)).limit(1)
+    const current = currentRows[0]
+    if (!current || current.archivedAt) notFound()
+    if (input.parentId) {
+      const parentRows = await tx.select().from(page).where(eq(page.id, input.parentId)).limit(1)
+      const parent = parentRows[0]
+      if (!parent || parent.archivedAt || parent.spaceId !== current.spaceId) notFound()
+      if (await targetIsSelfOrDescendant(tx, current.id, input.parentId)) {
+        throw new HttpError(400, 'Cannot move a page under itself or a descendant')
+      }
+    }
+    const siblingFilter = input.parentId
+      ? and(eq(page.spaceId, current.spaceId), eq(page.parentId, input.parentId))
+      : and(eq(page.spaceId, current.spaceId), isNull(page.parentId))
+    const posRows = await tx
+      .select({ value: max(page.position) })
+      .from(page)
+      .where(siblingFilter)
+    const position = (posRows[0]?.value ?? 0) + 1000
+    await tx
+      .update(page)
+      .set({
+        parentId: input.parentId,
+        position,
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
+      .where(eq(page.id, current.id))
+  })
   return getPageView(userId, row.id)
 }
 
