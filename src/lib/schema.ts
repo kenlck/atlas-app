@@ -6,6 +6,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -63,13 +64,68 @@ export const verification = pgTable('verification', {
 })
 
 export const spaceKind = pgEnum('space_kind', ['personal', 'team'])
+export const teamRole = pgEnum('team_role', ['owner', 'member'])
+export const inviteStatus = pgEnum('invite_status', [
+  'pending',
+  'accepted',
+  'declined',
+])
+
+export const team = pgTable('team', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  createdAt: timestamp('created_at').notNull(),
+})
+
+export const teamMember = pgTable(
+  'team_member',
+  {
+    teamId: text('team_id')
+      .notNull()
+      .references(() => team.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    role: teamRole('role').notNull(),
+    createdAt: timestamp('created_at').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.teamId, t.userId] }),
+    uniqueIndex('team_one_owner')
+      .on(t.teamId)
+      .where(sql`role = 'owner'`),
+  ],
+)
+
+export const teamInvite = pgTable(
+  'team_invite',
+  {
+    id: text('id').primaryKey(),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => team.id, { onDelete: 'cascade' }),
+    inviteeUserId: text('invitee_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    invitedBy: text('invited_by')
+      .notNull()
+      .references(() => user.id),
+    status: inviteStatus('status').notNull().default('pending'),
+    createdAt: timestamp('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('team_invite_one_pending')
+      .on(t.teamId, t.inviteeUserId)
+      .where(sql`status = 'pending'`),
+  ],
+)
 
 export const space = pgTable(
   'space',
   {
     id: text('id').primaryKey(),
     kind: spaceKind('kind').notNull(),
-    teamId: text('team_id'),
+    teamId: text('team_id').references(() => team.id, { onDelete: 'cascade' }),
     ownerUserId: text('owner_user_id').references(() => user.id, {
       onDelete: 'cascade',
     }),
@@ -88,6 +144,9 @@ export const space = pgTable(
     uniqueIndex('space_one_personal_per_owner')
       .on(t.ownerUserId)
       .where(sql`kind = 'personal'`),
+    uniqueIndex('space_one_per_team')
+      .on(t.teamId)
+      .where(sql`team_id IS NOT NULL`),
   ],
 )
 
@@ -126,3 +185,6 @@ export type User = typeof user.$inferSelect
 export type Space = typeof space.$inferSelect
 export type Page = typeof page.$inferSelect
 export type AdminAudit = typeof adminAudit.$inferSelect
+export type Team = typeof team.$inferSelect
+export type TeamMember = typeof teamMember.$inferSelect
+export type TeamInvite = typeof teamInvite.$inferSelect

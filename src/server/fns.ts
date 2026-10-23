@@ -5,6 +5,7 @@ import { getDb } from '#/lib/db'
 import { HttpError } from '#/lib/http'
 import { user } from '#/lib/schema'
 import { eq } from 'drizzle-orm'
+import { listMentionCandidates } from '#/lib/mentions'
 import {
   archivePage,
   createPage,
@@ -15,8 +16,25 @@ import {
   renamePage,
   savePage,
 } from '#/lib/pages'
+import {
+  acceptInvite,
+  countPendingInvites,
+  createInvite,
+  createTeam,
+  declineInvite,
+  deleteTeam,
+  getTeamSettingsForSpace,
+  listInvitations,
+  listMySpaces,
+  lookupAccount,
+  removeMember,
+} from '#/lib/teams'
 import { setNewPassword } from '#/lib/password'
-import { readSession, requireSession, requireUnlockedSession } from '#/lib/session'
+import {
+  readSession,
+  requireSession,
+  requireUnlockedSession,
+} from '#/lib/session'
 
 function rethrow(error: unknown): never {
   if (error instanceof HttpError) {
@@ -25,41 +43,47 @@ function rethrow(error: unknown): never {
   throw error
 }
 
-const unlocked = createMiddleware({ type: 'function' }).server(async ({ next }) => {
-  try {
-    const session = await requireUnlockedSession()
-    return next({ context: { userId: session.user.id, user: session.user } })
-  } catch (error) {
-    rethrow(error)
-  }
-})
+const unlocked = createMiddleware({ type: 'function' }).server(
+  async ({ next }) => {
+    try {
+      const session = await requireUnlockedSession()
+      return next({ context: { userId: session.user.id, user: session.user } })
+    } catch (error) {
+      rethrow(error)
+    }
+  },
+)
 
-const signedIn = createMiddleware({ type: 'function' }).server(async ({ next }) => {
-  try {
-    const session = await requireSession()
-    return next({ context: { userId: session.user.id, user: session.user } })
-  } catch (error) {
-    rethrow(error)
-  }
-})
+const signedIn = createMiddleware({ type: 'function' }).server(
+  async ({ next }) => {
+    try {
+      const session = await requireSession()
+      return next({ context: { userId: session.user.id, user: session.user } })
+    } catch (error) {
+      rethrow(error)
+    }
+  },
+)
 
-export const fetchSession = createServerFn({ method: 'GET' }).handler(async () => {
-  const session = await readSession()
-  if (!session) return null
-  const rows = await getDb()
-    .select({ mustChangePassword: user.mustChangePassword, name: user.name })
-    .from(user)
-    .where(eq(user.id, session.user.id))
-    .limit(1)
-  return {
-    user: {
-      id: session.user.id,
-      name: rows[0]?.name ?? session.user.name,
-      email: session.user.email,
-      mustChangePassword: Boolean(rows[0]?.mustChangePassword),
-    },
-  }
-})
+export const fetchSession = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    const session = await readSession()
+    if (!session) return null
+    const rows = await getDb()
+      .select({ mustChangePassword: user.mustChangePassword, name: user.name })
+      .from(user)
+      .where(eq(user.id, session.user.id))
+      .limit(1)
+    return {
+      user: {
+        id: session.user.id,
+        name: rows[0]?.name ?? session.user.name,
+        email: session.user.email,
+        mustChangePassword: Boolean(rows[0]?.mustChangePassword),
+      },
+    }
+  },
+)
 
 export const fetchPersonalSpace = createServerFn({ method: 'GET' })
   .middleware([unlocked])
@@ -76,7 +100,12 @@ export const fetchPageTree = createServerFn({ method: 'GET' })
   .validator((data: { spaceId: string }) => data)
   .handler(async ({ data, context }) => {
     try {
-      return await listPageTree(context.userId, data.spaceId)
+      const listed = await listPageTree(context.userId, data.spaceId)
+      const [spaces, pendingInvites] = await Promise.all([
+        listMySpaces(context.userId),
+        countPendingInvites(context.userId),
+      ])
+      return { ...listed, spaces, pendingInvites }
     } catch (error) {
       rethrow(error)
     }
@@ -95,7 +124,10 @@ export const fetchPage = createServerFn({ method: 'GET' })
 
 export const createPageFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
-  .validator((data: { spaceId: string; parentId?: string | null; title?: string }) => data)
+  .validator(
+    (data: { spaceId: string; parentId?: string | null; title?: string }) =>
+      data,
+  )
   .handler(async ({ data, context }) => {
     try {
       return await createPage(context.userId, data)
@@ -143,6 +175,129 @@ export const archivePageFn = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }) => {
     try {
       return await archivePage(context.userId, data.pageId)
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const fetchTeamSettings = createServerFn({ method: 'GET' })
+  .middleware([unlocked])
+  .validator((data: { spaceId: string; screen: 'members' }) => {
+    if (data.screen !== 'members') throw new Error('Bad request')
+    return data
+  })
+  .handler(async ({ data, context }) => {
+    try {
+      return await getTeamSettingsForSpace(context.userId, data.spaceId)
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const fetchInvitations = createServerFn({ method: 'GET' })
+  .middleware([unlocked])
+  .validator((data: { screen: 'invitations' }) => {
+    if (data.screen !== 'invitations') throw new Error('Bad request')
+    return data
+  })
+  .handler(async ({ context }) => {
+    try {
+      return { invites: await listInvitations(context.userId) }
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const fetchMentionCandidates = createServerFn({ method: 'GET' })
+  .middleware([unlocked])
+  .validator((data: { spaceId: string; mentionQuery: string }) => data)
+  .handler(async ({ data, context }) => {
+    try {
+      return await listMentionCandidates(
+        context.userId,
+        data.spaceId,
+        data.mentionQuery,
+      )
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const createTeamFn = createServerFn({ method: 'POST' })
+  .middleware([unlocked])
+  .validator((data: { name: string }) => data)
+  .handler(async ({ data, context }) => {
+    try {
+      return await createTeam(context.userId, data.name)
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const lookupAccountFn = createServerFn({ method: 'POST' })
+  .middleware([unlocked])
+  .validator((data: { teamId: string; email: string; screen: 'lookup' }) => {
+    if (data.screen !== 'lookup') throw new Error('Bad request')
+    return data
+  })
+  .handler(async ({ data, context }) => {
+    try {
+      return await lookupAccount(context.userId, data.teamId, data.email)
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const createInviteFn = createServerFn({ method: 'POST' })
+  .middleware([unlocked])
+  .validator((data: { teamId: string; userId: string }) => data)
+  .handler(async ({ data, context }) => {
+    try {
+      return await createInvite(context.userId, data.teamId, data.userId)
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const acceptInviteFn = createServerFn({ method: 'POST' })
+  .middleware([unlocked])
+  .validator((data: { inviteId: string }) => data)
+  .handler(async ({ data, context }) => {
+    try {
+      return await acceptInvite(context.userId, data.inviteId)
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const declineInviteFn = createServerFn({ method: 'POST' })
+  .middleware([unlocked])
+  .validator((data: { inviteId: string }) => data)
+  .handler(async ({ data, context }) => {
+    try {
+      return await declineInvite(context.userId, data.inviteId)
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const removeMemberFn = createServerFn({ method: 'POST' })
+  .middleware([unlocked])
+  .validator((data: { teamId: string; userId: string }) => data)
+  .handler(async ({ data, context }) => {
+    try {
+      return await removeMember(context.userId, data.teamId, data.userId)
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const deleteTeamFn = createServerFn({ method: 'POST' })
+  .middleware([unlocked])
+  .validator((data: { teamId: string }) => data)
+  .handler(async ({ data, context }) => {
+    try {
+      return await deleteTeam(context.userId, data.teamId)
     } catch (error) {
       rethrow(error)
     }

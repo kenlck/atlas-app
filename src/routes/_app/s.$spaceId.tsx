@@ -1,4 +1,9 @@
-import { createFileRoute, getRouteApi, notFound, redirect } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  getRouteApi,
+  notFound,
+  redirect,
+} from '@tanstack/react-router'
 import { AppFrame } from '#/components/AppFrame'
 import { fetchPageTree } from '#/server/fns'
 
@@ -7,7 +12,8 @@ const appRoute = getRouteApi('/_app')
 function loaderError(error: unknown): never {
   const message = error instanceof Error ? error.message : ''
   if (message === 'Unauthorized') throw redirect({ to: '/sign-in' })
-  if (message === 'Password change required') throw redirect({ to: '/set-password' })
+  if (message === 'Password change required')
+    throw redirect({ to: '/set-password' })
   if (message === 'Not found') throw notFound()
   throw error
 }
@@ -42,6 +48,9 @@ function SpaceLayout() {
       spaceName={data.space.name}
       userName={session.user.name}
       tree={data.tree}
+      spaces={data.spaces}
+      role={data.role}
+      pendingInvites={data.pendingInvites}
     />
   )
 }

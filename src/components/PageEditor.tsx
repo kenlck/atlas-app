@@ -12,13 +12,21 @@ import type { PageView } from '#/lib/pages'
 import { relativeTime } from '#/lib/relative-time'
 import { savePageFn } from '#/server/fns'
 import { EditorToolbar } from './EditorToolbar'
+import { createMentionExtension } from './MentionExtension'
 
 type SaveState = 'saved' | 'saving' | 'error'
 
-function flushKeepalive(payload: { pageId: string; title: string; body: Json }) {
+function flushKeepalive(payload: {
+  pageId: string
+  title: string
+  body: Json
+}) {
   const body = JSON.stringify(payload)
   const blob = new Blob([body], { type: 'application/json' })
-  if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+  if (
+    typeof navigator !== 'undefined' &&
+    typeof navigator.sendBeacon === 'function'
+  ) {
     if (navigator.sendBeacon('/api/pages/save', blob)) return
   }
   void fetch('/api/pages/save', {
@@ -40,6 +48,8 @@ export function PageEditor({ page }: { page: PageView }) {
   const dirtyRef = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pageIdRef = useRef(page.id)
+  const peopleRef = useRef(page.people)
+  peopleRef.current = page.people
 
   const persist = async () => {
     if (timer.current) {
@@ -91,6 +101,10 @@ export function PageEditor({ page }: { page: PageView }) {
       TaskList,
       TaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder: 'Start writing' }),
+      createMentionExtension({
+        spaceId: page.spaceId,
+        getPeople: () => peopleRef.current,
+      }),
     ],
     content: page.body as object,
     editorProps: {
@@ -148,11 +162,21 @@ export function PageEditor({ page }: { page: PageView }) {
         {page.breadcrumbs.map((crumb, index) => (
           <span key={crumb.id}>
             {index > 0 ? <span> / </span> : null}
-            {index === page.breadcrumbs.length - 1 ? <b>{crumb.title}</b> : crumb.title}
+            {index === page.breadcrumbs.length - 1 ? (
+              <b>{crumb.title}</b>
+            ) : (
+              crumb.title
+            )}
           </span>
         ))}
         <div className="r">
-          <span className="save">{saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : ''}</span>
+          <span className="save">
+            {saveState === 'saving'
+              ? 'Saving'
+              : saveState === 'saved'
+                ? 'Saved'
+                : ''}
+          </span>
         </div>
       </div>
       <EditorToolbar editor={editor} />

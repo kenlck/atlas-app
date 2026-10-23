@@ -1,12 +1,20 @@
-import { Outlet, useNavigate, useParams, useRouter } from '@tanstack/react-router'
+import {
+  Outlet,
+  useNavigate,
+  useParams,
+  useRouter,
+} from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import type { SpaceRole } from '#/lib/access'
 import type { TreeNode } from '#/lib/pages'
+import type { SpaceSummary } from '#/lib/teams'
 import {
   archivePageFn,
   createPageFn,
   movePageFn,
   renamePageFn,
 } from '#/server/fns'
+import { CreateTeamDialog } from './CreateTeamDialog'
 import { MoveDialog } from './MoveDialog'
 import { Sidebar } from './Sidebar'
 
@@ -17,6 +25,9 @@ export function AppFrame({
   tree,
   loading,
   error,
+  spaces,
+  role,
+  pendingInvites,
   onRetry,
 }: {
   spaceId: string
@@ -25,10 +36,14 @@ export function AppFrame({
   tree: TreeNode[]
   loading?: boolean
   error?: string | null
+  spaces: SpaceSummary[]
+  role: SpaceRole
+  pendingInvites: number
   onRetry?: () => void
 }) {
   const [drawer, setDrawer] = useState(false)
   const [moving, setMoving] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
   const navigate = useNavigate()
   const router = useRouter()
   const params = useParams({ strict: false }) as { pageId?: string }
@@ -79,7 +94,9 @@ export function AppFrame({
 
   return (
     <div className="app">
-      {drawer ? <div className="scrim" onClick={() => setDrawer(false)} /> : null}
+      {drawer ? (
+        <div className="scrim" onClick={() => setDrawer(false)} />
+      ) : null}
       <Sidebar
         open={drawer}
         spaceId={spaceId}
@@ -94,15 +111,49 @@ export function AppFrame({
         onRename={(pageId, title) => void rename(pageId, title)}
         onMove={setMoving}
         onArchive={(pageId) => void archive(pageId)}
+        spaces={spaces}
+        role={role}
+        pendingInvites={pendingInvites}
+        onCreateTeam={() => {
+          setDrawer(false)
+          setCreating(true)
+        }}
+        onNavigate={() => setDrawer(false)}
       />
       <div className="main" style={{ position: 'relative' }}>
-        <button className="menu-btn" type="button" aria-label="Open pages" onClick={() => setDrawer(true)}>
+        <button
+          className="menu-btn"
+          type="button"
+          aria-label="Open pages"
+          onClick={() => setDrawer(true)}
+        >
           ☰
         </button>
         <Outlet />
       </div>
       {moving ? (
-        <MoveDialog tree={tree} pageId={moving} onCancel={() => setMoving(null)} onMove={(parentId) => void move(parentId)} />
+        <MoveDialog
+          tree={tree}
+          pageId={moving}
+          onCancel={() => setMoving(null)}
+          onMove={(parentId) => void move(parentId)}
+        />
+      ) : null}
+      {creating ? (
+        <CreateTeamDialog
+          onCancel={() => setCreating(false)}
+          onCreated={(nextSpaceId) => {
+            setCreating(false)
+            void router
+              .invalidate()
+              .then(() =>
+                navigate({
+                  to: '/s/$spaceId',
+                  params: { spaceId: nextSpaceId },
+                }),
+              )
+          }}
+        />
       ) : null}
     </div>
   )

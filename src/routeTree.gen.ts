@@ -17,9 +17,12 @@ import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSSpaceIdRouteImport } from './routes/_app/s.$spaceId'
 import { Route as ApiAdminResetPasswordRouteImport } from './routes/api/admin/reset-password'
+import { Route as ApiAtlasSplatRouteImport } from './routes/api/atlas/$'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiPagesSaveRouteImport } from './routes/api/pages/save'
 import { Route as AppSSpaceIdIndexRouteImport } from './routes/_app/s.$spaceId.index'
+import { Route as AppSSpaceIdProfileRouteImport } from './routes/_app/s.$spaceId.profile'
+import { Route as AppSSpaceIdSettingsRouteImport } from './routes/_app/s.$spaceId.settings'
 import { Route as AppSSpaceIdPPageIdRouteImport } from './routes/_app/s.$spaceId.p.$pageId'
 
 const AppRoute = AppRouteImport.update({
@@ -61,6 +64,11 @@ const ApiAdminResetPasswordRoute = ApiAdminResetPasswordRouteImport.update({
   path: '/api/admin/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAtlasSplatRoute = ApiAtlasSplatRouteImport.update({
+  id: '/api/atlas/$',
+  path: '/api/atlas/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -74,6 +82,16 @@ const ApiPagesSaveRoute = ApiPagesSaveRouteImport.update({
 const AppSSpaceIdIndexRoute = AppSSpaceIdIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppSSpaceIdRoute,
+} as any)
+const AppSSpaceIdProfileRoute = AppSSpaceIdProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => AppSSpaceIdRoute,
+} as any)
+const AppSSpaceIdSettingsRoute = AppSSpaceIdSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => AppSSpaceIdRoute,
 } as any)
 const AppSSpaceIdPPageIdRoute = AppSSpaceIdPPageIdRouteImport.update({
@@ -90,8 +108,11 @@ export interface FileRoutesByFullPath {
   '/sign-up': typeof SignUpRoute
   '/s/$spaceId': typeof AppSSpaceIdRouteWithChildren
   '/api/admin/reset-password': typeof ApiAdminResetPasswordRoute
+  '/api/atlas/$': typeof ApiAtlasSplatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/pages/save': typeof ApiPagesSaveRoute
+  '/s/$spaceId/profile': typeof AppSSpaceIdProfileRoute
+  '/s/$spaceId/settings': typeof AppSSpaceIdSettingsRoute
   '/s/$spaceId/': typeof AppSSpaceIdIndexRoute
   '/s/$spaceId/p/$pageId': typeof AppSSpaceIdPPageIdRoute
 }
@@ -102,8 +123,11 @@ export interface FileRoutesByTo {
   '/sign-up': typeof SignUpRoute
   '/': typeof AppIndexRoute
   '/api/admin/reset-password': typeof ApiAdminResetPasswordRoute
+  '/api/atlas/$': typeof ApiAtlasSplatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/pages/save': typeof ApiPagesSaveRoute
+  '/s/$spaceId/profile': typeof AppSSpaceIdProfileRoute
+  '/s/$spaceId/settings': typeof AppSSpaceIdSettingsRoute
   '/s/$spaceId': typeof AppSSpaceIdIndexRoute
   '/s/$spaceId/p/$pageId': typeof AppSSpaceIdPPageIdRoute
 }
@@ -117,8 +141,11 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/s/$spaceId': typeof AppSSpaceIdRouteWithChildren
   '/api/admin/reset-password': typeof ApiAdminResetPasswordRoute
+  '/api/atlas/$': typeof ApiAtlasSplatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/pages/save': typeof ApiPagesSaveRoute
+  '/_app/s/$spaceId/profile': typeof AppSSpaceIdProfileRoute
+  '/_app/s/$spaceId/settings': typeof AppSSpaceIdSettingsRoute
   '/_app/s/$spaceId/': typeof AppSSpaceIdIndexRoute
   '/_app/s/$spaceId/p/$pageId': typeof AppSSpaceIdPPageIdRoute
 }
@@ -132,8 +159,11 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/s/$spaceId'
     | '/api/admin/reset-password'
+    | '/api/atlas/$'
     | '/api/auth/$'
     | '/api/pages/save'
+    | '/s/$spaceId/profile'
+    | '/s/$spaceId/settings'
     | '/s/$spaceId/'
     | '/s/$spaceId/p/$pageId'
   fileRoutesByTo: FileRoutesByTo
@@ -144,8 +174,11 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/'
     | '/api/admin/reset-password'
+    | '/api/atlas/$'
     | '/api/auth/$'
     | '/api/pages/save'
+    | '/s/$spaceId/profile'
+    | '/s/$spaceId/settings'
     | '/s/$spaceId'
     | '/s/$spaceId/p/$pageId'
   id:
@@ -158,8 +191,11 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/s/$spaceId'
     | '/api/admin/reset-password'
+    | '/api/atlas/$'
     | '/api/auth/$'
     | '/api/pages/save'
+    | '/_app/s/$spaceId/profile'
+    | '/_app/s/$spaceId/settings'
     | '/_app/s/$spaceId/'
     | '/_app/s/$spaceId/p/$pageId'
   fileRoutesById: FileRoutesById
@@ -171,6 +207,7 @@ export interface RootRouteChildren {
   SignInRoute: typeof SignInRoute
   SignUpRoute: typeof SignUpRoute
   ApiAdminResetPasswordRoute: typeof ApiAdminResetPasswordRoute
+  ApiAtlasSplatRoute: typeof ApiAtlasSplatRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiPagesSaveRoute: typeof ApiPagesSaveRoute
 }
@@ -233,6 +270,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/atlas/$': {
+      id: '/api/atlas/$'
+      path: '/api/atlas/$'
+      fullPath: '/api/atlas/$'
+      preLoaderRoute: typeof ApiAtlasSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -254,6 +298,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSSpaceIdIndexRouteImport
       parentRoute: typeof AppSSpaceIdRoute
     }
+    '/_app/s/$spaceId/profile': {
+      id: '/_app/s/$spaceId/profile'
+      path: '/profile'
+      fullPath: '/s/$spaceId/profile'
+      preLoaderRoute: typeof AppSSpaceIdProfileRouteImport
+      parentRoute: typeof AppSSpaceIdRoute
+    }
+    '/_app/s/$spaceId/settings': {
+      id: '/_app/s/$spaceId/settings'
+      path: '/settings'
+      fullPath: '/s/$spaceId/settings'
+      preLoaderRoute: typeof AppSSpaceIdSettingsRouteImport
+      parentRoute: typeof AppSSpaceIdRoute
+    }
     '/_app/s/$spaceId/p/$pageId': {
       id: '/_app/s/$spaceId/p/$pageId'
       path: '/p/$pageId'
@@ -265,11 +323,15 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppSSpaceIdRouteChildren {
+  AppSSpaceIdProfileRoute: typeof AppSSpaceIdProfileRoute
+  AppSSpaceIdSettingsRoute: typeof AppSSpaceIdSettingsRoute
   AppSSpaceIdIndexRoute: typeof AppSSpaceIdIndexRoute
   AppSSpaceIdPPageIdRoute: typeof AppSSpaceIdPPageIdRoute
 }
 
 const AppSSpaceIdRouteChildren: AppSSpaceIdRouteChildren = {
+  AppSSpaceIdProfileRoute: AppSSpaceIdProfileRoute,
+  AppSSpaceIdSettingsRoute: AppSSpaceIdSettingsRoute,
   AppSSpaceIdIndexRoute: AppSSpaceIdIndexRoute,
   AppSSpaceIdPPageIdRoute: AppSSpaceIdPPageIdRoute,
 }
@@ -297,6 +359,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignInRoute: SignInRoute,
   SignUpRoute: SignUpRoute,
   ApiAdminResetPasswordRoute: ApiAdminResetPasswordRoute,
+  ApiAtlasSplatRoute: ApiAtlasSplatRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiPagesSaveRoute: ApiPagesSaveRoute,
 }

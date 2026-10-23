@@ -1,18 +1,25 @@
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { getDb } from './db'
 import { notFound } from './http'
-import { page, space, type Page, type Space } from './schema'
+import { page, space, teamMember, type Page, type Space } from './schema'
+
+export type SpaceRole = 'personal' | 'owner' | 'member'
 
 export type AccessTarget = { spaceId: string } | { pageId: string }
 
 export type AccessResult = {
   space: Space
   page: Page | null
+  role: SpaceRole
 }
 
 async function loadSpace(spaceId: string) {
   const db = getDb()
-  const rows = await db.select().from(space).where(eq(space.id, spaceId)).limit(1)
+  const rows = await db
+    .select()
+    .from(space)
+    .where(eq(space.id, spaceId))
+    .limit(1)
   return rows[0] ?? null
 }
 
@@ -65,15 +72,28 @@ export async function assertAccess(
     notFound()
   }
 
-  const allowed =
-    spaceRow.kind === 'personal' && spaceRow.ownerUserId === userId
-  if (!allowed) {
-    notFound()
+  let role: SpaceRole | null = null
+  if (spaceRow.kind === 'personal' && spaceRow.ownerUserId === userId) {
+    role = 'personal'
+  } else if (spaceRow.kind === 'team' && spaceRow.teamId) {
+    const db = getDb()
+    const members = await db
+      .select({ role: teamMember.role })
+      .from(teamMember)
+      .where(
+        and(
+          eq(teamMember.teamId, spaceRow.teamId),
+          eq(teamMember.userId, userId),
+        ),
+      )
+      .limit(1)
+    if (members[0]) role = members[0].role
   }
+  if (!role) notFound()
 
   if (pageRow && (await hasArchivedAncestor(pageRow))) {
     notFound()
   }
 
-  return { space: spaceRow, page: pageRow }
+  return { space: spaceRow, page: pageRow, role }
 }
