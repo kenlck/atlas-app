@@ -1,0 +1,102 @@
+---
+name: verify-atlas
+description: Drive the Atlas web app on localhost and prove sign-up, sign-in, the personal space, nested pages, and the admin reset API. Use when a change needs a live check, an issue 1 fail-condition recipe, or screenshots of the running app.
+---
+
+# Verify Atlas
+
+Drive the running Atlas app the way a person does. The recipes shell out to Playwright and curl. They print raw status lines. They do not print `ADMIN_API_SECRET`, passwords, session cookies, or database URLs.
+
+On load, every driver refuses a `BASE_URL` whose scheme is not `http` or whose host is not `localhost`, `127.0.0.1`, or `::1`.
+
+## Launch
+
+From the repo root, with Docker available:
+
+```bash
+docker build -t atlas-app .
+docker run -d --name atlas-verify-pg -e POSTGRES_USER=atlas -e POSTGRES_PASSWORD=atlas -e POSTGRES_DB=atlas -p 127.0.0.1:5432:5432 postgres:16
+```
+
+Wait until `docker exec atlas-verify-pg pg_isready -q` exits 0. Export `DATABASE_URL` for that Postgres, `BETTER_AUTH_URL=http://127.0.0.1:3000`, `BASE_URL` to the same origin, `BETTER_AUTH_SECRET` and `ADMIN_API_SECRET` as 32 or more random characters, `ATLAS_IMAGE=atlas-app`, and `ATLAS_CONTAINER=atlas-verify`. Do not print those values. Then:
+
+```bash
+docker run --rm --network host -e DATABASE_URL atlas-app node migrate.mjs
+docker run -d --name atlas-verify --network host \
+  -e DATABASE_URL -e BETTER_AUTH_SECRET -e BETTER_AUTH_URL -e ADMIN_API_SECRET \
+  -e HOST=127.0.0.1 -e PORT=3000 atlas-app
+```
+
+Ready means `curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/sign-in` prints `200`. A database health check is not enough. The sign-in page has to answer.
+
+`ADMIN_API_SECRET` must be at least 32 characters or the reset route returns an empty 404. Leave it unset only when the recipe under test is `5e`.
+
+Teardown is in Cleanup. Do not point `DATABASE_URL` at a database you need to keep. Recipe `all` drops the `public` schema.
+
+## Doctor
+
+```bash
+BASE_URL=http://127.0.0.1:3000 ATLAS_CONTAINER=atlas-verify ./scripts/verify-doctor.sh
+```
+
+Require `sign_in_status=200`, a `head_sha` that matches `git rev-parse HEAD`, and `admin_secret=set` or `admin_secret=unset`. The script does not print the secret. Run doctor again before a recipe if a request fails for an unexpected reason.
+
+## Drive
+
+Prefer the recipe script. It is the maintained check for issue 1.
+
+```bash
+./scripts/verify-fail-conditions.sh 1
+./scripts/verify-fail-conditions.sh 2
+./scripts/verify-fail-conditions.sh 3
+./scripts/verify-fail-conditions.sh 4
+./scripts/verify-fail-conditions.sh 5e
+./scripts/verify-fail-conditions.sh 5b
+./scripts/verify-fail-conditions.sh 5f
+./scripts/verify-fail-conditions.sh 5g
+./scripts/verify-fail-conditions.sh 5h
+./scripts/verify-fail-conditions.sh 6
+```
+
+Each recipe prints `START <utc> sha=<head>` and `END <utc> sha=<head>`. A non-zero exit means that check failed. `5f` reads `docker logs` for `ATLAS_CONTAINER` after the reset and the password change. `5e`, `5b`, `5h`, and `6` start their own containers from `ATLAS_IMAGE` (default `atlas-app`). `5h` uses a fresh process so the in-memory rate limit starts at zero.
+
+Screenshots, one command:
+
+```bash
+BASE_URL=http://127.0.0.1:3000 pnpm visual-shots
+```
+
+PNGs land in `artifacts/<head sha>/`. Loading shots hold a `_serverFn` request open. Error shots fulfill that request with HTTP 500. The 390 run opens the drawer, scrolls the toolbar sideways, and prints `scrollWidth` and `innerWidth`. If `scrollWidth` is greater than `innerWidth`, the command exits non-zero.
+
+Screenshot baselines use `pnpm verify:baselines` and run only inside `mcr.microsoft.com/playwright:v1.64.1-noble` with `ATLAS_PLAYWRIGHT_IMAGE` set to that name. The clock is frozen at `2026-01-15T12:00:00Z`, the user is `Ada Baseline`, and animations are disabled.
+
+Stable handles: headings `Create an account`, `Sign in`, `Forgot your password?`, `Set a new password`, `No pages yet`, `Move page`, `Couldn't load this page.`, `Page not found.`. Buttons `Create account`, `Sign in`, `+ New page`, `Open pages`, `Move`, `Archive`, `Retry`, `Try again`, `Save password`. Fields `#name`, `#email`, `#password`, `#confirm`, `#page-title`. Editor `.doc-editor`. Banner `.retry` reads `Couldn't save.` plus `Retry`.
+
+Read `features/README.md` before a journey. A path the map lists and the run did not drive is not verified.
+
+## Evidence
+
+Keep proof in `artifacts/<head sha>/`. Recipes write `logs/<recipe>.log` when CI runs them. Screenshots and `scrollwidth.log` sit next to those logs. Cleanup must not delete this directory.
+
+A proof shows the action and the result. For a page, that is the HTTP status and the following read of the row or the reloaded editor text. For reset, that is the status, `temporaryPassword_len`, the session count, and `secret_not_in_logs`, `temp_not_in_logs`, `new_not_in_logs`. A screenshot without those lines does not pass a fail condition.
+
+## Cleanup
+
+Stop only the containers this run started:
+
+```bash
+docker rm -f atlas-verify atlas-verify-pg atlas-5e-unset atlas-5e-empty atlas-5e-short atlas-5b atlas-5h atlas-fail6-app atlas-fail6-pg
+```
+
+Ignore missing names. Do not kill by process name. Leave `artifacts/<head sha>/` in place.
+
+## Helpers
+
+- `./scripts/verify-fail-conditions.sh <recipe>` runs one live check.
+- `./scripts/verify-doctor.sh` answers whether this instance is worth driving.
+- `pnpm visual-shots` writes the PNG set under `artifacts/<head sha>/`.
+- `pnpm lint:tokens` fails on a raw hex color outside the `:root` block in `src/styles.css`, or on a Tailwind arbitrary length. SVG files are skipped.
+- `pnpm verify:baselines` compares 1280 screenshots. It exits immediately outside the pinned Playwright image.
+- `pnpm exec tsx scripts/baseline-side-by-side.ts` writes old and new PNGs side by side when a committed baseline differs from `origin/main`.
+
+When the app changes, update the feature map with `/maintain-verification-skill`.
