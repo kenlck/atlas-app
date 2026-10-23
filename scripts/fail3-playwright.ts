@@ -1,6 +1,9 @@
 import { chromium, type Request } from 'playwright'
+import { assertLocalBaseUrl } from './verify-local.ts'
 
-const BASE_URL = process.env.BASE_URL ?? 'http://127.0.0.1:3010'
+const BASE_URL = assertLocalBaseUrl(
+  process.env.BASE_URL ?? 'http://127.0.0.1:3010',
+)
 const PASSWORD = process.env.VERIFY_PASSWORD ?? 'visual-shots-password'
 
 function requestBlob(request: Request) {
@@ -22,7 +25,9 @@ async function main() {
   const email = `fail3.${stamp}@example.com`
   const typed = `Exact reload ${stamp}`
   const extra = ' kept'
-  const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
   const page = await browser.newPage({
     viewport: { width: 1280, height: 800 },
     deviceScaleFactor: 1,
@@ -32,7 +37,9 @@ async function main() {
   await page.route(isServerFn, async (route) => {
     const request = route.request()
     if (failSave && isSave(request)) {
-      console.log(`save_route status=500 url_path=${new URL(request.url()).pathname}`)
+      console.log(
+        `save_route status=500 url_path=${new URL(request.url()).pathname}`,
+      )
       await route.fulfill({
         status: 500,
         contentType: 'text/plain',
@@ -73,13 +80,16 @@ async function main() {
   await page.keyboard.press('End')
   await page.keyboard.type(extra)
   await page.getByText("Couldn't save.").waitFor()
-  const banner = (await page.locator('.retry').innerText()).replace(/\s+/g, ' ').trim()
+  const banner = (await page.locator('.retry').innerText())
+    .replace(/\s+/g, ' ')
+    .trim()
   const kept = (await page.locator('.doc-editor').innerText()).trim()
   console.log(`retry_banner=${banner}`)
   console.log(`text_after_500=${kept}`)
   console.log(`text_kept=${kept === `${typed}${extra}`}`)
   if (!banner.includes('Retry')) throw new Error('Retry banner missing')
-  if (kept !== `${typed}${extra}`) throw new Error('typed text was not kept after the failed save')
+  if (kept !== `${typed}${extra}`)
+    throw new Error('typed text was not kept after the failed save')
 
   await browser.close()
   console.log('fail3 playwright complete')

@@ -1,12 +1,20 @@
 import { chromium } from 'playwright'
+import { assertLocalBaseUrl } from './verify-local.ts'
 
-const BASE_URL = process.env.BASE_URL ?? 'http://127.0.0.1:3010'
+const BASE_URL = assertLocalBaseUrl(
+  process.env.BASE_URL ?? 'http://127.0.0.1:3010',
+)
 const MARKER = `flush-${Date.now()}`
 const PASSWORD = 'visual-shots-password'
 
 async function main() {
-  const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 })
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 800 },
+    deviceScaleFactor: 1,
+  })
   const email = `flush.${MARKER}@example.com`
   const typed = `keep-${MARKER}`
 
@@ -24,7 +32,10 @@ async function main() {
   await page.locator('.doc-editor').click()
   await page.keyboard.type(typed)
   await page.waitForFunction(
-    (value) => (document.querySelector('.doc-editor')?.textContent ?? '').includes(value),
+    (value) =>
+      (document.querySelector('.doc-editor')?.textContent ?? '').includes(
+        value,
+      ),
     typed,
   )
   const pageUrl = page.url()
@@ -45,7 +56,10 @@ async function main() {
   const second = `nav-${MARKER}`
   await page.keyboard.type(second)
   await page.waitForFunction(
-    (value) => (document.querySelector('.doc-editor')?.textContent ?? '').includes(value),
+    (value) =>
+      (document.querySelector('.doc-editor')?.textContent ?? '').includes(
+        value,
+      ),
     second,
   )
   await page.waitForTimeout(200)
