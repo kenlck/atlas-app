@@ -1,6 +1,18 @@
-import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
+import { createFileRoute, getRouteApi, notFound, redirect, useParams, useRouter } from '@tanstack/react-router'
 import { PageEditor } from '#/components/PageEditor'
+import type { TreeNode } from '#/lib/pages'
 import { fetchPage } from '#/server/fns'
+
+const spaceRoute = getRouteApi('/_app/s/$spaceId')
+
+function findTitle(nodes: TreeNode[], id: string): string | null {
+  for (const node of nodes) {
+    if (node.id === id) return node.title
+    const nested = findTitle(node.children, id)
+    if (nested) return nested
+  }
+  return null
+}
 
 function loaderError(error: unknown): never {
   const message = error instanceof Error ? error.message : ''
@@ -40,18 +52,40 @@ export const Route = createFileRoute('/_app/s/$spaceId/p/$pageId')({
       </div>
     </>
   ),
-  errorComponent: () => (
-    <div className="nf">
-      <h1>Couldn't load this page.</h1>
-      <p className="empty">Something went wrong. Try again.</p>
-    </div>
-  ),
+  errorComponent: PageError,
   notFoundComponent: () => (
     <div className="nf">
       <h1>Page not found.</h1>
     </div>
   ),
 })
+
+function PageError() {
+  const router = useRouter()
+  const params = useParams({ from: '/_app/s/$spaceId/p/$pageId' })
+  const data = spaceRoute.useLoaderData()
+  const title = findTitle(data.tree, params.pageId) ?? 'Page'
+  return (
+    <>
+      <div className="top">
+        <b>{title}</b>
+      </div>
+      <div className="nf">
+        <h1>Couldn't load this page.</h1>
+        <p className="empty">Something went wrong.</p>
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={() => {
+            void router.invalidate()
+          }}
+        >
+          Try again
+        </button>
+      </div>
+    </>
+  )
+}
 
 function PageRoute() {
   const page = Route.useLoaderData()

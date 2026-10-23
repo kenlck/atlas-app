@@ -91,8 +91,11 @@ function SignUp() {
           minLength={MIN_PASSWORD}
           required
         />
-        <div className="hint">At least {MIN_PASSWORD} characters.</div>
-        {fields.password ? <div className="err">{fields.password}</div> : null}
+        {fields.password ? (
+          <div className="err">{fields.password}</div>
+        ) : (
+          <div className="hint">At least {MIN_PASSWORD} characters.</div>
+        )}
         <button className="btn" type="submit" disabled={pending}>
           Create account
         </button>

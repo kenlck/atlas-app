@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useParams, useRouter } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { TreeNode } from '#/lib/pages'
 import {
   archivePageFn,
@@ -32,6 +32,15 @@ export function AppFrame({
   const navigate = useNavigate()
   const router = useRouter()
   const params = useParams({ strict: false }) as { pageId?: string }
+
+  useEffect(() => {
+    if (!drawer) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDrawer(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [drawer])
 
   const refresh = () => {
     void router.invalidate()

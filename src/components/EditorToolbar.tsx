@@ -71,7 +71,14 @@ export function EditorToolbar({ editor }: { editor: Editor | null }) {
         {open ? (
           <div className="menu style-menu" role="listbox">
             {styles.map((item) => (
-              <button key={item.value} type="button" onClick={() => setStyle(item.value)}>
+              <button
+                key={item.value}
+                type="button"
+                role="option"
+                aria-selected={item.value === current.value}
+                className={item.value === current.value ? 'on' : ''}
+                onClick={() => setStyle(item.value)}
+              >
                 {item.label}
               </button>
             ))}
@@ -101,7 +108,12 @@ export function EditorToolbar({ editor }: { editor: Editor | null }) {
       <button type="button" className={editor.isActive('taskList') ? 'on' : ''} onClick={() => editor.chain().focus().toggleTaskList().run()}>
         ☑
       </button>
-      <button type="button" className={editor.isActive('link') ? 'on' : ''} onClick={setLink}>
+      <button
+        type="button"
+        aria-label="Link"
+        className={editor.isActive('link') ? 'on' : ''}
+        onClick={setLink}
+      >
         🔗
       </button>
       <span className="sep" />

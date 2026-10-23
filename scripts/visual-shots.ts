@@ -147,6 +147,8 @@ async function printOverflow(page: Page, label: string) {
   if (result.scrollWidth > result.innerWidth) {
     throw new Error(`${label}: scrollWidth ${result.scrollWidth} > innerWidth ${result.innerWidth}`)
   }
+  const line = `${label} document.documentElement.scrollWidth=${result.scrollWidth} innerWidth=${result.innerWidth} ok=${result.scrollWidth <= result.innerWidth}\n`
+  await writeFile(join(OUT, 'scrollwidth.log'), line)
 }
 
 async function main() {
@@ -281,7 +283,6 @@ async function main() {
   await page.getByRole('heading', { name: 'No pages yet' }).waitFor()
   await page.locator('.me').waitFor()
   await shot(page, 1280, 'space', 'empty')
-  await shot(page, 1280, 'space', 'avatar')
 
   const emptyUrl = page.url()
   await page.getByRole('button', { name: '+ New page' }).last().click()
@@ -326,6 +327,7 @@ async function main() {
   mode = 'fail-page'
   await page.locator('.tree a.it').filter({ hasText: 'Two' }).click()
   await page.getByRole('heading', { name: "Couldn't load this page." }).waitFor()
+  await page.getByRole('button', { name: 'Try again' }).waitFor()
   await shot(page, 1280, 'page', 'error')
   mode = 'pass'
   await page.goto(new URL(oneHref, BASE_URL).toString(), { waitUntil: 'networkidle' })
@@ -349,12 +351,27 @@ async function main() {
   await page.locator('.tool button:has(b)').click()
   await page.locator('.tool button.on:has(b)').waitFor()
   await shot(page, 1280, 'editor', 'bold-active')
+  await shot(page, 1280, 'editor', 'selection')
 
   await page.getByRole('button', { name: 'Text style' }).click()
   await page.getByRole('listbox').waitFor()
+  await page.getByRole('option', { selected: true }).waitFor()
   await shot(page, 1280, 'editor', 'style-menu')
   await page.locator('#page-title').click()
   await page.getByRole('listbox').waitFor({ state: 'hidden' })
+
+  await page.locator('.doc-editor').click()
+  await page.keyboard.press('End')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('Visit Atlas')
+  await page.getByText('Visit Atlas').click({ clickCount: 3 })
+  page.once('dialog', (dialog) => {
+    void dialog.accept('https://example.com/atlas')
+  })
+  await page.getByRole('button', { name: 'Link' }).click()
+  await page.locator('.doc-editor a').waitFor()
+  await page.locator('#page-title').click()
+  await shot(page, 1280, 'page', 'link')
 
   await setViewport(page, 390, 844)
   await page.getByRole('button', { name: 'Open pages' }).waitFor()
@@ -362,6 +379,7 @@ async function main() {
 
   await page.getByRole('button', { name: 'Open pages' }).click()
   await page.locator('.side.open').waitFor()
+  await page.locator('.scrim').waitFor()
   await shot(page, 390, 'page', 'drawer-open')
   await page.locator('.scrim').click({ position: { x: 370, y: 24 }, force: true })
   await page.locator('.side.open').waitFor({ state: 'hidden' })
@@ -388,6 +406,7 @@ async function main() {
   await shot(page, 899, 'page', 'drawer')
   await page.getByRole('button', { name: 'Open pages' }).click()
   await page.locator('.side.open').waitFor()
+  await page.locator('.scrim').waitFor()
   await shot(page, 899, 'page', 'drawer-open')
   await page.locator('.scrim').click({ position: { x: 870, y: 24 }, force: true })
 

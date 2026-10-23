@@ -112,12 +112,11 @@ export function PageEditor({ page }: { page: PageView }) {
       ) : null}
       <div className="doc">
         <div className="col">
-          <label className="lab title-lab" htmlFor="page-title">
-            Title
-          </label>
           <input
             id="page-title"
             className="title-input"
+            aria-label="Title"
+            placeholder="Untitled"
             value={title}
             onChange={(event) => {
               setTitle(event.target.value)
