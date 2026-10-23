@@ -1,8 +1,10 @@
 import Link from '@tiptap/extension-link'
+import Placeholder from '@tiptap/extension-placeholder'
 import StarterKit from '@tiptap/starter-kit'
 import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import Underline from '@tiptap/extension-underline'
+import { useRouter } from '@tanstack/react-router'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { useEffect, useRef, useState } from 'react'
 import type { Json } from '#/lib/body-text'
@@ -14,9 +16,11 @@ import { EditorToolbar } from './EditorToolbar'
 type SaveState = 'saved' | 'saving' | 'error'
 
 export function PageEditor({ page }: { page: PageView }) {
+  const router = useRouter()
   const [title, setTitle] = useState(page.title)
   const [saveState, setSaveState] = useState<SaveState>('saved')
   const titleRef = useRef(title)
+  const savedTitle = useRef(page.title)
   const bodyRef = useRef(page.body)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -31,6 +35,12 @@ export function PageEditor({ page }: { page: PageView }) {
         },
       })
       setSaveState('saved')
+      if (savedTitle.current !== titleRef.current) {
+        savedTitle.current = titleRef.current
+        void router.invalidate({
+          filter: (match) => match.routeId === '/_app/s/$spaceId',
+        })
+      }
     } catch {
       setSaveState('error')
     }
@@ -53,6 +63,7 @@ export function PageEditor({ page }: { page: PageView }) {
       Link.configure({ openOnClick: false, autolink: true }),
       TaskList,
       TaskItem.configure({ nested: true }),
+      Placeholder.configure({ placeholder: 'Start writing' }),
     ],
     content: page.body as object,
     editorProps: {
@@ -101,7 +112,11 @@ export function PageEditor({ page }: { page: PageView }) {
       ) : null}
       <div className="doc">
         <div className="col">
+          <label className="lab title-lab" htmlFor="page-title">
+            Title
+          </label>
           <input
+            id="page-title"
             className="title-input"
             value={title}
             onChange={(event) => {

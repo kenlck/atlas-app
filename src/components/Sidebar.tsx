@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { authClient } from '#/lib/auth-client'
 import { initials } from '#/lib/relative-time'
 import type { TreeNode } from '#/lib/pages'
@@ -34,10 +35,17 @@ export function Sidebar({
 }) {
   return (
     <aside className={open ? 'side open' : 'side'}>
-      <div className="sw">
+      <Link
+        to="/s/$spaceId"
+        params={{ spaceId }}
+        className="sw"
+        preload={false}
+        aria-label="Personal space"
+        style={{ textDecoration: 'none', color: 'inherit' }}
+      >
         <div className="av">{initials(spaceName)}</div>
         {spaceName}
-      </div>
+      </Link>
       <div className="lab">Pages</div>
       {loading ? (
         <div className="tree">

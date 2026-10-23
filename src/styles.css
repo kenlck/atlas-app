@@ -11,12 +11,28 @@
   --line: #e7e5e4;
   --accent: #0f766e;
   --accent-soft: #e3f2ef;
+  --placeholder: #a8a29e;
   --error: #b42318;
   --error-soft: #fef3f2;
-  --placeholder: #a8a29e;
-  --avatar: #c9a27e;
   --white: #ffffff;
+  --title-size: 28px;
+  --title-line: 1.2;
+  --title-weight: 650;
+  --h2-size: 20px;
+  --h2-weight: 600;
+  --h3-size: 17px;
+  --h3-line: 1.4;
+  --h3-weight: 600;
+  --body-size: 15px;
+  --body-line: 1.6;
+  --avatar-initials-size: 12px;
+  --avatar-initials-weight: 600;
+  --sidebar-width: 260px;
+  --page-column-max: 720px;
+  --drawer-breakpoint: 900px;
 }
+
+@custom-media --atlas-drawer (width < 900px);
 
 * {
   box-sizing: border-box;
@@ -53,7 +69,7 @@ body {
 }
 
 .side {
-  width: 260px;
+  width: var(--sidebar-width);
   background: var(--sidebar);
   border-right: 1px solid var(--line);
   padding: 12px 10px;
@@ -143,12 +159,12 @@ body {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--avatar);
-  color: var(--white);
+  background: var(--accent-soft);
+  color: var(--accent);
   display: grid;
   place-items: center;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--avatar-initials-size);
+  font-weight: var(--avatar-initials-weight);
   flex-shrink: 0;
 }
 
@@ -198,6 +214,10 @@ body {
   flex-wrap: nowrap;
 }
 
+.tool.is-open {
+  overflow: visible;
+}
+
 .tool button,
 .tool span.tool-btn {
   height: 28px;
@@ -224,6 +244,11 @@ body {
   flex-shrink: 0;
 }
 
+.tool .style-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .tool .sel {
   border: 1px solid var(--line);
   padding: 0 10px;
@@ -234,6 +259,17 @@ body {
   color: var(--ink);
   font: inherit;
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tool .style-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
 }
 
 .tool .on {
@@ -258,20 +294,25 @@ body {
 }
 
 .col {
-  max-width: 720px;
+  max-width: var(--page-column-max);
   margin: 0 auto;
   font-family: "Geist Variable", Geist, sans-serif;
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: var(--body-size);
+  line-height: var(--body-line);
   padding: 0 20px;
   min-width: 0;
 }
 
+.title-lab {
+  padding: 0;
+  margin: 0 0 6px;
+}
+
 .col h1,
 .title-input {
-  font-size: 28px;
-  font-weight: 650;
-  line-height: 1.2;
+  font-size: var(--title-size);
+  font-weight: var(--title-weight);
+  line-height: var(--title-line);
   margin: 0 0 6px;
   letter-spacing: -0.01em;
   width: 100%;
@@ -339,7 +380,7 @@ body {
   gap: 8px;
   align-items: center;
   font-weight: 650;
-  font-size: 15px;
+  font-size: var(--body-size);
   margin-bottom: 24px;
 }
 
@@ -352,7 +393,7 @@ body {
 }
 
 .card h1 {
-  font-size: 20px;
+  font-size: var(--h2-size);
   font-weight: 650;
   margin: 0 0 6px;
 }
@@ -393,6 +434,15 @@ body {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+.in:-webkit-autofill,
+.in:-webkit-autofill:hover,
+.in:-webkit-autofill:focus {
+  background-color: var(--white);
+  box-shadow: inset 0 0 0 1000px var(--white);
+  -webkit-text-fill-color: var(--ink);
+  caret-color: var(--ink);
+}
+
 .in.bad {
   border-color: var(--error);
 }
@@ -410,6 +460,11 @@ body {
   border: 0;
   font: inherit;
   cursor: pointer;
+}
+
+.btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--accent-soft);
 }
 
 .btn:disabled {
@@ -536,47 +591,57 @@ body {
 
 .empty {
   color: var(--muted);
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: var(--body-size);
+  line-height: var(--body-line);
 }
 
 .nf {
-  max-width: 720px;
+  max-width: var(--page-column-max);
   margin: 36px auto;
   padding: 0 20px;
 }
 
 .nf h1 {
-  font-size: 28px;
-  font-weight: 650;
-  line-height: 1.2;
+  font-size: var(--title-size);
+  font-weight: var(--title-weight);
+  line-height: var(--title-line);
   margin: 0 0 6px;
 }
 
 .doc-editor {
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: var(--body-size);
+  line-height: var(--body-line);
   outline: none;
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.doc-editor p.is-editor-empty:first-child::before {
+  color: var(--placeholder);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
 }
 
 .doc-editor h1 {
-  font-size: 28px;
-  font-weight: 650;
-  line-height: 1.2;
+  font-size: var(--title-size);
+  font-weight: var(--title-weight);
+  line-height: var(--title-line);
   margin: 22px 0 8px;
   letter-spacing: -0.01em;
 }
 
 .doc-editor h2 {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--h2-size);
+  font-weight: var(--h2-weight);
   margin: 22px 0 8px;
 }
 
 .doc-editor h3 {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--h3-size);
+  line-height: var(--h3-line);
+  font-weight: var(--h3-weight);
   margin: 22px 0 8px;
 }
 
@@ -633,7 +698,7 @@ body {
   font-size: 14px;
 }
 
-@media (max-width: 720px) {
+@media (--atlas-drawer) {
   .menu-btn {
     display: grid;
     position: absolute;
@@ -665,6 +730,9 @@ body {
     z-index: 15;
   }
 
+  html,
+  body,
+  .app,
   .doc,
   .col {
     overflow-x: hidden;

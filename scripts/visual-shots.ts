@@ -1,0 +1,411 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { chromium, type Page, type Request } from 'playwright'
+
+const BASE_URL = process.env.BASE_URL ?? 'http://127.0.0.1:3010'
+const OUT = process.env.VISUAL_OUT ?? 'artifacts'
+const ADMIN_SECRET = process.env.ADMIN_API_SECRET ?? ''
+const LONG_URL =
+  'https://example.com/docs/this-is-a-very-long-unbroken-path-segment-that-should-wrap-inside-the-page-column-without-causing-horizontal-scroll-on-narrow-viewports-abcdefghijklmnopqrstuvwxyz0123456789'
+
+const VIEWPORTS = {
+  desktop: { width: 1280, height: 800 },
+  phone: { width: 390, height: 844 },
+  drawer: { width: 899, height: 800 },
+  docked: { width: 900, height: 800 },
+} as const
+
+type Mode = 'pass' | 'hold-page' | 'hold-tree' | 'fail-page' | 'fail-save'
+
+function pngSize(buf: Buffer) {
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
+}
+
+function requestBlob(request: Request) {
+  return `${decodeURIComponent(request.url())} ${request.postData() ?? ''}`
+}
+
+function hasKey(blob: string, key: string) {
+  return blob.includes(`"${key}"`)
+}
+
+function isServerFn(url: URL) {
+  return url.pathname.includes('_serverFn') || url.pathname.includes('serverFn')
+}
+
+function classify(request: Request) {
+  if (!isServerFn(new URL(request.url()))) return 'other'
+  const blob = requestBlob(request)
+  const method = request.method()
+  if (hasKey(blob, 'body') && hasKey(blob, 'pageId')) return 'savePage'
+  if (hasKey(blob, 'pageId') && hasKey(blob, 'title') && !hasKey(blob, 'body')) return 'renamePage'
+  if (hasKey(blob, 'pageId') && !hasKey(blob, 'title')) return 'fetchPage'
+  if (hasKey(blob, 'spaceId') && hasKey(blob, 'parentId')) return 'createPage'
+  if (hasKey(blob, 'spaceId')) return method === 'GET' ? 'fetchPageTree' : 'createPage'
+  return 'other'
+}
+
+async function shot(page: Page, width: number, screen: string, state: string) {
+  const size = page.viewportSize()
+  if (!size || size.width !== width) {
+    throw new Error(`viewport width ${size?.width} !== ${width} for ${screen}-${state}`)
+  }
+  const meta = await page.evaluate(() => ({
+    innerWidth: window.innerWidth,
+    innerHeight: window.innerHeight,
+    dpr: window.devicePixelRatio,
+  }))
+  if (meta.dpr !== 1) {
+    throw new Error(`DPR ${meta.dpr} !== 1 for ${screen}-${state}`)
+  }
+  if (meta.innerWidth !== width) {
+    throw new Error(`innerWidth ${meta.innerWidth} !== ${width} for ${screen}-${state}`)
+  }
+  const name = `${width}-${screen}-${state}.png`
+  const path = join(OUT, name)
+  await page.screenshot({ path, fullPage: false, scale: 'css', animations: 'disabled' })
+  const png = pngSize(await readFile(path))
+  if (png.width !== width || png.height !== size.height) {
+    throw new Error(`${name} is ${png.width}x${png.height}, expected ${width}x${size.height}`)
+  }
+  console.log(`wrote ${name} ${png.width}x${png.height} dpr=${meta.dpr}`)
+  return path
+}
+
+async function setViewport(page: Page, width: number, height: number) {
+  await page.setViewportSize({ width, height })
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+}
+
+async function waitReady(page: Page) {
+  const res = await fetch(`${BASE_URL}/sign-in`)
+  if (!res.ok && res.status >= 500) {
+    throw new Error(`app not ready at ${BASE_URL}: ${res.status}`)
+  }
+  await page.goto(`${BASE_URL}/sign-in`, { waitUntil: 'networkidle' })
+}
+
+async function signUp(page: Page, name: string, email: string, password: string) {
+  await page.goto(`${BASE_URL}/sign-up`, { waitUntil: 'networkidle' })
+  await page.locator('#name').fill(name)
+  await page.locator('#email').fill(email)
+  await page.locator('#password').fill(password)
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await page.locator('.app').waitFor()
+}
+
+async function signIn(page: Page, email: string, password: string) {
+  await page.goto(`${BASE_URL}/sign-in`, { waitUntil: 'networkidle' })
+  await page.locator('#email').fill(email)
+  await page.locator('#password').fill(password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+}
+
+async function signOut(page: Page) {
+  await page.getByRole('button', { name: 'Sign out' }).click()
+  await page.getByRole('heading', { name: 'Sign in' }).waitFor()
+}
+
+async function renameCurrent(page: Page, title: string) {
+  const input = page.locator('#page-title')
+  await input.waitFor()
+  await page.locator('.col .skel').first().waitFor({ state: 'hidden' }).catch(() => undefined)
+  await input.fill(title)
+  await page.waitForFunction((expected) => {
+    const field = document.getElementById('page-title') as HTMLInputElement | null
+    return field?.value === expected
+  }, title)
+  await page.locator('.tree a.it').filter({ hasText: title }).waitFor()
+}
+
+async function createNamedPage(page: Page, title: string) {
+  const previous = page.url()
+  await page.getByRole('button', { name: '+ New page' }).last().click()
+  await page.waitForFunction((href) => window.location.href !== href, previous)
+  await page.locator('#page-title').waitFor()
+  await page.locator('.doc-editor').waitFor()
+  await renameCurrent(page, title)
+}
+
+async function printOverflow(page: Page, label: string) {
+  const result = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+  }))
+  console.log(
+    `${label} document.documentElement.scrollWidth=${result.scrollWidth} innerWidth=${result.innerWidth} ok=${result.scrollWidth <= result.innerWidth}`,
+  )
+  if (result.scrollWidth > result.innerWidth) {
+    throw new Error(`${label}: scrollWidth ${result.scrollWidth} > innerWidth ${result.innerWidth}`)
+  }
+}
+
+async function main() {
+  await mkdir(OUT, { recursive: true })
+  const stamp = Date.now()
+  const email = `ada.west.${stamp}@example.com`
+  const password = 'visual-shots-password'
+  const resetEmail = `reset.${stamp}@example.com`
+  let mode: Mode = 'pass'
+
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
+  const context = await browser.newContext({
+    viewport: VIEWPORTS.desktop,
+    deviceScaleFactor: 1,
+    colorScheme: 'light',
+  })
+  const page = await context.newPage()
+  const held: Array<() => void> = []
+  const releaseHeld = () => {
+    const batch = held.splice(0)
+    for (const release of batch) release()
+  }
+
+  await page.route(isServerFn, async (route) => {
+    const request = route.request()
+    const kind = classify(request)
+    console.log('serverFn', request.method(), kind, mode, request.url())
+    if (mode === 'hold-page' && kind === 'fetchPage') {
+      await new Promise<void>((resolve) => {
+        held.push(() => {
+          void route.continue().then(() => resolve(), () => resolve())
+        })
+      })
+      return
+    }
+    if (mode === 'hold-tree' && kind === 'fetchPageTree') {
+      await new Promise<void>((resolve) => {
+        held.push(() => {
+          void route.continue().then(() => resolve(), () => resolve())
+        })
+      })
+      return
+    }
+    if (mode === 'fail-page' && kind === 'fetchPage') {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'Internal Server Error' }),
+      })
+      return
+    }
+    if (mode === 'fail-save' && kind === 'savePage') {
+      await route.fulfill({
+        status: 500,
+        contentType: 'text/plain',
+        body: 'Internal Server Error',
+      })
+      return
+    }
+    await route.continue()
+  })
+
+  try {
+  await waitReady(page)
+  await setViewport(page, 1280, 800)
+
+  await page.goto(`${BASE_URL}/sign-in`, { waitUntil: 'networkidle' })
+  await page.getByRole('heading', { name: 'Sign in' }).waitFor()
+  await shot(page, 1280, 'sign-in', 'empty')
+
+  await page.locator('#email').focus()
+  await shot(page, 1280, 'sign-in', 'focus-input')
+
+  await page.getByRole('button', { name: 'Sign in' }).focus()
+  await shot(page, 1280, 'sign-in', 'focus-button')
+
+  await page.locator('#email').fill(email)
+  await page.locator('#password').fill('wrong-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.locator('.banner').waitFor()
+  await shot(page, 1280, 'sign-in', 'wrong-credentials')
+
+  await page.goto(`${BASE_URL}/sign-up`, { waitUntil: 'networkidle' })
+  await page.getByRole('heading', { name: 'Create an account' }).waitFor()
+  await shot(page, 1280, 'sign-up', 'empty')
+
+  await page.locator('#name').fill('Ada')
+  await page.locator('#email').fill('ada')
+  await page.locator('#password').fill('short')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await page.locator('.err').first().waitFor()
+  await shot(page, 1280, 'sign-up', 'validation')
+
+  await page.goto(`${BASE_URL}/forgot-password`, { waitUntil: 'networkidle' })
+  await page.getByRole('heading', { name: 'Forgot your password?' }).waitFor()
+  await shot(page, 1280, 'forgot-password', 'note')
+
+  if (ADMIN_SECRET.length >= 32) {
+    await signUp(page, 'Reset User', resetEmail, password)
+    await signOut(page)
+    const resetRes = await fetch(`${BASE_URL}/api/admin/reset-password`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${ADMIN_SECRET}`,
+        'content-type': 'application/json',
+        'x-forwarded-for': `127.0.0.${(stamp % 200) + 1}`,
+      },
+      body: JSON.stringify({ email: resetEmail }),
+    })
+    if (!resetRes.ok) {
+      throw new Error(`admin reset failed: ${resetRes.status}`)
+    }
+    const resetBody = (await resetRes.json()) as { temporaryPassword?: string }
+    const temporaryPassword = resetBody.temporaryPassword
+    if (!temporaryPassword) throw new Error('admin reset missing temporaryPassword')
+    await signIn(page, resetEmail, temporaryPassword)
+    await page.getByRole('heading', { name: 'Set a new password' }).waitFor()
+    await page.locator('#password').fill('new-password-ok')
+    await page.locator('#confirm').fill('different-password')
+    await page.getByRole('button', { name: 'Save password' }).click()
+    await page.getByText("Passwords don't match.").waitFor()
+    await shot(page, 1280, 'set-password', 'mismatch')
+    await page.getByRole('button', { name: 'Sign out' }).click()
+    await page.getByRole('heading', { name: 'Sign in' }).waitFor()
+  } else {
+    console.log('ADMIN_API_SECRET unset or short; skipping set-password mismatch shot')
+  }
+
+  await signUp(page, 'Ada West', email, password)
+  await page.getByRole('heading', { name: 'No pages yet' }).waitFor()
+  await page.locator('.me').waitFor()
+  await shot(page, 1280, 'space', 'empty')
+  await shot(page, 1280, 'space', 'avatar')
+
+  const emptyUrl = page.url()
+  await page.getByRole('button', { name: '+ New page' }).last().click()
+  await page.waitForFunction((href) => window.location.href !== href, emptyUrl)
+  await page.locator('#page-title').waitFor()
+  await page.locator('.doc-editor .is-editor-empty').waitFor()
+  await shot(page, 1280, 'page', 'empty-body')
+  await renameCurrent(page, 'One')
+
+  await createNamedPage(page, 'Two')
+  await page.locator('.doc-editor').click()
+  await page.keyboard.type('Hello Atlas')
+  await page.getByText('Saved').waitFor()
+
+  const oneHref = await page.locator('.tree a.it').filter({ hasText: 'One' }).getAttribute('href')
+  if (!oneHref) throw new Error('missing One href')
+  await page.goto(new URL(oneHref, BASE_URL).toString(), { waitUntil: 'networkidle' })
+  await page.locator('#page-title').waitFor()
+  await page.locator('.tree a.it').filter({ hasText: 'Two' }).waitFor()
+
+  mode = 'hold-page'
+  await page.locator('.tree a.it').filter({ hasText: 'Two' }).click()
+  await page.locator('.col .skel').first().waitFor()
+  await shot(page, 1280, 'page', 'loading')
+  mode = 'pass'
+  releaseHeld()
+  await page.locator('#page-title').waitFor()
+
+  await page.getByRole('button', { name: 'Sign out' }).click()
+  await page.getByRole('heading', { name: 'Sign in' }).waitFor()
+  mode = 'hold-tree'
+  await signIn(page, email, password)
+  await page.locator('.tree .skel').first().waitFor()
+  await shot(page, 1280, 'space', 'loading')
+  mode = 'pass'
+  releaseHeld()
+  await page.locator('.tree a.it').first().waitFor()
+
+  await page.goto(new URL(oneHref, BASE_URL).toString(), { waitUntil: 'networkidle' })
+  await page.locator('#page-title').waitFor()
+
+  mode = 'fail-page'
+  await page.locator('.tree a.it').filter({ hasText: 'Two' }).click()
+  await page.getByRole('heading', { name: "Couldn't load this page." }).waitFor()
+  await shot(page, 1280, 'page', 'error')
+  mode = 'pass'
+  await page.goto(new URL(oneHref, BASE_URL).toString(), { waitUntil: 'networkidle' })
+  await page.locator('#page-title').waitFor()
+
+  mode = 'fail-save'
+  await page.locator('.doc-editor').click()
+  await page.keyboard.type(' more text')
+  await page.getByText("Couldn't save.").waitFor()
+  await shot(page, 1280, 'page', 'autosave-retry')
+  mode = 'pass'
+  await page.getByRole('button', { name: 'Retry' }).click()
+  await page.getByText('Saved').waitFor()
+
+  await page.locator('.tree a.it').filter({ hasText: 'Two' }).click()
+  await page.locator('#page-title').waitFor()
+  await page.locator('.doc-editor').waitFor()
+  await page.locator('.doc-editor').click()
+  await page.keyboard.type('Bold me')
+  await page.keyboard.press('ControlOrMeta+A')
+  await page.locator('.tool button:has(b)').click()
+  await page.locator('.tool button.on:has(b)').waitFor()
+  await shot(page, 1280, 'editor', 'bold-active')
+
+  await page.getByRole('button', { name: 'Text style' }).click()
+  await page.getByRole('listbox').waitFor()
+  await shot(page, 1280, 'editor', 'style-menu')
+  await page.locator('#page-title').click()
+  await page.getByRole('listbox').waitFor({ state: 'hidden' })
+
+  await setViewport(page, 390, 844)
+  await page.getByRole('button', { name: 'Open pages' }).waitFor()
+  await shot(page, 390, 'page', 'drawer-closed')
+
+  await page.getByRole('button', { name: 'Open pages' }).click()
+  await page.locator('.side.open').waitFor()
+  await shot(page, 390, 'page', 'drawer-open')
+  await page.locator('.scrim').click({ position: { x: 370, y: 24 }, force: true })
+  await page.locator('.side.open').waitFor({ state: 'hidden' })
+
+  await page.locator('.tool').evaluate((el) => {
+    el.scrollLeft = el.scrollWidth
+  })
+  await shot(page, 390, 'page', 'toolbar-scroll')
+  await page.locator('.tool').evaluate((el) => {
+    el.scrollLeft = 0
+  })
+
+  await page.locator('.doc-editor').click()
+  await page.keyboard.press('Control+A')
+  await page.keyboard.press('Backspace')
+  await page.keyboard.type(LONG_URL)
+  await page.keyboard.press('Enter')
+  await page.getByText(LONG_URL).waitFor()
+  await printOverflow(page, '390-page-long-url')
+  await shot(page, 390, 'page', 'long-url')
+
+  await setViewport(page, 899, 800)
+  await page.getByRole('button', { name: 'Open pages' }).waitFor()
+  await shot(page, 899, 'page', 'drawer')
+  await page.getByRole('button', { name: 'Open pages' }).click()
+  await page.locator('.side.open').waitFor()
+  await shot(page, 899, 'page', 'drawer-open')
+  await page.locator('.scrim').click({ position: { x: 870, y: 24 }, force: true })
+
+  await setViewport(page, 900, 800)
+  await page.getByRole('button', { name: 'Open pages' }).waitFor({ state: 'hidden' })
+  await page.locator('.side').waitFor()
+  await shot(page, 900, 'page', 'sidebar-docked')
+
+  await writeFile(
+    join(OUT, 'visual-shots.json'),
+    JSON.stringify({ baseUrl: BASE_URL, out: OUT, viewports: VIEWPORTS }, null, 2),
+  )
+  console.log('visual shots complete')
+  } catch (error) {
+    const tree = await page.locator('.tree').innerText().catch(() => '')
+    console.log('debug url', page.url())
+    console.log('debug tree', JSON.stringify(tree))
+    await page
+      .screenshot({ path: join(OUT, 'debug-fail.png'), fullPage: false, scale: 'css' })
+      .catch(() => undefined)
+    throw error
+  } finally {
+    await browser.close()
+  }
+}
+
+main().catch((error) => {
+  console.error(error)
+  process.exit(1)
+})

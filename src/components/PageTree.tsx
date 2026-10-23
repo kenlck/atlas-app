@@ -44,6 +44,7 @@ export function PageTree({
             {editing === node.id ? (
               <input
                 className="it"
+                aria-label="Page title"
                 style={depthPad(depth)}
                 value={draft}
                 autoFocus
@@ -64,6 +65,7 @@ export function PageTree({
               <Link
                 to="/s/$spaceId/p/$pageId"
                 params={{ spaceId, pageId: node.id }}
+                preload={false}
                 className={node.id === activeId ? 'it act' : 'it'}
                 style={depthPad(depth)}
                 onContextMenu={(event) => {

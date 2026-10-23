@@ -1,4 +1,5 @@
 import type { Editor } from '@tiptap/react'
+import { useEffect, useRef, useState } from 'react'
 
 const styles = [
   { label: 'Paragraph', value: 'paragraph' },
@@ -15,15 +16,32 @@ function styleValue(editor: Editor) {
 }
 
 export function EditorToolbar({ editor }: { editor: Editor | null }) {
+  const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent) => {
+      if (root.current && !root.current.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
   if (!editor) {
     return <div className="tool" />
   }
+
+  const current = styles.find((item) => item.value === styleValue(editor)) ?? styles[0]
 
   const setStyle = (value: string) => {
     if (value === 'paragraph') editor.chain().focus().setParagraph().run()
     if (value === 'h1') editor.chain().focus().toggleHeading({ level: 1 }).run()
     if (value === 'h2') editor.chain().focus().toggleHeading({ level: 2 }).run()
     if (value === 'h3') editor.chain().focus().toggleHeading({ level: 3 }).run()
+    setOpen(false)
   }
 
   const setLink = () => {
@@ -38,19 +56,28 @@ export function EditorToolbar({ editor }: { editor: Editor | null }) {
   }
 
   return (
-    <div className="tool">
-      <select
-        className="sel"
-        value={styleValue(editor)}
-        onChange={(event) => setStyle(event.target.value)}
-        aria-label="Text style"
-      >
-        {styles.map((item) => (
-          <option key={item.value} value={item.value}>
-            {item.label}
-          </option>
-        ))}
-      </select>
+    <div className={open ? 'tool is-open' : 'tool'} ref={root}>
+      <div className="style-wrap">
+        <button
+          type="button"
+          className="sel"
+          aria-label="Text style"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          {current.label}
+          <span>▾</span>
+        </button>
+        {open ? (
+          <div className="menu style-menu" role="listbox">
+            {styles.map((item) => (
+              <button key={item.value} type="button" onClick={() => setStyle(item.value)}>
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
       <span className="sep" />
       <button type="button" className={editor.isActive('bold') ? 'on' : ''} onClick={() => editor.chain().focus().toggleBold().run()}>
         <b>B</b>

@@ -41,4 +41,22 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: |
+          pnpm start &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:3000/sign-in >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:3000/sign-in >/dev/null
+      - run: pnpm visual-shots
+        env:
+          BASE_URL: http://127.0.0.1:3000
+          VISUAL_OUT: artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: visual-shots
+          path: artifacts/*.png
       - run: docker build -t atlas-app .
