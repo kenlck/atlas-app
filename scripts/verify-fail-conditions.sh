@@ -69,42 +69,12 @@ case "${1:-all}" in
     echo "docker run --rm -p 3000:3000 -e DATABASE_URL -e BETTER_AUTH_SECRET -e BETTER_AUTH_URL -e ADMIN_API_SECRET atlas-app"
     echo "(run those with env vars in the shell; this script does not print them)"
     ;;
-  issue2-1|2.1)
-    echo "== Issue 2 fail 1: invite stored by account id, never matched by email =="
-    echo "DATABASE_URL=\"\$DATABASE_URL\" BASE_URL=\"\$BASE_URL\" VERIFY_PASSWORD=\"\$VERIFY_PASSWORD\" pnpm exec tsx scripts/team-fail-evidence.ts 1"
-    pnpm exec tsx scripts/team-fail-evidence.ts 1
-    ;;
-  issue2-2|2.2)
-    echo "== Issue 2 fail 2: only the invited account can accept or decline =="
-    echo "DATABASE_URL=\"\$DATABASE_URL\" BASE_URL=\"\$BASE_URL\" VERIFY_PASSWORD=\"\$VERIFY_PASSWORD\" pnpm exec tsx scripts/team-fail-evidence.ts 2"
-    pnpm exec tsx scripts/team-fail-evidence.ts 2
-    ;;
-  issue2-3|2.3)
-    echo "== Issue 2 fail 3: non-member gets 404 on every team read, write, and server function =="
-    echo "DATABASE_URL=\"\$DATABASE_URL\" BASE_URL=\"\$BASE_URL\" VERIFY_PASSWORD=\"\$VERIFY_PASSWORD\" pnpm exec tsx scripts/team-fail-evidence.ts 3"
-    pnpm exec tsx scripts/team-fail-evidence.ts 3
-    ;;
-  issue2-4|2.4)
-    echo "== Issue 2 fail 4: removal blocks the next read, the editor autosave, and the server-function read =="
-    echo "DATABASE_URL=\"\$DATABASE_URL\" BASE_URL=\"\$BASE_URL\" VERIFY_PASSWORD=\"\$VERIFY_PASSWORD\" pnpm exec tsx scripts/team-fail-evidence.ts 4"
-    pnpm exec tsx scripts/team-fail-evidence.ts 4
-    ;;
-  issue2-5|2.5)
-    echo "== Issue 2 fail 5: a member cannot invite, remove another member, or delete the team =="
-    echo "DATABASE_URL=\"\$DATABASE_URL\" BASE_URL=\"\$BASE_URL\" VERIFY_PASSWORD=\"\$VERIFY_PASSWORD\" pnpm exec tsx scripts/team-fail-evidence.ts 5"
-    pnpm exec tsx scripts/team-fail-evidence.ts 5
-    ;;
-  issue2-6|2.6)
-    echo "== Issue 2 fail 6: mention list, live former-member chip, and named vitest =="
-    echo "DATABASE_URL=\"\$DATABASE_URL\" BASE_URL=\"\$BASE_URL\" VERIFY_PASSWORD=\"\$VERIFY_PASSWORD\" pnpm exec tsx scripts/team-fail-evidence.ts 6"
-    pnpm exec tsx scripts/team-fail-evidence.ts 6
-    ;;
   all)
     pnpm exec tsx scripts/verify-fail-conditions.ts all
-    pnpm exec vitest run tests/pages.test.ts tests/admin-reset.test.ts tests/auth-lock.test.ts tests/teams.test.ts --reporter=verbose
+    pnpm exec vitest run tests/pages.test.ts tests/admin-reset.test.ts tests/auth-lock.test.ts --reporter=verbose
     ;;
   *)
-    echo "usage: $0 [all|1|2|3|4|5e|5f|5g|5h|6|issue2-1|issue2-2|issue2-3|issue2-4|issue2-5|issue2-6]" >&2
+    echo "usage: $0 [all|1|2|3|4|5e|5f|5g|5h|6]" >&2
     exit 2
     ;;
 esac

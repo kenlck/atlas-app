@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:migrate": "drizzle-kit migrate",
+    "team-visual-shots": "tsx scripts/team-visual-shots.ts",
     "visual-shots": "tsx scripts/visual-shots.ts",
     "autosave-flush": "tsx scripts/autosave-flush.ts"
   },
@@ -33,9 +34,9 @@
     "@tanstack/react-start": "1.169.4",
     "@tiptap/extension-link": "^3.32.0",
     "@tiptap/extension-mention": "3.32.0",
-    "@tiptap/extension-placeholder": "^3.32.0",
     "@tiptap/extension-task-item": "^3.32.0",
     "@tiptap/extension-task-list": "^3.32.0",
+    "@tiptap/extension-placeholder": "^3.32.0",
     "@tiptap/extension-underline": "^3.32.0",
     "@tiptap/pm": "^3.32.0",
     "@tiptap/react": "^3.32.0",
