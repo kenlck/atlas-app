@@ -15,6 +15,16 @@ import { EditorToolbar } from './EditorToolbar'
 
 type SaveState = 'saved' | 'saving' | 'error'
 
+function flushKeepalive(payload: { pageId: string; title: string; body: Json }) {
+  void fetch('/api/pages/save', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+    credentials: 'include',
+    keepalive: true,
+  })
+}
+
 export function PageEditor({ page }: { page: PageView }) {
   const router = useRouter()
   const [title, setTitle] = useState(page.title)
@@ -22,14 +32,22 @@ export function PageEditor({ page }: { page: PageView }) {
   const titleRef = useRef(title)
   const savedTitle = useRef(page.title)
   const bodyRef = useRef(page.body)
+  const dirtyRef = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pageIdRef = useRef(page.id)
 
   const persist = async () => {
+    if (timer.current) {
+      clearTimeout(timer.current)
+      timer.current = null
+    }
+    if (!dirtyRef.current) return
+    dirtyRef.current = false
     setSaveState('saving')
     try {
       await savePageFn({
         data: {
-          pageId: page.id,
+          pageId: pageIdRef.current,
           title: titleRef.current,
           body: bodyRef.current as Json,
         },
@@ -42,11 +60,13 @@ export function PageEditor({ page }: { page: PageView }) {
         })
       }
     } catch {
+      dirtyRef.current = true
       setSaveState('error')
     }
   }
 
   const schedule = () => {
+    dirtyRef.current = true
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => {
       void persist()
@@ -76,16 +96,51 @@ export function PageEditor({ page }: { page: PageView }) {
   })
 
   useEffect(() => {
+    const pageId = page.id
+    pageIdRef.current = pageId
     setTitle(page.title)
     titleRef.current = page.title
+    savedTitle.current = page.title
     bodyRef.current = page.body
+    dirtyRef.current = false
     if (editor && JSON.stringify(editor.getJSON()) !== JSON.stringify(page.body)) {
       editor.commands.setContent(page.body as object)
     }
+    return () => {
+      if (timer.current) {
+        clearTimeout(timer.current)
+        timer.current = null
+      }
+      if (!dirtyRef.current) return
+      dirtyRef.current = false
+      flushKeepalive({
+        pageId,
+        title: titleRef.current,
+        body: bodyRef.current as Json,
+      })
+    }
   }, [page.id])
 
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current)
+  useEffect(() => {
+    const onHide = () => {
+      if (timer.current) {
+        clearTimeout(timer.current)
+        timer.current = null
+      }
+      if (!dirtyRef.current) return
+      dirtyRef.current = false
+      flushKeepalive({
+        pageId: pageIdRef.current,
+        title: titleRef.current,
+        body: bodyRef.current as Json,
+      })
+    }
+    window.addEventListener('pagehide', onHide)
+    window.addEventListener('beforeunload', onHide)
+    return () => {
+      window.removeEventListener('pagehide', onHide)
+      window.removeEventListener('beforeunload', onHide)
+    }
   }, [])
 
   return (

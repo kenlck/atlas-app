@@ -17,7 +17,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:migrate": "drizzle-kit migrate",
-    "visual-shots": "tsx scripts/visual-shots.ts"
+    "visual-shots": "tsx scripts/visual-shots.ts",
+    "autosave-flush": "tsx scripts/autosave-flush.ts"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

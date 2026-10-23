@@ -18,6 +18,7 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSSpaceIdRouteImport } from './routes/_app/s.$spaceId'
 import { Route as ApiAdminResetPasswordRouteImport } from './routes/api/admin/reset-password'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiPagesSaveRouteImport } from './routes/api/pages/save'
 import { Route as AppSSpaceIdIndexRouteImport } from './routes/_app/s.$spaceId.index'
 import { Route as AppSSpaceIdPPageIdRouteImport } from './routes/_app/s.$spaceId.p.$pageId'
 
@@ -65,6 +66,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPagesSaveRoute = ApiPagesSaveRouteImport.update({
+  id: '/api/pages/save',
+  path: '/api/pages/save',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppSSpaceIdIndexRoute = AppSSpaceIdIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -85,6 +91,7 @@ export interface FileRoutesByFullPath {
   '/s/$spaceId': typeof AppSSpaceIdRouteWithChildren
   '/api/admin/reset-password': typeof ApiAdminResetPasswordRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/pages/save': typeof ApiPagesSaveRoute
   '/s/$spaceId/': typeof AppSSpaceIdIndexRoute
   '/s/$spaceId/p/$pageId': typeof AppSSpaceIdPPageIdRoute
 }
@@ -96,6 +103,7 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/api/admin/reset-password': typeof ApiAdminResetPasswordRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/pages/save': typeof ApiPagesSaveRoute
   '/s/$spaceId': typeof AppSSpaceIdIndexRoute
   '/s/$spaceId/p/$pageId': typeof AppSSpaceIdPPageIdRoute
 }
@@ -110,6 +118,7 @@ export interface FileRoutesById {
   '/_app/s/$spaceId': typeof AppSSpaceIdRouteWithChildren
   '/api/admin/reset-password': typeof ApiAdminResetPasswordRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/pages/save': typeof ApiPagesSaveRoute
   '/_app/s/$spaceId/': typeof AppSSpaceIdIndexRoute
   '/_app/s/$spaceId/p/$pageId': typeof AppSSpaceIdPPageIdRoute
 }
@@ -124,6 +133,7 @@ export interface FileRouteTypes {
     | '/s/$spaceId'
     | '/api/admin/reset-password'
     | '/api/auth/$'
+    | '/api/pages/save'
     | '/s/$spaceId/'
     | '/s/$spaceId/p/$pageId'
   fileRoutesByTo: FileRoutesByTo
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/admin/reset-password'
     | '/api/auth/$'
+    | '/api/pages/save'
     | '/s/$spaceId'
     | '/s/$spaceId/p/$pageId'
   id:
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '/_app/s/$spaceId'
     | '/api/admin/reset-password'
     | '/api/auth/$'
+    | '/api/pages/save'
     | '/_app/s/$spaceId/'
     | '/_app/s/$spaceId/p/$pageId'
   fileRoutesById: FileRoutesById
@@ -160,6 +172,7 @@ export interface RootRouteChildren {
   SignUpRoute: typeof SignUpRoute
   ApiAdminResetPasswordRoute: typeof ApiAdminResetPasswordRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiPagesSaveRoute: typeof ApiPagesSaveRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -227,6 +240,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/pages/save': {
+      id: '/api/pages/save'
+      path: '/api/pages/save'
+      fullPath: '/api/pages/save'
+      preLoaderRoute: typeof ApiPagesSaveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/s/$spaceId/': {
       id: '/_app/s/$spaceId/'
       path: '/'
@@ -278,6 +298,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignUpRoute: SignUpRoute,
   ApiAdminResetPasswordRoute: ApiAdminResetPasswordRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiPagesSaveRoute: ApiPagesSaveRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
