@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import type { SpaceRole } from '#/lib/access'
 import type { TreeNode } from '#/lib/pages'
 import type { SpaceSummary } from '#/lib/teams'
+import { flushEditor } from '#/lib/editor-flush'
 import {
   archivePageFn,
   createPageFn,
@@ -62,6 +63,7 @@ export function AppFrame({
   }
 
   const create = async (parentId: string | null) => {
+    await flushEditor()
     const created = await createPageFn({ data: { spaceId, parentId } })
     setDrawer(false)
     await router.invalidate()
@@ -144,14 +146,12 @@ export function AppFrame({
           onCancel={() => setCreating(false)}
           onCreated={(nextSpaceId) => {
             setCreating(false)
-            void router
-              .invalidate()
-              .then(() =>
-                navigate({
-                  to: '/s/$spaceId',
-                  params: { spaceId: nextSpaceId },
-                }),
-              )
+            void router.invalidate().then(() =>
+              navigate({
+                to: '/s/$spaceId',
+                params: { spaceId: nextSpaceId },
+              }),
+            )
           }}
         />
       ) : null}

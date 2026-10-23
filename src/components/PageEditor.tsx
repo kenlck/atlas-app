@@ -9,6 +9,7 @@ import { EditorContent, useEditor } from '@tiptap/react'
 import { useEffect, useRef, useState } from 'react'
 import type { Json } from '#/lib/body-text'
 import type { PageView } from '#/lib/pages'
+import { registerEditorFlush } from '#/lib/editor-flush'
 import { relativeTime } from '#/lib/relative-time'
 import { savePageFn } from '#/server/fns'
 import { EditorToolbar } from './EditorToolbar'
@@ -116,6 +117,8 @@ export function PageEditor({ page }: { page: PageView }) {
     },
   })
 
+  useEffect(() => registerEditorFlush(() => persistRef.current()), [])
+
   useEffect(() => {
     pageIdRef.current = page.id
     return () => {
@@ -124,24 +127,11 @@ export function PageEditor({ page }: { page: PageView }) {
         timer.current = null
       }
       if (dirtyRef.current) {
-        const payload = {
+        flushKeepalive({
           pageId: pageIdRef.current,
           title: titleRef.current,
           body: bodyRef.current as Json,
-        }
-        let saved = false
-        try {
-          const xhr = new XMLHttpRequest()
-          xhr.open('POST', '/api/pages/save', false)
-          xhr.withCredentials = true
-          xhr.setRequestHeader('content-type', 'application/json')
-          xhr.send(JSON.stringify(payload))
-          saved = xhr.status >= 200 && xhr.status < 300
-        } catch {
-          saved = false
-        }
-        if (saved) dirtyRef.current = false
-        else flushKeepalive(payload)
+        })
       }
       void persistRef.current()
     }
