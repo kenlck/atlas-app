@@ -119,11 +119,13 @@ async function renameCurrent(page: Page, title: string) {
   const input = page.locator('#page-title')
   await input.waitFor()
   await page.locator('.col .skel').first().waitFor({ state: 'hidden' }).catch(() => undefined)
+  await input.click()
   await input.fill(title)
   await page.waitForFunction((expected) => {
     const field = document.getElementById('page-title') as HTMLInputElement | null
     return field?.value === expected
   }, title)
+  await input.blur()
   await page.locator('.tree a.it').filter({ hasText: title }).waitFor()
 }
 

@@ -64,12 +64,14 @@ export function PageEditor({ page }: { page: PageView }) {
       setSaveState('error')
     }
   }
+  const persistRef = useRef(persist)
+  persistRef.current = persist
 
   const schedule = () => {
     dirtyRef.current = true
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => {
-      void persist()
+      void persistRef.current()
     }, 800)
   }
 
@@ -96,20 +98,13 @@ export function PageEditor({ page }: { page: PageView }) {
   })
 
   useEffect(() => {
-    const pageId = page.id
-    pageIdRef.current = pageId
+    pageIdRef.current = page.id
     return () => {
       if (timer.current) {
         clearTimeout(timer.current)
         timer.current = null
       }
-      if (!dirtyRef.current) return
-      dirtyRef.current = false
-      flushKeepalive({
-        pageId,
-        title: titleRef.current,
-        body: bodyRef.current as Json,
-      })
+      void persistRef.current()
     }
   }, [page.id])
 
@@ -169,6 +164,13 @@ export function PageEditor({ page }: { page: PageView }) {
               setTitle(event.target.value)
               titleRef.current = event.target.value
               schedule()
+            }}
+            onBlur={(event) => {
+              const next = event.currentTarget.value
+              titleRef.current = next
+              setTitle(next)
+              if (next !== savedTitle.current) dirtyRef.current = true
+              void persistRef.current()
             }}
           />
           <div className="meta">
