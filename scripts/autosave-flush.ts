@@ -63,7 +63,12 @@ async function main() {
     second,
   )
   await page.waitForTimeout(200)
+  const flushed = page.waitForResponse((response) => {
+    const data = response.request().postData() ?? ''
+    return response.ok() && data.includes(second)
+  })
   await page.getByRole('button', { name: '+ New page' }).last().click()
+  await flushed
   await page.waitForFunction((href) => window.location.href !== href, pageUrl)
   await page.locator('#page-title').waitFor()
   await page.goto(pageUrl, { waitUntil: 'networkidle' })
