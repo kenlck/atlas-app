@@ -98,14 +98,6 @@ export function PageEditor({ page }: { page: PageView }) {
   useEffect(() => {
     const pageId = page.id
     pageIdRef.current = pageId
-    setTitle(page.title)
-    titleRef.current = page.title
-    savedTitle.current = page.title
-    bodyRef.current = page.body
-    dirtyRef.current = false
-    if (editor && JSON.stringify(editor.getJSON()) !== JSON.stringify(page.body)) {
-      editor.commands.setContent(page.body as object)
-    }
     return () => {
       if (timer.current) {
         clearTimeout(timer.current)

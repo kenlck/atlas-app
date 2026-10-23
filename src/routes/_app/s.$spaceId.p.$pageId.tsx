@@ -89,5 +89,5 @@ function PageError() {
 
 function PageRoute() {
   const page = Route.useLoaderData()
-  return <PageEditor page={page} />
+  return <PageEditor key={page.id} page={page} />
 }
