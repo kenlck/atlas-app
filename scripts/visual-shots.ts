@@ -396,13 +396,27 @@ async function main() {
   await page.locator('.tool button:has(b)').click()
   await page.locator('.tool button.on:has(b)').waitFor()
   await shot(page, 1280, 'editor', 'bold-active')
-  await page.locator('.doc-editor').click()
-  await page.keyboard.press('ControlOrMeta+A')
+  const selectionPaint = await page.evaluate(() => {
+    const root = document.querySelector('.ProseMirror') as HTMLElement | null
+    root?.focus()
+    document.execCommand('selectAll')
+    const el = document.querySelector('.doc-editor p') ?? document.querySelector('.doc-editor')
+    return {
+      bg: el ? getComputedStyle(el, '::selection').backgroundColor : '',
+      text: window.getSelection()?.toString() ?? '',
+      token: getComputedStyle(document.documentElement).getPropertyValue('--selection').trim(),
+      active: document.activeElement?.className ?? '',
+    }
+  })
+  console.log(`selection_paint ${JSON.stringify(selectionPaint)}`)
+  if (
+    selectionPaint.text.length === 0 ||
+    selectionPaint.bg !== 'rgb(205, 231, 226)' ||
+    selectionPaint.token !== '#cde7e2'
+  ) {
+    throw new Error(`selection color ${selectionPaint.bg} token ${selectionPaint.token}`)
+  }
   await shot(page, 1280, 'editor', 'selection')
-  const selectionToken = await page.evaluate(() =>
-    getComputedStyle(document.documentElement).getPropertyValue('--selection').trim(),
-  )
-  console.log(`selection_token=${selectionToken}`)
 
   await page.getByRole('button', { name: 'Text style' }).click()
   await page.getByRole('listbox').waitFor()
@@ -497,11 +511,6 @@ async function main() {
   await page.getByRole('button', { name: 'Open pages' }).waitFor({ state: 'hidden' })
   await page.locator('.side').waitFor()
   await shot(page, 900, 'page', 'sidebar-docked')
-
-  await writeFile(
-    join(OUT, 'visual-shots.json'),
-    JSON.stringify({ baseUrl: BASE_URL, out: OUT, viewports: VIEWPORTS }, null, 2),
-  )
   console.log('visual shots complete')
   } catch (error) {
     const tree = await page.locator('.tree').innerText().catch(() => '')
