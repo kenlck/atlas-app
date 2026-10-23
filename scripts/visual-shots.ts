@@ -1,6 +1,12 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { chromium, type Browser, type Page, type Request } from 'playwright'
+import {
+  chromium,
+  type Browser,
+  type Locator,
+  type Page,
+  type Request,
+} from 'playwright'
 
 const BASE_URL = process.env.BASE_URL ?? 'http://127.0.0.1:3010'
 const OUT = process.env.VISUAL_OUT ?? 'artifacts'
@@ -26,6 +32,8 @@ type Mode =
   | 'hold-invites'
   | 'fail-invites'
   | 'hold-mentions'
+  | 'fail-mentions'
+  | 'fail-tree'
 
 function pngSize(buf: Buffer) {
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
@@ -238,6 +246,51 @@ const SHOT_SIZES = [
   [900, 800],
 ] as const
 
+async function shotOnly(
+  page: Page,
+  sizes: ReadonlyArray<readonly [number, number]>,
+  screen: string,
+  state: string,
+) {
+  for (const [width, height] of sizes) {
+    await setViewport(page, width, height)
+    await shot(page, width, screen, state)
+  }
+}
+
+async function logFocus(locator: Locator, label: string) {
+  const info = await locator.evaluate((el) => {
+    const style = getComputedStyle(el)
+    return {
+      outline: style.outline,
+      outlineColor: style.outlineColor,
+      outlineOffset: style.outlineOffset,
+      boxShadow: style.boxShadow,
+    }
+  })
+  console.log(`${label}_focus ${JSON.stringify(info)}`)
+}
+
+async function logComputed(
+  page: Page,
+  selector: string,
+  label: string,
+  fields: string[],
+) {
+  const info = await page
+    .locator(selector)
+    .first()
+    .evaluate((el, names) => {
+      const style = getComputedStyle(el)
+      const record: Record<string, string> = {}
+      for (const name of names) {
+        record[name] = style.getPropertyValue(name)
+      }
+      return record
+    }, fields)
+  console.log(`${label} ${JSON.stringify(info)}`)
+}
+
 async function shotSizes(page: Page, screen: string, state: string) {
   for (const [width, height] of SHOT_SIZES) {
     await setViewport(page, width, height)
@@ -313,6 +366,34 @@ async function captureTeamShots(input: {
 
   await page.locator('.sw').click()
   await page.getByRole('menuitem', { name: 'Create team' }).click()
+  await page.getByRole('heading', { name: 'Create team' }).waitFor()
+  await shotOnly(
+    page,
+    [
+      [1280, 800],
+      [390, 844],
+    ],
+    'create-team',
+    'rest',
+  )
+  await setViewport(page, 1280, 800)
+  await page.getByRole('button', { name: 'Create team' }).click()
+  await page.getByText('Enter a team name.').waitFor()
+  await logComputed(page, '.err', 'err_line', [
+    'color',
+    'font-size',
+    'font-weight',
+  ])
+  await shotOnly(
+    page,
+    [
+      [1280, 800],
+      [390, 844],
+    ],
+    'create-team',
+    'error',
+  )
+  await setViewport(page, 1280, 800)
   await page.locator('#team-name').fill('Northwind')
   const beforeTeam = page.url()
   await page.getByRole('button', { name: 'Create team' }).click()
@@ -355,6 +436,11 @@ async function captureTeamShots(input: {
   await page.getByRole('button', { name: 'Send invite' }).waitFor()
   await page.getByText(beaEmail).waitFor()
   await shotSizes(page, 'members', 'found')
+  await setViewport(page, 1280, 800)
+  const sendInvite = page.getByRole('button', { name: 'Send invite' })
+  await sendInvite.focus()
+  await logFocus(sendInvite, 'send_invite')
+  await shot(page, 1280, 'members', 'focus-send')
   await page.getByRole('button', { name: 'Send invite' }).click()
   await page.getByText('No pending invites.').waitFor({ state: 'hidden' })
 
@@ -367,6 +453,13 @@ async function captureTeamShots(input: {
   await signIn(bea, beaEmail, password)
   await bea.locator('.app').waitFor()
   await bea.locator('.pending-dot').waitFor()
+  await logComputed(bea, '.pending-dot', 'avatar_dot', [
+    'width',
+    'height',
+    'background-color',
+    'box-shadow',
+    'border',
+  ])
   await shotSizesPreparedDot(bea)
   await setViewport(bea, 1280, 800)
   await hideDrawer(bea)
@@ -374,8 +467,20 @@ async function captureTeamShots(input: {
   await bea.getByRole('heading', { name: 'Invitations' }).waitFor()
   await bea.getByRole('button', { name: 'Accept' }).waitFor()
   await shotSizes(bea, 'invitations', 'pending')
+  await setViewport(bea, 1280, 800)
+  await hideDrawer(bea)
+  const accept = bea.getByRole('button', { name: 'Accept' })
+  await accept.focus()
+  await logFocus(accept, 'accept')
+  await shot(bea, 1280, 'invitations', 'focus-accept')
+  const decline = bea.getByRole('button', { name: 'Decline' })
+  await decline.focus()
+  await logFocus(decline, 'decline')
+  await shot(bea, 1280, 'invitations', 'focus-decline')
   await bea.getByRole('button', { name: 'Accept' }).click()
   await bea.getByText('No invitations.').waitFor()
+  await bea.locator('.pending-dot').waitFor({ state: 'detached' })
+  await shot(bea, 1280, 'avatar', 'clear')
   await bea.locator('.sw').click()
   await bea.getByRole('menuitem', { name: 'Northwind' }).click()
   await bea.getByRole('heading', { name: 'No pages yet' }).waitFor()
@@ -391,9 +496,42 @@ async function captureTeamShots(input: {
   await shotSizes(bea, 'members', 'member')
   await beaContext.close()
 
+  const caraEmail = `cara.north.${stamp}@example.com`
+  await apiSignUp('Cara North', caraEmail, password)
   await page.goto(settingsUrl, { waitUntil: 'networkidle' })
-  await page.getByRole('button', { name: 'Remove' }).waitFor()
+  await page.locator('#invite-email').fill(caraEmail)
+  await page.getByRole('button', { name: 'Look up' }).click()
+  await page.getByRole('button', { name: 'Send invite' }).click()
+  await page.getByText(caraEmail).waitFor()
+  const caraContext = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    deviceScaleFactor: 1,
+    colorScheme: 'light',
+  })
+  const cara = await caraContext.newPage()
+  await signIn(cara, caraEmail, password)
+  await cara.locator('.app').waitFor()
+  await cara.getByRole('link', { name: 'Profile' }).click()
+  await cara.getByRole('button', { name: 'Accept' }).click()
+  await cara.getByText('No invitations.').waitFor()
+  await caraContext.close()
+  await page.goto(settingsUrl, { waitUntil: 'networkidle' })
+  await page.getByText('Cara North').waitFor()
+  await page.getByText('Bea Member').waitFor()
+  if ((await page.locator('.role-pill').count()) < 3) {
+    throw new Error('members list is missing the owner or a second member')
+  }
   await shotSizes(page, 'members', 'owner')
+  await setViewport(page, 1280, 800)
+  const lookup = page.getByRole('button', { name: 'Look up' })
+  await lookup.focus()
+  await logFocus(lookup, 'lookup')
+  await shot(page, 1280, 'members', 'focus-lookup')
+  await page.getByRole('button', { name: 'Delete team' }).click()
+  await page.getByText('Delete this team and its pages?').waitFor()
+  await shot(page, 1280, 'delete-team', 'confirm')
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.getByRole('heading', { name: 'Northwind' }).waitFor()
 
   await page.goto(teamUrl, { waitUntil: 'networkidle' })
   await page.getByRole('button', { name: '+ New page' }).first().click()
@@ -431,7 +569,16 @@ async function captureTeamShots(input: {
   if (chip.includes('@') || chip.includes(beaEmail))
     throw new Error(`chip leaked email: ${chip}`)
   await mentionSaved
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.locator('.mention:not(.former)').first().waitFor()
   await page.locator('#page-title').click()
+  await logComputed(page, '.mention:not(.former)', 'mention_chip', [
+    'background-color',
+    'color',
+    'height',
+    'padding',
+    'border-radius',
+  ])
   await shotSizes(page, 'mentions', 'chip')
 
   await page.locator('.doc-editor').click()
@@ -455,12 +602,22 @@ async function captureTeamShots(input: {
   await page.keyboard.press('Escape')
   await trailSaved
 
+  await setViewport(page, 1280, 800)
+  await page.locator('.doc-editor').click()
+  await page.keyboard.press('End')
+  setMode('fail-mentions')
+  await page.keyboard.type(' @')
+  await page.getByText("Couldn't load mentions.").waitFor()
+  await page.getByRole('button', { name: 'Retry' }).waitFor()
+  await shot(page, 1280, 'mentions', 'error')
+  setMode('pass')
+  await page.keyboard.press('Escape')
+
   const mentionedUrl = page.url()
   await page.goto(settingsUrl, { waitUntil: 'networkidle' })
-  await page.getByRole('button', { name: 'Remove' }).click()
-  await page
-    .getByRole('button', { name: 'Remove' })
-    .waitFor({ state: 'hidden' })
+  const beaRow = page.locator('.member-row', { hasText: 'Bea Member' })
+  await beaRow.getByRole('button', { name: 'Remove' }).click()
+  await beaRow.waitFor({ state: 'detached' })
   await page.goto(mentionedUrl, { waitUntil: 'networkidle' })
   await page.reload({ waitUntil: 'networkidle' })
   await page.locator('.mention.former').waitFor()
@@ -469,11 +626,25 @@ async function captureTeamShots(input: {
   ).trim()
   if (former.includes('@') || former.includes(beaEmail))
     throw new Error(`former chip leaked email: ${former}`)
+  await logComputed(page, '.mention.former', 'mention_chip_former', [
+    'background-color',
+    'color',
+    'height',
+    'padding',
+    'border-radius',
+  ])
   await shotSizes(page, 'mentions', 'former')
 
   await shotSizesPrepared(page, 'switcher', 'open', async (width) => {
     await openSwitcher(page, width)
+    await page.getByRole('menuitem', { name: 'Team settings' }).waitFor()
   })
+  await setViewport(page, 1280, 800)
+  await openSwitcher(page, 1280)
+  const switcherRow = page.getByRole('menuitem', { name: 'Northwind' })
+  await switcherRow.focus()
+  await logFocus(switcherRow, 'switcher_row')
+  await shot(page, 1280, 'switcher', 'focus-row')
   await page.keyboard.press('Escape')
   await hideDrawer(page)
 
@@ -634,6 +805,38 @@ async function main() {
       })
       return
     }
+    if (mode === 'fail-mentions' && kind === 'mentions') {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        headers: { 'x-tss-serialized': 'true' },
+        body: JSON.stringify({
+          t: 10,
+          i: 0,
+          p: {
+            k: ['error'],
+            v: [
+              {
+                t: 25,
+                i: 1,
+                s: { message: { t: 1, s: 'Internal Server Error' } },
+                c: '$TSR/Error',
+              },
+            ],
+          },
+          o: 0,
+        }),
+      })
+      return
+    }
+    if (mode === 'fail-tree' && kind === 'fetchPageTree') {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'Internal Server Error' }),
+      })
+      return
+    }
     await route.continue()
   })
 
@@ -731,6 +934,8 @@ async function main() {
     await page.getByRole('heading', { name: 'No pages yet' }).waitFor()
     await page.locator('.me').waitFor()
     await shot(page, 1280, 'space', 'empty')
+    await shotOnly(page, [[390, 844]], 'space', 'empty')
+    await setViewport(page, 1280, 800)
 
     const emptyUrl = page.url()
     await page.getByRole('button', { name: '+ New page' }).last().click()
@@ -776,6 +981,17 @@ async function main() {
     await shot(page, 1280, 'space', 'loading')
     mode = 'pass'
     releaseHeld()
+    await page.locator('.tree a.it').first().waitFor()
+
+    await signOut(page)
+    await setViewport(page, 390, 844)
+    mode = 'hold-tree'
+    await signIn(page, email, password)
+    await page.locator('.tree .skel').first().waitFor({ state: 'attached' })
+    await shot(page, 390, 'space', 'loading')
+    mode = 'pass'
+    releaseHeld()
+    await setViewport(page, 1280, 800)
     await page.locator('.tree a.it').first().waitFor()
 
     await page.goto(new URL(oneHref, BASE_URL).toString(), {
@@ -956,6 +1172,17 @@ async function main() {
       .waitFor({ state: 'hidden' })
     await page.locator('.side').waitFor()
     await shot(page, 900, 'page', 'sidebar-docked')
+    await setViewport(page, 1280, 800)
+    await signOut(page)
+    mode = 'fail-tree'
+    await signIn(page, email, password)
+    await page.getByText("Couldn't load this space.").waitFor()
+    await page.getByRole('button', { name: 'Retry' }).waitFor()
+    await shot(page, 1280, 'space', 'error')
+    mode = 'pass'
+    await page.getByRole('button', { name: 'Retry' }).click()
+    await page.locator('button.sw').waitFor()
+    await page.locator('.tree a.it').first().waitFor()
     await captureTeamShots({
       page,
       browser,
@@ -966,6 +1193,15 @@ async function main() {
       },
       releaseHeld,
     })
+    const pngs = (await readdir(OUT))
+      .filter((name) => name.endsWith('.png') && name !== 'debug-fail.png')
+      .sort()
+    console.log('png_dimensions_begin')
+    for (const name of pngs) {
+      const png = pngSize(await readFile(join(OUT, name)))
+      console.log(`${name} ${png.width}x${png.height}`)
+    }
+    console.log('png_dimensions_end')
     console.log('visual shots complete')
   } catch (error) {
     const tree = await page

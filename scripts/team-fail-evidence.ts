@@ -1483,7 +1483,7 @@ async function fail6(dir: string) {
   )
   console.log('grep @')
   const atEditor = grepReport('at_editor_html', editorHtml, '@')
-  const atFetch = grepReport('at_fetchpage', ownerRead.body, '@')
+  grepReport('at_fetchpage', ownerRead.body, '@')
   grepReport('at_page_load', documentBody, '@')
   grepReport('at_page_html', pageHtml, '@')
   const outsiderPage = await outsiderCtx.newPage()

@@ -11,11 +11,28 @@ function paintList(
   root: HTMLElement,
   props: SuggestionProps<MentionCandidate, MentionCandidate>,
   selected: number,
+  failed: boolean,
+  onRetry: () => void,
 ) {
   root.replaceChildren()
   root.className = 'menu mention-list'
   root.setAttribute('role', 'listbox')
   root.setAttribute('aria-label', 'Mention someone')
+  if (failed) {
+    const banner = document.createElement('div')
+    banner.className = 'banner'
+    banner.append("Couldn't load mentions.")
+    const retry = document.createElement('button')
+    retry.type = 'button'
+    retry.textContent = 'Retry'
+    retry.addEventListener('mousedown', (event) => {
+      event.preventDefault()
+      onRetry()
+    })
+    banner.append(retry)
+    root.append(banner)
+    return
+  }
   if (props.loading) {
     const skel = document.createElement('div')
     skel.className = 'skel'
@@ -48,6 +65,43 @@ export function createMentionExtension(input: {
   spaceId: string
   getPeople: () => MentionPerson[]
 }) {
+  let mentionFailed = false
+  let listRoot: HTMLElement | null = null
+  let retryQuery = ''
+  const paintError = () => {
+    if (!listRoot) return
+    listRoot.replaceChildren()
+    listRoot.className = 'menu mention-list'
+    listRoot.setAttribute('role', 'listbox')
+    listRoot.setAttribute('aria-label', 'Mention someone')
+    const banner = document.createElement('div')
+    banner.className = 'banner'
+    banner.append("Couldn't load mentions.")
+    const retry = document.createElement('button')
+    retry.type = 'button'
+    retry.textContent = 'Retry'
+    retry.addEventListener('mousedown', (event) => {
+      event.preventDefault()
+      void load(retryQuery)
+    })
+    banner.append(retry)
+    listRoot.append(banner)
+  }
+  const load = async (query: string) => {
+    retryQuery = query
+    try {
+      const rows = await fetchMentionCandidates({
+        data: { spaceId: input.spaceId, mentionQuery: query },
+      })
+      if (!Array.isArray(rows)) throw new Error('Mention lookup failed')
+      mentionFailed = false
+      return rows
+    } catch {
+      mentionFailed = true
+      paintError()
+      return []
+    }
+  }
   return Mention.extend({
     addAttributes() {
       return {
@@ -90,15 +144,7 @@ export function createMentionExtension(input: {
     },
     suggestion: {
       char: '@',
-      items: async ({ query }) => {
-        try {
-          return await fetchMentionCandidates({
-            data: { spaceId: input.spaceId, mentionQuery: query },
-          })
-        } catch {
-          return []
-        }
-      },
+      items: ({ query }) => load(query),
       command: ({ editor, range, props }) => {
         const person = props as MentionCandidate
         editor
@@ -125,10 +171,24 @@ export function createMentionExtension(input: {
         ) => {
           latest = props
           if (selected >= props.items.length) selected = 0
-          paintList(root, props, selected)
+          paintList(root, props, selected, mentionFailed, () => {
+            const query = props.query
+            paintList(
+              root,
+              { ...props, loading: true, items: [] },
+              0,
+              false,
+              () => undefined,
+            )
+            void load(query).then((items) => {
+              if (latest !== props) return
+              paint({ ...props, items, loading: false })
+            })
+          })
         }
         return {
           onStart: (props) => {
+            listRoot = root
             selected = 0
             paint(props)
             unmount = props.mount(root)
@@ -163,6 +223,7 @@ export function createMentionExtension(input: {
             return false
           },
           onExit: () => {
+            listRoot = null
             unmount?.()
             unmount = null
             latest = null
