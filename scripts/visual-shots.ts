@@ -156,6 +156,14 @@ async function renameCurrent(page: Page, title: string) {
     .first()
     .waitFor({ state: 'hidden' })
     .catch(() => undefined)
+  const saved = page.waitForResponse(
+    (response) => {
+      if (!response.ok() || response.request().method() !== 'POST') return false
+      if (!response.url().includes('_serverFn')) return false
+      return (response.request().postData() ?? '').includes(`"${title}"`)
+    },
+    { timeout: 15000 },
+  )
   await input.click()
   await input.fill(title)
   await page.waitForFunction((expected) => {
@@ -165,6 +173,7 @@ async function renameCurrent(page: Page, title: string) {
     return field?.value === expected
   }, title)
   await input.blur()
+  await saved
   await page.locator('.tree a.it').filter({ hasText: title }).waitFor()
 }
 
