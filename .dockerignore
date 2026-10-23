@@ -1,0 +1,10 @@
+node_modules
+.output
+.git
+.tanstack
+.nitro
+*.local
+.env
+tests
+/opt
+/cursor

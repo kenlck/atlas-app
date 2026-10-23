@@ -9,51 +9,306 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as SetPasswordRouteImport } from './routes/set-password'
+import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as SignUpRouteImport } from './routes/sign-up'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppSSpaceIdRouteImport } from './routes/_app/s.$spaceId'
+import { Route as ApiAdminResetPasswordRouteImport } from './routes/api/admin/reset-password'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiPagesSaveRouteImport } from './routes/api/pages/save'
+import { Route as AppSSpaceIdIndexRouteImport } from './routes/_app/s.$spaceId.index'
+import { Route as AppSSpaceIdPPageIdRouteImport } from './routes/_app/s.$spaceId.p.$pageId'
 
-const IndexRoute = IndexRouteImport.update({
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SetPasswordRoute = SetPasswordRouteImport.update({
+  id: '/set-password',
+  path: '/set-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignInRoute = SignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignUpRoute = SignUpRouteImport.update({
+  id: '/sign-up',
+  path: '/sign-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSSpaceIdRoute = AppSSpaceIdRouteImport.update({
+  id: '/s/$spaceId',
+  path: '/s/$spaceId',
+  getParentRoute: () => AppRoute,
+} as any)
+const ApiAdminResetPasswordRoute = ApiAdminResetPasswordRouteImport.update({
+  id: '/api/admin/reset-password',
+  path: '/api/admin/reset-password',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPagesSaveRoute = ApiPagesSaveRouteImport.update({
+  id: '/api/pages/save',
+  path: '/api/pages/save',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppSSpaceIdIndexRoute = AppSSpaceIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppSSpaceIdRoute,
+} as any)
+const AppSSpaceIdPPageIdRoute = AppSSpaceIdPPageIdRouteImport.update({
+  id: '/p/$pageId',
+  path: '/p/$pageId',
+  getParentRoute: () => AppSSpaceIdRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
+  '/forgot-password': typeof ForgotPasswordRoute
+  '/set-password': typeof SetPasswordRoute
+  '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
+  '/s/$spaceId': typeof AppSSpaceIdRouteWithChildren
+  '/api/admin/reset-password': typeof ApiAdminResetPasswordRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/pages/save': typeof ApiPagesSaveRoute
+  '/s/$spaceId/': typeof AppSSpaceIdIndexRoute
+  '/s/$spaceId/p/$pageId': typeof AppSSpaceIdPPageIdRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
+  '/forgot-password': typeof ForgotPasswordRoute
+  '/set-password': typeof SetPasswordRoute
+  '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
+  '/': typeof AppIndexRoute
+  '/api/admin/reset-password': typeof ApiAdminResetPasswordRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/pages/save': typeof ApiPagesSaveRoute
+  '/s/$spaceId': typeof AppSSpaceIdIndexRoute
+  '/s/$spaceId/p/$pageId': typeof AppSSpaceIdPPageIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
+  '/forgot-password': typeof ForgotPasswordRoute
+  '/set-password': typeof SetPasswordRoute
+  '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
+  '/_app/': typeof AppIndexRoute
+  '/_app/s/$spaceId': typeof AppSSpaceIdRouteWithChildren
+  '/api/admin/reset-password': typeof ApiAdminResetPasswordRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/pages/save': typeof ApiPagesSaveRoute
+  '/_app/s/$spaceId/': typeof AppSSpaceIdIndexRoute
+  '/_app/s/$spaceId/p/$pageId': typeof AppSSpaceIdPPageIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/forgot-password'
+    | '/set-password'
+    | '/sign-in'
+    | '/sign-up'
+    | '/s/$spaceId'
+    | '/api/admin/reset-password'
+    | '/api/auth/$'
+    | '/api/pages/save'
+    | '/s/$spaceId/'
+    | '/s/$spaceId/p/$pageId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/forgot-password'
+    | '/set-password'
+    | '/sign-in'
+    | '/sign-up'
+    | '/'
+    | '/api/admin/reset-password'
+    | '/api/auth/$'
+    | '/api/pages/save'
+    | '/s/$spaceId'
+    | '/s/$spaceId/p/$pageId'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/forgot-password'
+    | '/set-password'
+    | '/sign-in'
+    | '/sign-up'
+    | '/_app/'
+    | '/_app/s/$spaceId'
+    | '/api/admin/reset-password'
+    | '/api/auth/$'
+    | '/api/pages/save'
+    | '/_app/s/$spaceId/'
+    | '/_app/s/$spaceId/p/$pageId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
+  SetPasswordRoute: typeof SetPasswordRoute
+  SignInRoute: typeof SignInRoute
+  SignUpRoute: typeof SignUpRoute
+  ApiAdminResetPasswordRoute: typeof ApiAdminResetPasswordRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiPagesSaveRoute: typeof ApiPagesSaveRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/set-password': {
+      id: '/set-password'
+      path: '/set-password'
+      fullPath: '/set-password'
+      preLoaderRoute: typeof SetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-in': {
+      id: '/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-up': {
+      id: '/sign-up'
+      path: '/sign-up'
+      fullPath: '/sign-up'
+      preLoaderRoute: typeof SignUpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/': {
+      id: '/_app/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/s/$spaceId': {
+      id: '/_app/s/$spaceId'
+      path: '/s/$spaceId'
+      fullPath: '/s/$spaceId'
+      preLoaderRoute: typeof AppSSpaceIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/api/admin/reset-password': {
+      id: '/api/admin/reset-password'
+      path: '/api/admin/reset-password'
+      fullPath: '/api/admin/reset-password'
+      preLoaderRoute: typeof ApiAdminResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/pages/save': {
+      id: '/api/pages/save'
+      path: '/api/pages/save'
+      fullPath: '/api/pages/save'
+      preLoaderRoute: typeof ApiPagesSaveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/s/$spaceId/': {
+      id: '/_app/s/$spaceId/'
+      path: '/'
+      fullPath: '/s/$spaceId/'
+      preLoaderRoute: typeof AppSSpaceIdIndexRouteImport
+      parentRoute: typeof AppSSpaceIdRoute
+    }
+    '/_app/s/$spaceId/p/$pageId': {
+      id: '/_app/s/$spaceId/p/$pageId'
+      path: '/p/$pageId'
+      fullPath: '/s/$spaceId/p/$pageId'
+      preLoaderRoute: typeof AppSSpaceIdPPageIdRouteImport
+      parentRoute: typeof AppSSpaceIdRoute
     }
   }
 }
 
+interface AppSSpaceIdRouteChildren {
+  AppSSpaceIdIndexRoute: typeof AppSSpaceIdIndexRoute
+  AppSSpaceIdPPageIdRoute: typeof AppSSpaceIdPPageIdRoute
+}
+
+const AppSSpaceIdRouteChildren: AppSSpaceIdRouteChildren = {
+  AppSSpaceIdIndexRoute: AppSSpaceIdIndexRoute,
+  AppSSpaceIdPPageIdRoute: AppSSpaceIdPPageIdRoute,
+}
+
+const AppSSpaceIdRouteWithChildren = AppSSpaceIdRoute._addFileChildren(
+  AppSSpaceIdRouteChildren,
+)
+
+interface AppRouteChildren {
+  AppIndexRoute: typeof AppIndexRoute
+  AppSSpaceIdRoute: typeof AppSSpaceIdRouteWithChildren
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppIndexRoute: AppIndexRoute,
+  AppSSpaceIdRoute: AppSSpaceIdRouteWithChildren,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
+  ForgotPasswordRoute: ForgotPasswordRoute,
+  SetPasswordRoute: SetPasswordRoute,
+  SignInRoute: SignInRoute,
+  SignUpRoute: SignUpRoute,
+  ApiAdminResetPasswordRoute: ApiAdminResetPasswordRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiPagesSaveRoute: ApiPagesSaveRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
