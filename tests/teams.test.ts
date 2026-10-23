@@ -9,12 +9,15 @@ import {
   peopleForBody,
 } from '../src/lib/mentions'
 import {
+  archivePage,
   createPage,
   getPageView,
   listPageTree,
+  movePage,
+  renamePage,
   savePage,
 } from '../src/lib/pages'
-import { space, teamInvite, user } from '../src/lib/schema'
+import { space, teamInvite, teamMember, user } from '../src/lib/schema'
 import {
   NO_ACCOUNT,
   acceptInvite,
@@ -40,6 +43,28 @@ async function inviteColumns() {
 async function inviteCount() {
   const rows = await getDb().select({ id: teamInvite.id }).from(teamInvite)
   return rows.length
+}
+
+async function teamRowCounts(teamId: string) {
+  const members = await getDb()
+    .select({ userId: teamMember.userId })
+    .from(teamMember)
+    .where(eq(teamMember.teamId, teamId))
+  const invites = await getDb()
+    .select({ id: teamInvite.id })
+    .from(teamInvite)
+    .where(eq(teamInvite.teamId, teamId))
+  return { members: members.length, invites: invites.length }
+}
+
+async function httpError(run: () => Promise<unknown>) {
+  try {
+    await run()
+  } catch (error) {
+    if (error instanceof HttpError) return error
+    throw error
+  }
+  throw new Error('expected HttpError')
 }
 
 describe('teams', () => {
@@ -220,6 +245,108 @@ describe('teams', () => {
     })
   })
 
+  it('returns the same 404 for a non-member write as for a missing resource', async () => {
+    const owner = await createUser('Owner')
+    const outsider = await createUser('Outsider')
+    const created = await createTeam(owner.user.id, 'Hidden writes')
+    const page = await createPage(owner.user.id, {
+      spaceId: created.spaceId,
+      title: 'Secret',
+    })
+    const doc = { type: 'doc', content: [{ type: 'paragraph' }] }
+    const pairs: Array<
+      [string, () => Promise<unknown>, () => Promise<unknown>]
+    > = [
+      [
+        'createPage',
+        () =>
+          createPage(outsider.user.id, {
+            spaceId: created.spaceId,
+            title: 'Nope',
+          }),
+        () =>
+          createPage(owner.user.id, {
+            spaceId: 'missing-space',
+            title: 'Nope',
+          }),
+      ],
+      [
+        'savePage',
+        () =>
+          savePage(outsider.user.id, {
+            pageId: page.id,
+            title: 'Stolen',
+            body: doc,
+          }),
+        () =>
+          savePage(owner.user.id, {
+            pageId: 'missing-page',
+            title: 'Stolen',
+            body: doc,
+          }),
+      ],
+      [
+        'renamePage',
+        () =>
+          renamePage(outsider.user.id, { pageId: page.id, title: 'Stolen' }),
+        () =>
+          renamePage(owner.user.id, {
+            pageId: 'missing-page',
+            title: 'Stolen',
+          }),
+      ],
+      [
+        'movePage',
+        () => movePage(outsider.user.id, { pageId: page.id, parentId: null }),
+        () =>
+          movePage(owner.user.id, { pageId: 'missing-page', parentId: null }),
+      ],
+      [
+        'archivePage',
+        () => archivePage(outsider.user.id, page.id),
+        () => archivePage(owner.user.id, 'missing-page'),
+      ],
+      [
+        'lookupAccount',
+        () => lookupAccount(outsider.user.id, created.id, outsider.user.email),
+        () => lookupAccount(owner.user.id, 'missing-team', outsider.user.email),
+      ],
+      [
+        'createInvite',
+        () => createInvite(outsider.user.id, created.id, outsider.user.id),
+        () => createInvite(owner.user.id, 'missing-team', outsider.user.id),
+      ],
+      [
+        'removeMember',
+        () => removeMember(outsider.user.id, created.id, owner.user.id),
+        () => removeMember(owner.user.id, 'missing-team', owner.user.id),
+      ],
+      [
+        'deleteTeam',
+        () => deleteTeam(outsider.user.id, created.id),
+        () => deleteTeam(owner.user.id, 'missing-team'),
+      ],
+      [
+        'getTeamSettings',
+        () => getTeamSettings(outsider.user.id, created.id),
+        () => getTeamSettings(owner.user.id, 'missing-team'),
+      ],
+    ]
+    for (const [name, denied, missing] of pairs) {
+      const deniedError = await httpError(denied)
+      const missingError = await httpError(missing)
+      expect(deniedError.status, name).toBe(404)
+      expect(deniedError.message, name).toBe('Not found')
+      expect(deniedError.status, name).toBe(missingError.status)
+      expect(deniedError.message, name).toBe(missingError.message)
+    }
+    const still = await getPageView(owner.user.id, page.id)
+    expect(still.title).toBe('Secret')
+    await expect(
+      getTeamSettings(owner.user.id, created.id),
+    ).resolves.toMatchObject({ role: 'owner' })
+  })
+
   it('stops a removed member on the next read and save', async () => {
     const owner = await createUser('Owner')
     const member = await createUser('Member')
@@ -293,6 +420,33 @@ describe('teams', () => {
     ).resolves.toMatchObject({
       role: 'member',
     })
+  })
+
+  it('refuses a member removing another member and leaves this team unchanged', async () => {
+    const owner = await createUser('Owner')
+    const member = await createUser('Member')
+    const other = await createUser('Other')
+    const created = await createTeam(owner.user.id, 'Roster')
+    await acceptInvite(
+      member.user.id,
+      (await createInvite(owner.user.id, created.id, member.user.id)).id,
+    )
+    await acceptInvite(
+      other.user.id,
+      (await createInvite(owner.user.id, created.id, other.user.id)).id,
+    )
+    const before = await teamRowCounts(created.id)
+    expect(before).toEqual({ members: 3, invites: 2 })
+    await expect(
+      removeMember(member.user.id, created.id, other.user.id),
+    ).rejects.toMatchObject({
+      status: 403,
+      message: 'Forbidden',
+    })
+    expect(await teamRowCounts(created.id)).toEqual(before)
+    await expect(
+      assertAccess(other.user.id, { spaceId: created.spaceId }),
+    ).resolves.toMatchObject({ role: 'member' })
   })
 
   it('scopes mentions to the space and never puts a non-member email on a chip', async () => {

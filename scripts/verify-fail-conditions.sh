@@ -80,26 +80,24 @@ case "${1:-all}" in
     pnpm exec tsx scripts/team-fail-evidence.ts 2
     ;;
   issue2-3|2.3)
-    echo "== Issue 2 fail 3: non-member team page, list, and API are 404 =="
+    echo "== Issue 2 fail 3: non-member gets 404 on every team read, write, and server function =="
     echo "DATABASE_URL=\"\$DATABASE_URL\" BASE_URL=\"\$BASE_URL\" VERIFY_PASSWORD=\"\$VERIFY_PASSWORD\" pnpm exec tsx scripts/team-fail-evidence.ts 3"
     pnpm exec tsx scripts/team-fail-evidence.ts 3
     ;;
   issue2-4|2.4)
-    echo "== Issue 2 fail 4: removal blocks the next read and save, including an open editor tab =="
+    echo "== Issue 2 fail 4: removal blocks the next read, the editor autosave, and the server-function read =="
     echo "DATABASE_URL=\"\$DATABASE_URL\" BASE_URL=\"\$BASE_URL\" VERIFY_PASSWORD=\"\$VERIFY_PASSWORD\" pnpm exec tsx scripts/team-fail-evidence.ts 4"
     pnpm exec tsx scripts/team-fail-evidence.ts 4
     ;;
   issue2-5|2.5)
-    echo "== Issue 2 fail 5: a member cannot invite, remove, or delete the team =="
+    echo "== Issue 2 fail 5: a member cannot invite, remove another member, or delete the team =="
     echo "DATABASE_URL=\"\$DATABASE_URL\" BASE_URL=\"\$BASE_URL\" VERIFY_PASSWORD=\"\$VERIFY_PASSWORD\" pnpm exec tsx scripts/team-fail-evidence.ts 5"
     pnpm exec tsx scripts/team-fail-evidence.ts 5
     ;;
   issue2-6|2.6)
-    echo "== Issue 2 fail 6: mention list is the space's members; chips omit non-member emails =="
+    echo "== Issue 2 fail 6: mention list, live former-member chip, and named vitest =="
     echo "DATABASE_URL=\"\$DATABASE_URL\" BASE_URL=\"\$BASE_URL\" VERIFY_PASSWORD=\"\$VERIFY_PASSWORD\" pnpm exec tsx scripts/team-fail-evidence.ts 6"
     pnpm exec tsx scripts/team-fail-evidence.ts 6
-    echo "pnpm exec vitest run tests/teams.test.ts -t \"scopes mentions\""
-    pnpm exec vitest run tests/teams.test.ts -t "scopes mentions" --reporter=verbose
     ;;
   all)
     pnpm exec tsx scripts/verify-fail-conditions.ts all
