@@ -124,11 +124,24 @@ export function PageEditor({ page }: { page: PageView }) {
         timer.current = null
       }
       if (dirtyRef.current) {
-        flushKeepalive({
+        const payload = {
           pageId: pageIdRef.current,
           title: titleRef.current,
           body: bodyRef.current as Json,
-        })
+        }
+        let saved = false
+        try {
+          const xhr = new XMLHttpRequest()
+          xhr.open('POST', '/api/pages/save', false)
+          xhr.withCredentials = true
+          xhr.setRequestHeader('content-type', 'application/json')
+          xhr.send(JSON.stringify(payload))
+          saved = xhr.status >= 200 && xhr.status < 300
+        } catch {
+          saved = false
+        }
+        if (saved) dirtyRef.current = false
+        else flushKeepalive(payload)
       }
       void persistRef.current()
     }
