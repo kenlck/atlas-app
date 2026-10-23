@@ -5,7 +5,7 @@ import { getDb } from '../src/lib/db'
 import { assertApiSession } from '../src/lib/gate'
 import { HttpError } from '../src/lib/http'
 import { setNewPassword } from '../src/lib/password'
-import { adminAudit, session, user } from '../src/lib/schema'
+import { account, adminAudit, session, user } from '../src/lib/schema'
 import { createUser } from './helpers'
 
 const LOCAL_SECRET = 'test-admin-api-secret-32-chars-minx'
@@ -43,6 +43,10 @@ describe('admin reset', () => {
     const person = await createUser('Reset Me')
 
     const before = await getDb().select().from(user).where(eq(user.id, person.user.id))
+    const accountsBefore = await getDb()
+      .select()
+      .from(account)
+      .where(eq(account.userId, person.user.id))
     const wrong = await handleResetPassword(
       request('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', person.user.email, '6.6.6.6'),
       SOCKET_IP,
@@ -67,6 +71,11 @@ describe('admin reset', () => {
     expect(rows[0]?.image).toBe(before[0]?.image)
     expect(rows[0]?.emailVerified).toBe(before[0]?.emailVerified)
     expect(rows[0]?.createdAt.getTime()).toBe(before[0]?.createdAt.getTime())
+    const accounts = await db.select().from(account).where(eq(account.userId, person.user.id))
+    expect(accounts[0]?.password).toBeTruthy()
+    expect(accounts[0]?.password).not.toBe(accountsBefore[0]?.password)
+    expect(accounts[0]?.password).not.toBe(body.temporaryPassword)
+    expect(accounts[0]?.updatedAt.getTime()).toBe(accountsBefore[0]?.updatedAt.getTime())
     const sessions = await db.select().from(session).where(eq(session.userId, person.user.id))
     expect(sessions).toHaveLength(0)
     const audits = await db.select().from(adminAudit).where(eq(adminAudit.targetUserId, person.user.id))

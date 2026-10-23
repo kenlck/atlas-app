@@ -116,7 +116,7 @@ export async function handleResetPassword(
   await db.transaction(async (tx) => {
     await tx
       .update(account)
-      .set({ password: passwordHash, updatedAt: now })
+      .set({ password: passwordHash })
       .where(and(eq(account.userId, target.id), eq(account.providerId, 'credential')))
     await tx
       .update(user)
