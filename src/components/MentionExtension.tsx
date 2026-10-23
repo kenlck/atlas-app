@@ -3,6 +3,7 @@ import type { SuggestionProps } from '@tiptap/suggestion'
 import { fetchMentionCandidates } from '#/server/fns'
 import {
   mentionChipText,
+  mentionPerson,
   type MentionCandidate,
   type MentionPerson,
 } from '#/lib/mention-label'
@@ -68,6 +69,7 @@ export function createMentionExtension(input: {
   let mentionFailed = false
   let listRoot: HTMLElement | null = null
   let retryQuery = ''
+  const listed = new Map<string, MentionCandidate>()
   const paintError = () => {
     if (!listRoot) return
     listRoot.replaceChildren()
@@ -95,6 +97,7 @@ export function createMentionExtension(input: {
       })
       if (!Array.isArray(rows)) throw new Error('Mention lookup failed')
       mentionFailed = false
+      for (const row of rows) listed.set(row.id, row)
       return rows
     } catch {
       mentionFailed = true
@@ -117,16 +120,16 @@ export function createMentionExtension(input: {
   }).configure({
     HTMLAttributes: { class: 'mention' },
     renderText({ node }) {
-      const people = input.getPeople()
-      const person = people.find((item) => item.id === node.attrs.id) ?? null
+      const id = typeof node.attrs.id === 'string' ? node.attrs.id : ''
+      const person = mentionPerson(id, input.getPeople(), listed.values())
       return mentionChipText(
         person,
         typeof node.attrs.label === 'string' ? node.attrs.label : null,
       )
     },
     renderHTML({ node }) {
-      const people = input.getPeople()
-      const person = people.find((item) => item.id === node.attrs.id) ?? null
+      const id = typeof node.attrs.id === 'string' ? node.attrs.id : ''
+      const person = mentionPerson(id, input.getPeople(), listed.values())
       const text = mentionChipText(
         person,
         typeof node.attrs.label === 'string' ? node.attrs.label : null,
@@ -147,6 +150,7 @@ export function createMentionExtension(input: {
       items: ({ query }) => load(query),
       command: ({ editor, range, props }) => {
         const person = props as MentionCandidate
+        listed.set(person.id, person)
         editor
           .chain()
           .focus()

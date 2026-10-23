@@ -5,6 +5,7 @@ import { getDb, getSql } from '../src/lib/db'
 import { HttpError } from '../src/lib/http'
 import {
   mentionChipText,
+  mentionPerson,
   listMentionCandidates,
   peopleForBody,
 } from '../src/lib/mentions'
@@ -527,5 +528,105 @@ describe('teams', () => {
       false,
     )
     expect(JSON.stringify(resolved)).not.toContain(teammate.user.email)
+  })
+
+  it('treats a teammate from the @ list as a current member before reload', () => {
+    const listed = [{ id: 'bea', name: 'Bea Member' }]
+    const fresh = mentionPerson('bea', [], listed)
+    expect(fresh).toEqual({ id: 'bea', name: 'Bea Member', member: true })
+    expect(mentionChipText(fresh, 'bea@example.com')).toBe('Bea Member')
+
+    const afterReload = mentionPerson(
+      'bea',
+      [{ id: 'bea', name: 'Bea Member', member: true }],
+      [],
+    )
+    expect(afterReload?.member).toBe(true)
+
+    const former = mentionPerson(
+      'ada',
+      [{ id: 'ada', name: 'Ada West', member: false }],
+      [],
+    )
+    expect(former).toEqual({ id: 'ada', name: 'Ada West', member: false })
+    expect(mentionChipText(former, 'ada@example.com')).toBe('Ada West')
+
+    expect(mentionPerson('outsider', [], [])).toBeNull()
+    expect(mentionChipText(null, 'Outsider Secret Name')).toBe('Former member')
+    expect(mentionChipText(null, 'outsider@example.com')).toBe('Former member')
+  })
+
+  it('names only current and former members of that space', async () => {
+    const owner = await createUser('Owner')
+    const teammate = await createUser('Ada West')
+    const outsider = await createUser('Outsider Secret Name')
+    const created = await createTeam(owner.user.id, 'Names')
+    await acceptInvite(
+      teammate.user.id,
+      (await createInvite(owner.user.id, created.id, teammate.user.id)).id,
+    )
+    const page = await createPage(owner.user.id, {
+      spaceId: created.spaceId,
+      title: 'Notes',
+    })
+    const mention = (id: string, label: string) => ({
+      type: 'mention',
+      attrs: { id, label },
+    })
+    const body = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            mention(owner.user.id, owner.user.email),
+            mention(teammate.user.id, teammate.user.email),
+            mention(outsider.user.id, outsider.user.name),
+          ],
+        },
+      ],
+    }
+    await savePage(owner.user.id, { pageId: page.id, title: 'Notes', body })
+    await removeMember(owner.user.id, created.id, teammate.user.id)
+    const spaceRows = await getDb()
+      .select()
+      .from(space)
+      .where(eq(space.id, created.spaceId))
+    const resolved = await peopleForBody(spaceRows[0]!, body)
+    expect(resolved.find((item) => item.id === owner.user.id)).toEqual({
+      id: owner.user.id,
+      name: 'Owner',
+      member: true,
+    })
+    expect(resolved.find((item) => item.id === teammate.user.id)).toEqual({
+      id: teammate.user.id,
+      name: 'Ada West',
+      member: false,
+    })
+    expect(
+      resolved.find((item) => item.id === outsider.user.id),
+    ).toBeUndefined()
+    const rendered = JSON.stringify(resolved)
+    expect(rendered).not.toContain('Outsider Secret Name')
+    expect(rendered).not.toContain(outsider.user.email)
+    expect(rendered).not.toContain('@')
+
+    const personal = await peopleForBody(owner.space, {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            mention(owner.user.id, owner.user.name),
+            mention(outsider.user.id, outsider.user.name),
+          ],
+        },
+      ],
+    })
+    expect(personal).toEqual([
+      { id: owner.user.id, name: 'Owner', member: true },
+    ])
+    expect(JSON.stringify(personal)).not.toContain('Outsider Secret Name')
+    expect(JSON.stringify(personal)).not.toContain(outsider.user.email)
   })
 })

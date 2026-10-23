@@ -562,15 +562,11 @@ async function captureTeamShots(input: {
   }
   const mentionSaved = waitForSave(page)
   await page.getByRole('option', { name: 'Bea Member' }).click()
-  await page.locator('.mention').first().waitFor()
-  const chip = (
-    (await page.locator('.mention').first().innerText()) ?? ''
-  ).trim()
+  const inserted = page.locator('.mention:not(.former)').first()
+  await inserted.waitFor()
+  const chip = ((await inserted.innerText()) ?? '').trim()
   if (chip.includes('@') || chip.includes(beaEmail))
     throw new Error(`chip leaked email: ${chip}`)
-  await mentionSaved
-  await page.reload({ waitUntil: 'networkidle' })
-  await page.locator('.mention:not(.former)').first().waitFor()
   await page.locator('#page-title').click()
   await logComputed(page, '.mention:not(.former)', 'mention_chip', [
     'background-color',
@@ -580,6 +576,19 @@ async function captureTeamShots(input: {
     'border-radius',
   ])
   await shotSizes(page, 'mentions', 'chip')
+  await mentionSaved
+  await setViewport(page, 1280, 800)
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.locator('.mention:not(.former)').first().waitFor()
+  await page.locator('#page-title').click()
+  await logComputed(page, '.mention:not(.former)', 'mention_chip_reload', [
+    'background-color',
+    'color',
+    'height',
+    'padding',
+    'border-radius',
+  ])
+  await shotSizes(page, 'mentions', 'chip-reload')
 
   await page.locator('.doc-editor').click()
   await page.keyboard.press('End')
@@ -619,12 +628,15 @@ async function captureTeamShots(input: {
   await beaRow.getByRole('button', { name: 'Remove' }).click()
   await beaRow.waitFor({ state: 'detached' })
   await page.goto(mentionedUrl, { waitUntil: 'networkidle' })
-  await page.reload({ waitUntil: 'networkidle' })
   await page.locator('.mention.former').waitFor()
   const former = (
     (await page.locator('.mention.former').innerText()) ?? ''
   ).trim()
-  if (former.includes('@') || former.includes(beaEmail))
+  if (
+    former.includes('@') ||
+    former.includes(beaEmail) ||
+    former !== 'Bea Member'
+  )
     throw new Error(`former chip leaked email: ${former}`)
   await logComputed(page, '.mention.former', 'mention_chip_former', [
     'background-color',
@@ -634,6 +646,22 @@ async function captureTeamShots(input: {
     'border-radius',
   ])
   await shotSizes(page, 'mentions', 'former')
+  await setViewport(page, 1280, 800)
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.locator('.mention.former').waitFor()
+  const formerReload = (
+    (await page.locator('.mention.former').innerText()) ?? ''
+  ).trim()
+  if (formerReload !== 'Bea Member')
+    throw new Error(`former chip after reload: ${formerReload}`)
+  await logComputed(page, '.mention.former', 'mention_chip_former_reload', [
+    'background-color',
+    'color',
+    'height',
+    'padding',
+    'border-radius',
+  ])
+  await shotSizes(page, 'mentions', 'former-reload')
 
   await shotSizesPrepared(page, 'switcher', 'open', async (width) => {
     await openSwitcher(page, width)

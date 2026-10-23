@@ -4,9 +4,9 @@ import { assertAccess } from './access'
 import { getDb } from './db'
 import { notFound } from './http'
 import { type MentionCandidate, type MentionPerson } from './mention-label'
-import { teamMember, user, type Space } from './schema'
+import { teamInvite, teamMember, user, type Space } from './schema'
 
-export { looksLikeEmail, mentionChipText } from './mention-label'
+export { looksLikeEmail, mentionChipText, mentionPerson } from './mention-label'
 export type { MentionCandidate, MentionPerson } from './mention-label'
 
 export function mentionIdsFromBody(body: Json) {
@@ -38,25 +38,48 @@ export async function peopleForBody(
   const ids = mentionIdsFromBody(body)
   if (ids.length === 0) return []
   const db = getDb()
+  if (spaceRow.kind === 'personal') {
+    const ownerId = spaceRow.ownerUserId
+    if (!ownerId || !ids.includes(ownerId)) return []
+    const rows = await db
+      .select({ id: user.id, name: user.name })
+      .from(user)
+      .where(eq(user.id, ownerId))
+      .limit(1)
+    const owner = rows[0]
+    if (!owner) return []
+    return [{ id: owner.id, name: owner.name, member: true }]
+  }
+  if (!spaceRow.teamId) return []
+  const members = await db
+    .select({ userId: teamMember.userId })
+    .from(teamMember)
+    .where(
+      and(
+        eq(teamMember.teamId, spaceRow.teamId),
+        inArray(teamMember.userId, ids),
+      ),
+    )
+  const memberIds = new Set(members.map((row) => row.userId))
+  const accepted = await db
+    .select({ userId: teamInvite.inviteeUserId })
+    .from(teamInvite)
+    .where(
+      and(
+        eq(teamInvite.teamId, spaceRow.teamId),
+        eq(teamInvite.status, 'accepted'),
+        inArray(teamInvite.inviteeUserId, ids),
+      ),
+    )
+  const allowed = new Set<string>([
+    ...memberIds,
+    ...accepted.map((row) => row.userId),
+  ])
+  if (allowed.size === 0) return []
   const users = await db
     .select({ id: user.id, name: user.name })
     .from(user)
-    .where(inArray(user.id, ids))
-  let memberIds = new Set<string>()
-  if (spaceRow.kind === 'team' && spaceRow.teamId) {
-    const members = await db
-      .select({ userId: teamMember.userId })
-      .from(teamMember)
-      .where(
-        and(
-          eq(teamMember.teamId, spaceRow.teamId),
-          inArray(teamMember.userId, ids),
-        ),
-      )
-    memberIds = new Set(members.map((row) => row.userId))
-  } else if (spaceRow.kind === 'personal' && spaceRow.ownerUserId) {
-    memberIds = new Set([spaceRow.ownerUserId])
-  }
+    .where(inArray(user.id, [...allowed]))
   return users.map((row) => ({
     id: row.id,
     name: row.name,
