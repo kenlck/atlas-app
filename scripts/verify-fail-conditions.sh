@@ -24,20 +24,20 @@ echo "verify-fail-conditions BASE_URL set ADMIN_API_SECRET=$([[ -n "$ADMIN_API_S
 
 case "${1:-all}" in
   1|fail1)
-    echo "== Fail 1: B cannot open or save A's page (404) =="
-    echo "pnpm exec tsx scripts/verify-fail-conditions.ts fail1"
-    pnpm exec tsx scripts/verify-fail-conditions.ts fail1
+    echo "== Fail 1: B cannot open, save, or list A's page (404) =="
+    echo "BASE_URL=\"\$BASE_URL\" pnpm exec tsx scripts/http-evidence.ts fail1"
+    pnpm exec tsx scripts/http-evidence.ts fail1
     ;;
   2|fail2)
-    echo "== Fail 2: signed-out page 307, page API 401 =="
-    echo "pnpm exec tsx scripts/verify-fail-conditions.ts fail2"
-    pnpm exec tsx scripts/verify-fail-conditions.ts fail2
+    echo "== Fail 2: signed-out page 307, page API and server function 401 =="
+    echo "BASE_URL=\"\$BASE_URL\" pnpm exec tsx scripts/http-evidence.ts fail2"
+    pnpm exec tsx scripts/http-evidence.ts fail2
     ;;
   3|fail3)
-    echo "== Fail 3: persist/reload + Retry + mid-debounce navigate =="
-    echo "pnpm exec tsx scripts/verify-fail-conditions.ts fail3"
-    pnpm exec tsx scripts/verify-fail-conditions.ts fail3
-    echo "pnpm autosave-flush"
+    echo "== Fail 3: type, reload, exact match; save 500 keeps text; mid-debounce flush =="
+    echo "BASE_URL=\"\$BASE_URL\" pnpm exec tsx scripts/fail3-playwright.ts"
+    pnpm exec tsx scripts/fail3-playwright.ts
+    echo "BASE_URL=\"\$BASE_URL\" pnpm autosave-flush"
     pnpm autosave-flush
     ;;
   4|fail4)
@@ -53,20 +53,15 @@ case "${1:-all}" in
     echo "status=$code"
     redact < /tmp/atlas-verify-headers
     ;;
-  5f)
-    echo "== Fail 5f: server generates temp password once, stores a hash, clears sessions =="
-    echo "pnpm exec tsx scripts/verify-fail-conditions.ts fail5f"
-    pnpm exec tsx scripts/verify-fail-conditions.ts fail5f
-    ;;
-  5g)
-    echo "== Fail 5g: locked session 403 on page API and update-user; change-password and sign-out work =="
-    echo "pnpm exec tsx scripts/verify-fail-conditions.ts fail5g"
-    pnpm exec tsx scripts/verify-fail-conditions.ts fail5g
+  5f|5g)
+    echo "== Fail 5f/5g: reset row diff, locked 403, update-user 403, change-password, sign-out =="
+    echo "BASE_URL=\"\$BASE_URL\" ADMIN_API_SECRET=\"\$ADMIN_API_SECRET\" pnpm exec tsx scripts/http-evidence.ts fail5"
+    pnpm exec tsx scripts/http-evidence.ts fail5
     ;;
   5h)
-    echo "== Fail 5h: rotating X-Forwarded-For still 429; audit has socket IP =="
-    echo "pnpm exec tsx scripts/verify-fail-conditions.ts fail5h"
-    pnpm exec tsx scripts/verify-fail-conditions.ts fail5h
+    echo "== Fail 5h: rotating X-Forwarded-For still 429 =="
+    echo "BASE_URL=\"\$BASE_URL\" ADMIN_API_SECRET=\"\$ADMIN_API_SECRET\" pnpm exec tsx scripts/http-evidence.ts fail5h"
+    pnpm exec tsx scripts/http-evidence.ts fail5h
     ;;
   6|fail6)
     echo "== Fail 6: documented migrate + docker run env-only + sign-up =="

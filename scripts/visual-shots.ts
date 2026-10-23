@@ -138,6 +138,32 @@ async function createNamedPage(page: Page, title: string) {
   await renameCurrent(page, title)
 }
 
+async function logTitleLabel(page: Page, width: number) {
+  const info = await page.evaluate(() => {
+    const labels = Array.from(document.querySelectorAll('label')).map((el) => (el.textContent ?? '').trim())
+    return { labels, hasTitleWord: /\bTITLE\b/.test(document.body.innerText) }
+  })
+  console.log(`title_label_${width} ${JSON.stringify(info)}`)
+  if (info.hasTitleWord || info.labels.some((label) => label.toUpperCase() === 'TITLE')) {
+    throw new Error(`TITLE label is visible at ${width}`)
+  }
+}
+
+async function logDrawer(page: Page, width: number) {
+  const info = await page.evaluate((viewport) => {
+    const side = document.querySelector('.side.open')
+    const scrim = document.querySelector('.scrim')
+    const actual = side ? side.getBoundingClientRect().width : null
+    const expected = Math.min(280, viewport * 0.85)
+    const scrimBg = scrim ? getComputedStyle(scrim).backgroundColor : null
+    return { actual, expected, scrimBg, open: Boolean(side) }
+  }, width)
+  console.log(`drawer_${width} ${JSON.stringify(info)}`)
+  if (info.actual == null || Math.abs(info.actual - info.expected) > 1) {
+    throw new Error(`drawer width at ${width} was ${info.actual}, expected ${info.expected}`)
+  }
+}
+
 async function printOverflow(page: Page, label: string) {
   const result = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
@@ -228,6 +254,11 @@ async function main() {
 
   await page.getByRole('button', { name: 'Sign in' }).focus()
   await shot(page, 1280, 'sign-in', 'focus-button')
+  const buttonFocus = await page.getByRole('button', { name: 'Sign in' }).evaluate((el) => {
+    const style = getComputedStyle(el)
+    return { outline: style.outline, outlineOffset: style.outlineOffset, boxShadow: style.boxShadow }
+  })
+  console.log(`button_focus ${JSON.stringify(buttonFocus)}`)
 
   await page.locator('#email').fill(email)
   await page.locator('#password').fill('wrong-password')
@@ -245,6 +276,11 @@ async function main() {
   await page.getByRole('button', { name: 'Create account' }).click()
   await page.locator('.err').first().waitFor()
   await shot(page, 1280, 'sign-up', 'validation')
+  const signupHint = await page.locator('.hint').count()
+  const signupErrors = await page.locator('.err').allTextContents()
+  console.log(`signup_hint_count=${signupHint}`)
+  console.log(`signup_errors=${JSON.stringify(signupErrors.map((text) => text.trim()))}`)
+  if (signupHint !== 0) throw new Error('sign-up hint is still visible beside the error')
 
   await page.goto(`${BASE_URL}/forgot-password`, { waitUntil: 'networkidle' })
   await page.getByRole('heading', { name: 'Forgot your password?' }).waitFor()
@@ -292,6 +328,7 @@ async function main() {
   await page.locator('#page-title').waitFor()
   await page.locator('.doc-editor .is-editor-empty').waitFor()
   await shot(page, 1280, 'page', 'empty-body')
+  await logTitleLabel(page, 1280)
   await renameCurrent(page, 'One')
 
   await createNamedPage(page, 'Two')
@@ -330,6 +367,12 @@ async function main() {
   await page.locator('.tree a.it').filter({ hasText: 'Two' }).click()
   await page.getByRole('heading', { name: "Couldn't load this page." }).waitFor()
   await page.getByRole('button', { name: 'Try again' }).waitFor()
+  const pageError = await page.evaluate(() => ({
+    topBar: Boolean(document.querySelector('.top')),
+    copy: document.querySelector('.nf .empty')?.textContent?.trim() ?? '',
+    tryAgain: Boolean(document.querySelector('.nf .btn.secondary')),
+  }))
+  console.log(`page_error ${JSON.stringify(pageError)}`)
   await shot(page, 1280, 'page', 'error')
   mode = 'pass'
   await page.goto(new URL(oneHref, BASE_URL).toString(), { waitUntil: 'networkidle' })
@@ -353,11 +396,22 @@ async function main() {
   await page.locator('.tool button:has(b)').click()
   await page.locator('.tool button.on:has(b)').waitFor()
   await shot(page, 1280, 'editor', 'bold-active')
+  await page.locator('.doc-editor').click()
+  await page.keyboard.press('ControlOrMeta+A')
   await shot(page, 1280, 'editor', 'selection')
+  const selectionToken = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--selection').trim(),
+  )
+  console.log(`selection_token=${selectionToken}`)
 
   await page.getByRole('button', { name: 'Text style' }).click()
   await page.getByRole('listbox').waitFor()
   await page.getByRole('option', { selected: true }).waitFor()
+  const styleCurrent = await page.getByRole('option', { selected: true }).evaluate((el) => {
+    const style = getComputedStyle(el)
+    return { text: (el.textContent ?? '').trim(), className: el.className, background: style.backgroundColor, color: style.color }
+  })
+  console.log(`style_menu_current ${JSON.stringify(styleCurrent)}`)
   await shot(page, 1280, 'editor', 'style-menu')
   await page.locator('#page-title').click()
   await page.getByRole('listbox').waitFor({ state: 'hidden' })
@@ -372,19 +426,38 @@ async function main() {
   })
   await page.getByRole('button', { name: 'Link' }).click()
   await page.locator('.doc-editor a').waitFor()
+  const linkDecoration = await page.locator('.doc-editor a').evaluate((el) => {
+    const style = getComputedStyle(el)
+    return {
+      textDecorationLine: style.textDecorationLine,
+      textDecorationThickness: style.textDecorationThickness,
+      textDecorationColor: style.textDecorationColor,
+      textUnderlineOffset: style.textUnderlineOffset,
+    }
+  })
+  console.log(`link_decoration ${JSON.stringify(linkDecoration)}`)
   await page.locator('#page-title').click()
   await shot(page, 1280, 'page', 'link')
 
   await setViewport(page, 390, 844)
   await page.getByRole('button', { name: 'Open pages' }).waitFor()
+  await logTitleLabel(page, 390)
+  await shot(page, 390, 'page', 'title')
   await shot(page, 390, 'page', 'drawer-closed')
 
   await page.getByRole('button', { name: 'Open pages' }).click()
   await page.locator('.side.open').waitFor()
   await page.locator('.scrim').waitFor()
+  await logDrawer(page, 390)
   await shot(page, 390, 'page', 'drawer-open')
   await page.locator('.scrim').click({ position: { x: 370, y: 24 }, force: true })
   await page.locator('.side.open').waitFor({ state: 'hidden' })
+  console.log('drawer_390_scrim_tap_closed=true')
+  await page.getByRole('button', { name: 'Open pages' }).click()
+  await page.locator('.side.open').waitFor()
+  await page.keyboard.press('Escape')
+  await page.locator('.side.open').waitFor({ state: 'hidden' })
+  console.log('drawer_390_esc_closed=true')
 
   await page.locator('.tool').evaluate((el) => {
     el.scrollLeft = el.scrollWidth
@@ -409,8 +482,16 @@ async function main() {
   await page.getByRole('button', { name: 'Open pages' }).click()
   await page.locator('.side.open').waitFor()
   await page.locator('.scrim').waitFor()
+  await logDrawer(page, 899)
   await shot(page, 899, 'page', 'drawer-open')
   await page.locator('.scrim').click({ position: { x: 870, y: 24 }, force: true })
+  await page.locator('.side.open').waitFor({ state: 'hidden' })
+  console.log('drawer_899_scrim_tap_closed=true')
+  await page.getByRole('button', { name: 'Open pages' }).click()
+  await page.locator('.side.open').waitFor()
+  await page.keyboard.press('Escape')
+  await page.locator('.side.open').waitFor({ state: 'hidden' })
+  console.log('drawer_899_esc_closed=true')
 
   await setViewport(page, 900, 800)
   await page.getByRole('button', { name: 'Open pages' }).waitFor({ state: 'hidden' })
