@@ -1,5 +1,5 @@
 import { useRouter } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NO_ACCOUNT } from '#/lib/invite-copy'
 import { initials } from '#/lib/relative-time'
 import {
@@ -59,6 +59,17 @@ export function TeamSettings({
   const [found, setFound] = useState<Found | null>(null)
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!confirmDelete) return
+    cancelDeleteRef.current?.focus()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setConfirmDelete(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [confirmDelete])
 
   const refresh = () => {
     void router.invalidate()
@@ -107,7 +118,7 @@ export function TeamSettings({
           </p>
           {members.map((member) => (
             <div className="member-row" key={member.id}>
-              <div className="av">{initials(member.name)}</div>
+              <div className="me">{initials(member.name)}</div>
               <div className="grow">
                 <div style={{ fontWeight: 600 }}>{member.name}</div>
                 <div className="subline">{member.email}</div>
@@ -169,7 +180,7 @@ export function TeamSettings({
               ) : null}
               {phase === 'found' && found ? (
                 <div className="found">
-                  <div className="av">{initials(found.name)}</div>
+                  <div className="me">{initials(found.name)}</div>
                   <div className="grow">
                     <div style={{ fontWeight: 600 }}>{found.name}</div>
                     <div className="subline">{found.email}</div>
@@ -189,7 +200,7 @@ export function TeamSettings({
               ) : null}
               {invites.map((invite) => (
                 <div className="member-row" key={invite.id}>
-                  <div className="av">{initials(invite.name)}</div>
+                  <div className="me">{initials(invite.name)}</div>
                   <div className="grow">
                     <div style={{ fontWeight: 600 }}>{invite.name}</div>
                     <div className="subline">{invite.email}</div>
@@ -198,18 +209,29 @@ export function TeamSettings({
                 </div>
               ))}
               {confirmDelete ? (
-                <div className="banner" style={{ marginTop: 24 }}>
-                  Delete this team and its pages?
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void deleteTeamFn({ data: { teamId } }).then(() => {
-                        window.location.assign('/')
-                      })
-                    }
-                  >
-                    Delete team
-                  </button>
+                <div className="banner confirm" style={{ marginTop: 24 }}>
+                  <p>Delete {name} and all its pages? This can't be undone.</p>
+                  <div className="actions">
+                    <button
+                      ref={cancelDeleteRef}
+                      className="btn secondary"
+                      type="button"
+                      onClick={() => setConfirmDelete(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn delete-team"
+                      type="button"
+                      onClick={() =>
+                        void deleteTeamFn({ data: { teamId } }).then(() => {
+                          window.location.assign('/')
+                        })
+                      }
+                    >
+                      Delete team
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <button

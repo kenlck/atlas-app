@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createTeamFn } from '#/server/fns'
 
 function messageOf(error: unknown) {
@@ -16,6 +16,14 @@ export function CreateTeamDialog({
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onCancel])
 
   const submit = async () => {
     const trimmed = name.trim()
@@ -35,23 +43,22 @@ export function CreateTeamDialog({
   }
 
   return (
-    <div
-      className="auth"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'transparent',
-        zIndex: 40,
-      }}
-    >
-      <div className="card">
-        <h1>Create team</h1>
+    <div className="team-modal">
+      <div className="scrim" onClick={onCancel} />
+      <div
+        className="card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-team-title"
+      >
+        <h1 id="create-team-title">Create team</h1>
         <div className="sub">The team gets its own space.</div>
         <label htmlFor="team-name">Team name</label>
         <input
           id="team-name"
           className={error ? 'in bad' : 'in'}
           value={name}
+          autoFocus
           onChange={(event) => setName(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') void submit()

@@ -25,8 +25,9 @@ export function Invitations({ invites }: { invites: InvitationCard[] }) {
               <div className="av">{initials(invite.teamName)}</div>
               <div className="grow">
                 <div style={{ fontWeight: 600 }}>{invite.teamName}</div>
-                <div className="subline">
-                  {invite.invitedByName} invited you
+                <div className="subline inviter">
+                  <span className="me">{initials(invite.invitedByName)}</span>
+                  <span>{invite.invitedByName} invited you</span>
                 </div>
               </div>
               <div className="actions">

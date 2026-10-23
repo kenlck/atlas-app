@@ -6,7 +6,7 @@ import {
   useRouter,
 } from '@tanstack/react-router'
 import { AppFrame } from '#/components/AppFrame'
-import { initials } from '#/lib/relative-time'
+import { Sidebar } from '#/components/Sidebar'
 import { fetchPageTree } from '#/server/fns'
 
 const appRoute = getRouteApi('/_app')
@@ -60,37 +60,50 @@ function SpaceLayout() {
 
 function SpaceError() {
   const router = useRouter()
+  const { spaceId } = Route.useParams()
   const { session } = appRoute.useRouteContext()
   const name = session.user.name
   return (
     <div className="app">
-      <aside className="side">
-        <div className="sw">
-          <div className="av">{initials(name)}</div>
-          <span className="sw-name">Atlas</span>
-        </div>
-        <div className="lab">Pages</div>
-        <div className="tree">
-          <div className="banner">Couldn't load this space.</div>
-          <button
-            className="it"
-            type="button"
-            onClick={() => void router.invalidate()}
-          >
-            Retry
-          </button>
-        </div>
-        <div className="foot">
-          <div className="me">{initials(name)}</div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 13 }}>{name}</div>
-          </div>
-        </div>
-      </aside>
+      <Sidebar
+        spaceId={spaceId}
+        spaceName={name}
+        userName={name}
+        tree={[]}
+        spaces={[{ id: spaceId, name, kind: 'personal', role: 'personal' }]}
+        role="personal"
+        pendingInvites={0}
+        open={false}
+        onCreate={() => undefined}
+        onRename={() => undefined}
+        onMove={() => undefined}
+        onArchive={() => undefined}
+        onCreateTeam={() => undefined}
+        onNavigate={() => undefined}
+      />
       <div className="main" style={{ position: 'relative' }}>
-        <button className="menu-btn" type="button" aria-label="Open pages">
+        <button
+          className="menu-btn"
+          type="button"
+          aria-label="Open pages"
+          onClick={() => undefined}
+        >
           ☰
         </button>
+        <div className="top">
+          <b>Pages</b>
+        </div>
+        <div className="nf">
+          <h2>Couldn't load this space.</h2>
+          <p className="empty">Something went wrong.</p>
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => void router.invalidate()}
+          >
+            Try again
+          </button>
+        </div>
       </div>
     </div>
   )

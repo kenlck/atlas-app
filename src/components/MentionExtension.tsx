@@ -1,6 +1,7 @@
 import Mention from '@tiptap/extension-mention'
 import type { SuggestionProps } from '@tiptap/suggestion'
 import { fetchMentionCandidates } from '#/server/fns'
+import { initials } from '#/lib/relative-time'
 import {
   mentionChipText,
   mentionPerson,
@@ -14,6 +15,7 @@ function paintList(
   selected: number,
   failed: boolean,
   onRetry: () => void,
+  onHover?: (index: number) => void,
 ) {
   root.replaceChildren()
   root.className = 'menu mention-list'
@@ -52,8 +54,14 @@ function paintList(
     button.type = 'button'
     button.setAttribute('role', 'option')
     button.setAttribute('aria-selected', index === selected ? 'true' : 'false')
-    button.textContent = item.name
     if (index === selected) button.className = 'on'
+    const avatar = document.createElement('span')
+    avatar.className = 'me'
+    avatar.textContent = initials(item.name)
+    const label = document.createElement('span')
+    label.textContent = item.name
+    button.append(avatar, label)
+    button.addEventListener('mouseenter', () => onHover?.(index))
     button.addEventListener('mousedown', (event) => {
       event.preventDefault()
       props.command(item)
@@ -175,20 +183,31 @@ export function createMentionExtension(input: {
         ) => {
           latest = props
           if (selected >= props.items.length) selected = 0
-          paintList(root, props, selected, mentionFailed, () => {
-            const query = props.query
-            paintList(
-              root,
-              { ...props, loading: true, items: [] },
-              0,
-              false,
-              () => undefined,
-            )
-            void load(query).then((items) => {
-              if (latest !== props) return
-              paint({ ...props, items, loading: false })
-            })
-          })
+          paintList(
+            root,
+            props,
+            selected,
+            mentionFailed,
+            () => {
+              const query = props.query
+              paintList(
+                root,
+                { ...props, loading: true, items: [] },
+                0,
+                false,
+                () => undefined,
+              )
+              void load(query).then((items) => {
+                if (latest !== props) return
+                paint({ ...props, items, loading: false })
+              })
+            },
+            (index) => {
+              if (selected === index) return
+              selected = index
+              paint(props)
+            },
+          )
         }
         return {
           onStart: (props) => {
