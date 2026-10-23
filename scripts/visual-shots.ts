@@ -5,6 +5,7 @@ import { chromium, type Page, type Request } from 'playwright'
 import {
   assertLocalBaseUrl,
   stamp as utcStamp,
+  submitAuthForm,
   waitForClient,
 } from './verify-local.ts'
 
@@ -120,8 +121,7 @@ async function signUp(
   await page.locator('#name').fill(name)
   await page.locator('#email').fill(email)
   await page.locator('#password').fill(password)
-  await waitForClient(page)
-  await page.getByRole('button', { name: 'Create account' }).click()
+  await submitAuthForm(page, 'Create account', '/api/auth/sign-up/email')
   const app = page.locator('.app')
   const banner = page.locator('.banner')
   await Promise.race([
@@ -140,8 +140,7 @@ async function signIn(page: Page, email: string, password: string) {
   await page.goto(`${BASE_URL}/sign-in`, { waitUntil: 'networkidle' })
   await page.locator('#email').fill(email)
   await page.locator('#password').fill(password)
-  await waitForClient(page)
-  await page.getByRole('button', { name: 'Sign in' }).click()
+  await submitAuthForm(page, 'Sign in', '/api/auth/sign-in/email')
 }
 
 async function signOut(page: Page) {

@@ -66,13 +66,30 @@ async function cookieJar(context: BrowserContext, dir: string, name: string) {
 }
 
 async function signUp(context: BrowserContext, name: string, email: string) {
-  const response = await context.request.post(
+  let response = await context.request.post(
     `${BASE_URL}/api/auth/sign-up/email`,
     {
       headers: { origin: BASE_URL, 'content-type': 'application/json' },
       data: { name, email, password: PASSWORD },
     },
   )
+  for (
+    let attempt = 0;
+    attempt < 3 && response.status() === 429;
+    attempt += 1
+  ) {
+    const retryAfter = Number(response.headers()['x-retry-after'] ?? '10')
+    const seconds = Number.isFinite(retryAfter) ? retryAfter + 1 : 11
+    console.log(`signup_status=429 retry_after=${seconds}`)
+    await new Promise((resolve) => setTimeout(resolve, seconds * 1000))
+    response = await context.request.post(
+      `${BASE_URL}/api/auth/sign-up/email`,
+      {
+        headers: { origin: BASE_URL, 'content-type': 'application/json' },
+        data: { name, email, password: PASSWORD },
+      },
+    )
+  }
   const body = await response.text()
   printRaw(
     `sign-up ${name}`,
@@ -102,13 +119,30 @@ async function signIn(
   email: string,
   password: string,
 ) {
-  const response = await context.request.post(
+  let response = await context.request.post(
     `${BASE_URL}/api/auth/sign-in/email`,
     {
       headers: { origin: BASE_URL, 'content-type': 'application/json' },
       data: { email, password },
     },
   )
+  for (
+    let attempt = 0;
+    attempt < 3 && response.status() === 429;
+    attempt += 1
+  ) {
+    const retryAfter = Number(response.headers()['x-retry-after'] ?? '10')
+    const seconds = Number.isFinite(retryAfter) ? retryAfter + 1 : 11
+    console.log(`signin_status=429 retry_after=${seconds}`)
+    await new Promise((resolve) => setTimeout(resolve, seconds * 1000))
+    response = await context.request.post(
+      `${BASE_URL}/api/auth/sign-in/email`,
+      {
+        headers: { origin: BASE_URL, 'content-type': 'application/json' },
+        data: { email, password },
+      },
+    )
+  }
   const body = await response.text()
   printRaw(
     `sign-in ${email}`,

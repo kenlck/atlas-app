@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { expect, test, type Request } from '@playwright/test'
+import { submitAuthForm } from '../../scripts/verify-local.ts'
 
 const PINNED = 'mcr.microsoft.com/playwright:v1.64.1-noble'
 const FROZEN = new Date('2026-01-15T12:00:00Z')
@@ -146,10 +147,7 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
   await page.locator('#name').fill('Ada Baseline')
   await page.locator('#email').fill(EMAIL)
   await page.locator('#password').fill(PASSWORD)
-  await page.waitForFunction(() =>
-    Object.prototype.hasOwnProperty.call(window, '__TSR_ROUTER__'),
-  )
-  await page.getByRole('button', { name: 'Create account' }).click()
+  await submitAuthForm(page, 'Create account', '/api/auth/sign-up/email')
   await page.getByRole('heading', { name: 'No pages yet' }).waitFor()
   await shot('space-empty')
 

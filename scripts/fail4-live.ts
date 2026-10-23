@@ -1,5 +1,5 @@
 import { chromium, type Page, type Request } from 'playwright'
-import { assertLocalBaseUrl, waitForClient } from './verify-local.ts'
+import { assertLocalBaseUrl, submitAuthForm } from './verify-local.ts'
 
 const BASE_URL = assertLocalBaseUrl(
   process.env.BASE_URL ?? 'http://127.0.0.1:3010',
@@ -53,8 +53,7 @@ async function main() {
   await page.locator('#name').fill('Fail Four')
   await page.locator('#email').fill(`fail4.${stamp}@example.com`)
   await page.locator('#password').fill(PASSWORD)
-  await waitForClient(page)
-  await page.getByRole('button', { name: 'Create account' }).click()
+  await submitAuthForm(page, 'Create account', '/api/auth/sign-up/email')
   await page.locator('.app').waitFor()
 
   const parentId = await createNamed(page, 'Parent')
