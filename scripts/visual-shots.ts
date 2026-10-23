@@ -2,7 +2,11 @@ import { execSync } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { chromium, type Page, type Request } from 'playwright'
-import { assertLocalBaseUrl, stamp as utcStamp } from './verify-local.ts'
+import {
+  assertLocalBaseUrl,
+  stamp as utcStamp,
+  waitForClient,
+} from './verify-local.ts'
 
 const BASE_URL = assertLocalBaseUrl(
   process.env.BASE_URL ?? 'http://127.0.0.1:3010',
@@ -116,6 +120,7 @@ async function signUp(
   await page.locator('#name').fill(name)
   await page.locator('#email').fill(email)
   await page.locator('#password').fill(password)
+  await waitForClient(page)
   await page.getByRole('button', { name: 'Create account' }).click()
   const app = page.locator('.app')
   const banner = page.locator('.banner')
@@ -135,6 +140,7 @@ async function signIn(page: Page, email: string, password: string) {
   await page.goto(`${BASE_URL}/sign-in`, { waitUntil: 'networkidle' })
   await page.locator('#email').fill(email)
   await page.locator('#password').fill(password)
+  await waitForClient(page)
   await page.getByRole('button', { name: 'Sign in' }).click()
 }
 
@@ -319,6 +325,7 @@ async function main() {
 
     await page.locator('#email').fill(email)
     await page.locator('#password').fill('wrong-password')
+    await waitForClient(page)
     await page.getByRole('button', { name: 'Sign in' }).click()
     await page.locator('.banner').waitFor()
     await shot(page, 1280, 'sign-in', 'wrong-credentials')
@@ -330,6 +337,7 @@ async function main() {
     await page.locator('#name').fill('Ada')
     await page.locator('#email').fill('ada')
     await page.locator('#password').fill('short')
+    await waitForClient(page)
     await page.getByRole('button', { name: 'Create account' }).click()
     await page.locator('.err').first().waitFor()
     await shot(page, 1280, 'sign-up', 'validation')

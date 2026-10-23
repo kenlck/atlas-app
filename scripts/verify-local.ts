@@ -17,3 +17,11 @@ export function assertLocalBaseUrl(raw: string) {
 export function stamp() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
+
+export async function waitForClient(page: {
+  waitForFunction: (fn: () => boolean) => Promise<unknown>
+}) {
+  await page.waitForFunction(() =>
+    Object.prototype.hasOwnProperty.call(window, '__TSR_ROUTER__'),
+  )
+}

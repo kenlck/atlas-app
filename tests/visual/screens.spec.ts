@@ -118,6 +118,9 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
   await shot('sign-in-empty')
   await page.locator('#email').fill(EMAIL)
   await page.locator('#password').fill('wrong-password')
+  await page.waitForFunction(() =>
+    Object.prototype.hasOwnProperty.call(window, '__TSR_ROUTER__'),
+  )
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.locator('.banner').waitFor()
   await shot('sign-in-error')
@@ -128,6 +131,9 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
   await page.locator('#name').fill('Ada')
   await page.locator('#email').fill('ada')
   await page.locator('#password').fill('short')
+  await page.waitForFunction(() =>
+    Object.prototype.hasOwnProperty.call(window, '__TSR_ROUTER__'),
+  )
   await page.getByRole('button', { name: 'Create account' }).click()
   await page.locator('.err').first().waitFor()
   await shot('sign-up-error')
@@ -140,6 +146,9 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
   await page.locator('#name').fill('Ada Baseline')
   await page.locator('#email').fill(EMAIL)
   await page.locator('#password').fill(PASSWORD)
+  await page.waitForFunction(() =>
+    Object.prototype.hasOwnProperty.call(window, '__TSR_ROUTER__'),
+  )
   await page.getByRole('button', { name: 'Create account' }).click()
   await page.getByRole('heading', { name: 'No pages yet' }).waitFor()
   await shot('space-empty')
@@ -194,6 +203,9 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
   mode = 'hold-tree'
   await page.locator('#email').fill(EMAIL)
   await page.locator('#password').fill(PASSWORD)
+  await page.waitForFunction(() =>
+    Object.prototype.hasOwnProperty.call(window, '__TSR_ROUTER__'),
+  )
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.locator('.tree .skel').first().waitFor()
   await shot('space-loading')
@@ -226,6 +238,9 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
   await locked.goto('/sign-in', { waitUntil: 'networkidle' })
   await locked.locator('#email').fill(EMAIL)
   await locked.locator('#password').fill(temporary)
+  await locked.waitForFunction(() =>
+    Object.prototype.hasOwnProperty.call(window, '__TSR_ROUTER__'),
+  )
   await locked.getByRole('button', { name: 'Sign in' }).click()
   await locked.getByRole('heading', { name: 'Set a new password' }).waitFor()
   await locked.locator('#password').fill('new-password-ok')

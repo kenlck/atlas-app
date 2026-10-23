@@ -1,5 +1,5 @@
 import { chromium, type Request } from 'playwright'
-import { assertLocalBaseUrl } from './verify-local.ts'
+import { assertLocalBaseUrl, waitForClient } from './verify-local.ts'
 
 const BASE_URL = assertLocalBaseUrl(
   process.env.BASE_URL ?? 'http://127.0.0.1:3010',
@@ -34,6 +34,19 @@ async function main() {
   })
   let failSave = false
 
+  await page.goto(`${BASE_URL}/sign-up`, { waitUntil: 'networkidle' })
+  await page.locator('#name').fill('Fail Three')
+  await page.locator('#email').fill(email)
+  await page.locator('#password').fill(PASSWORD)
+  await waitForClient(page)
+  const signup = page.waitForResponse((response) =>
+    response.url().includes('/api/auth/sign-up/email'),
+  )
+  await page.getByRole('button', { name: 'Create account' }).click()
+  const signupResponse = await signup
+  console.log(`signup_status=${signupResponse.status()}`)
+  await page.locator('.app').waitFor()
+
   await page.route(isServerFn, async (route) => {
     const request = route.request()
     if (failSave && isSave(request)) {
@@ -50,20 +63,22 @@ async function main() {
     await route.continue()
   })
 
-  await page.goto(`${BASE_URL}/sign-up`, { waitUntil: 'networkidle' })
-  await page.locator('#name').fill('Fail Three')
-  await page.locator('#email').fill(email)
-  await page.locator('#password').fill(PASSWORD)
-  await page.getByRole('button', { name: 'Create account' }).click()
-  await page.locator('.app').waitFor()
-
   const emptyUrl = page.url()
   await page.getByRole('button', { name: '+ New page' }).last().click()
   await page.waitForFunction((href) => window.location.href !== href, emptyUrl)
   await page.locator('#page-title').waitFor()
   await page.locator('.doc-editor').click()
+  const savedWrite = page.waitForResponse((response) => {
+    const request = response.request()
+    return (
+      response.ok() &&
+      isSave(request) &&
+      (request.postData() ?? '').includes(typed)
+    )
+  })
   await page.keyboard.type(typed)
-  await page.getByText('Saved').waitFor()
+  await savedWrite
+  await page.getByText('Saved', { exact: true }).waitFor()
 
   await page.reload({ waitUntil: 'networkidle' })
   await page.locator('.doc-editor').waitFor()
