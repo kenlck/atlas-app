@@ -20,9 +20,19 @@ async function createNamed(page: Page, title: string) {
   const previous = page.url()
   await page.getByRole('button', { name: '+ New page' }).last().click()
   await page.waitForFunction((href) => window.location.href !== href, previous)
-  await page.locator('#page-title').waitFor()
-  await page.locator('#page-title').fill(title)
-  await page.locator('#page-title').blur()
+  const input = page.locator('#page-title')
+  await input.waitFor()
+  const saved = page.waitForResponse(
+    (response) => {
+      if (!response.ok() || response.request().method() !== 'POST') return false
+      if (!response.url().includes('_serverFn')) return false
+      return (response.request().postData() ?? '').includes(`"${title}"`)
+    },
+    { timeout: 15000 },
+  )
+  await input.fill(title)
+  await input.blur()
+  await saved
   await page.locator('.tree a.it').filter({ hasText: title }).waitFor()
   const id = new URL(page.url()).pathname.split('/').pop() ?? ''
   if (!id) throw new Error(`missing id for ${title}`)
