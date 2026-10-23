@@ -402,6 +402,8 @@ async function captureTeamShots(input: {
   await page.keyboard.type('@')
   const mentionList = page.getByRole('listbox', { name: 'Mention someone' })
   await mentionList.waitFor()
+  await page.getByRole('option', { name: 'Ada West' }).waitFor()
+  await page.getByRole('option', { name: 'Bea Member' }).waitFor()
   const optionText = (await page.getByRole('option').allTextContents()).join(
     '\n',
   )
@@ -418,6 +420,7 @@ async function captureTeamShots(input: {
     await page.keyboard.press('End')
     await page.keyboard.type('@')
     await mentionList.waitFor()
+    await page.getByRole('option', { name: 'Bea Member' }).waitFor()
   }
   const mentionSaved = waitForSave(page)
   await page.getByRole('option', { name: 'Bea Member' }).click()
