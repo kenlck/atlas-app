@@ -16,10 +16,15 @@ import { EditorToolbar } from './EditorToolbar'
 type SaveState = 'saved' | 'saving' | 'error'
 
 function flushKeepalive(payload: { pageId: string; title: string; body: Json }) {
+  const body = JSON.stringify(payload)
+  const blob = new Blob([body], { type: 'application/json' })
+  if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+    if (navigator.sendBeacon('/api/pages/save', blob)) return
+  }
   void fetch('/api/pages/save', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
+    body,
     credentials: 'include',
     keepalive: true,
   })
@@ -103,6 +108,13 @@ export function PageEditor({ page }: { page: PageView }) {
       if (timer.current) {
         clearTimeout(timer.current)
         timer.current = null
+      }
+      if (dirtyRef.current) {
+        flushKeepalive({
+          pageId: pageIdRef.current,
+          title: titleRef.current,
+          body: bodyRef.current as Json,
+        })
       }
       void persistRef.current()
     }

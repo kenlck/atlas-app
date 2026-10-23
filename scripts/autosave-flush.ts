@@ -23,6 +23,10 @@ async function main() {
   await page.locator('#page-title').waitFor()
   await page.locator('.doc-editor').click()
   await page.keyboard.type(typed)
+  await page.waitForFunction(
+    (value) => (document.querySelector('.doc-editor')?.textContent ?? '').includes(value),
+    typed,
+  )
   const pageUrl = page.url()
 
   await page.waitForTimeout(200)
@@ -40,6 +44,10 @@ async function main() {
   await page.keyboard.press('End')
   const second = `nav-${MARKER}`
   await page.keyboard.type(second)
+  await page.waitForFunction(
+    (value) => (document.querySelector('.doc-editor')?.textContent ?? '').includes(value),
+    second,
+  )
   await page.waitForTimeout(200)
   await page.getByRole('button', { name: '+ New page' }).last().click()
   await page.waitForFunction((href) => window.location.href !== href, pageUrl)
