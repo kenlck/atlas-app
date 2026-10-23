@@ -91,7 +91,16 @@ async function signUp(page: Page, name: string, email: string, password: string)
   await page.locator('#email').fill(email)
   await page.locator('#password').fill(password)
   await page.getByRole('button', { name: 'Create account' }).click()
-  await page.locator('.app').waitFor()
+  const app = page.locator('.app')
+  const banner = page.locator('.banner')
+  await Promise.race([
+    app.waitFor({ state: 'visible' }),
+    banner.waitFor({ state: 'visible' }),
+  ])
+  if (await banner.isVisible().catch(() => false)) {
+    throw new Error(`sign-up failed: ${((await banner.textContent()) ?? '').trim()}`)
+  }
+  await app.waitFor()
 }
 
 async function signIn(page: Page, email: string, password: string) {
