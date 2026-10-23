@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas
+          POSTGRES_DB: atlas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas -d atlas"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://atlas:atlas@localhost:5432/atlas
+      TEST_DATABASE_URL: postgres://atlas:atlas@localhost:5432/atlas
+      BETTER_AUTH_SECRET: ci-better-auth-secret-32-chars-min
+      BETTER_AUTH_URL: http://localhost:3000
+      ADMIN_API_SECRET: ci-admin-api-secret-32-characters
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:migrate
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: docker build -t atlas-app .
