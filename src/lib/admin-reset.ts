@@ -18,6 +18,9 @@ function allowRequest(ip: string) {
   const now = Date.now()
   const current = hits.get(ip) ?? { times: [] }
   current.times = current.times.filter((time) => now - time < RATE_WINDOW_MS)
+  if (current.times.length === 0) {
+    hits.delete(ip)
+  }
   if (current.times.length >= RATE_MAX) {
     hits.set(ip, current)
     return false
@@ -27,19 +30,28 @@ function allowRequest(ip: string) {
   return true
 }
 
+function trustProxyEnabled() {
+  const value = process.env.TRUST_PROXY?.trim().toLowerCase()
+  return value === '1' || value === 'true' || value === 'yes'
+}
+
+export function adminCallerIp(request: Request, socketIp?: string | null) {
+  if (trustProxyEnabled()) {
+    const parts = (request.headers.get('x-forwarded-for') ?? '')
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean)
+    const picked = parts[parts.length - 1]
+    if (picked) return picked
+  }
+  return socketIp || 'unknown'
+}
+
 function json(body: unknown, status: number) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
   })
-}
-
-function callerIp(request: Request, fallback?: string | null) {
-  const forwarded = request.headers.get('x-forwarded-for')
-  if (forwarded) {
-    return forwarded.split(',')[0]?.trim() || fallback || 'unknown'
-  }
-  return request.headers.get('x-real-ip') ?? fallback ?? 'unknown'
 }
 
 function bearerToken(request: Request) {
@@ -67,7 +79,7 @@ export async function handleResetPassword(
     return new Response(null, { status: 404 })
   }
 
-  const ip = callerIp(request, fallbackIp)
+  const ip = adminCallerIp(request, fallbackIp)
   if (!allowRequest(ip)) {
     return json({ error: 'Too many requests' }, 429)
   }
@@ -108,7 +120,7 @@ export async function handleResetPassword(
       .where(and(eq(account.userId, target.id), eq(account.providerId, 'credential')))
     await tx
       .update(user)
-      .set({ mustChangePassword: true, updatedAt: now })
+      .set({ mustChangePassword: true })
       .where(eq(user.id, target.id))
     await tx.delete(session).where(eq(session.userId, target.id))
     await tx.insert(adminAudit).values({

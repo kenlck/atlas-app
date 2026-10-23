@@ -10,6 +10,7 @@ The app is configured only by:
 - `BETTER_AUTH_SECRET` — auth signing secret
 - `BETTER_AUTH_URL` — public origin, e.g. `http://localhost:3000`
 - `ADMIN_API_SECRET` — optional. If unset or shorter than 32 characters, `POST /api/admin/reset-password` always returns 404
+- `TRUST_PROXY` — optional. Default off. When `1`, admin-reset rate limiting and audit IP read `X-Forwarded-For` (rightmost hop). Otherwise they use the TCP socket peer address.
 
 ## Local
 
@@ -51,3 +52,5 @@ Nitro `node-server` listens on `PORT` (default 3000).
 ## Admin password reset
 
 `POST /api/admin/reset-password` with `Authorization: Bearer <ADMIN_API_SECRET>` and body `{ "email": "..." }`. The response returns a temporary password once.
+
+Rate limiting and the audit `caller_ip` use the TCP socket peer address (`getRequestIP`) by default. Client-supplied `X-Forwarded-For` is ignored unless `TRUST_PROXY=1`, in which case the rightmost `X-Forwarded-For` hop is used. Do not set `TRUST_PROXY=1` unless every hop in front of the app is a trusted reverse proxy.
