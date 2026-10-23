@@ -42,5 +42,5 @@ Preconditions:
 - Do not print the secret, the temporary password, or the new password. The recipes write them to mode `0600` files and delete those files.
 - An unknown email on a configured server is a JSON 404. That is a different response from the empty 404 in `5a` and `5e`.
 - `5f` performs two resets on the shared app and `5g` performs one. `5c` and `5d` use other processes. `5h` would consume a whole window, so it uses another container.
-- Recipe `6` publishes Postgres on `127.0.0.1` only. The app container uses host networking so it can reach that port.
+- Recipe `6` publishes Postgres on `127.0.0.1` only. It waits until the log says the server is ready twice, then checks that published port, before migrate. The app container uses host networking so it can reach that port.
 - Recipe `all` is not this check. It calls the handler in-process and then Vitest drops the schema.

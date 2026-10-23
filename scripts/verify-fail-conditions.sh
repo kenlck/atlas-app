@@ -402,16 +402,29 @@ for path in (work / "pg.env", work / "app.env", work / "signup.json", work / "si
 PY
   echo "CMD docker run -d --name atlas-fail6-pg --env-file <unprinted> -p 127.0.0.1:${pg_port}:5432 postgres:16"
   docker run -d --name atlas-fail6-pg --env-file "$work/pg.env" -p "127.0.0.1:${pg_port}:5432" postgres:16 >/dev/null
+  # First boot logs "ready to accept connections" for the temporary init
+  # server, then again for the real postmaster. Migrating on the first
+  # ready hits ECONNRESET when that temporary server exits.
   local ready=false
   local _
-  for _ in $(seq 1 40); do
-    if docker exec atlas-fail6-pg pg_isready -q; then
-      ready=true
-      break
+  for _ in $(seq 1 60); do
+    local ready_lines=0
+    ready_lines=$(docker logs atlas-fail6-pg 2>&1 | grep -c "database system is ready to accept connections" || true)
+    if [[ "${ready_lines}" -ge 2 ]] && docker exec atlas-fail6-pg pg_isready -q; then
+      if command -v pg_isready >/dev/null 2>&1; then
+        if pg_isready -q -h 127.0.0.1 -p "$pg_port"; then
+          ready=true
+          break
+        fi
+      else
+        ready=true
+        break
+      fi
     fi
     sleep 1
   done
   echo "postgres_ready=$ready"
+  echo "postgres_bind=127.0.0.1:${pg_port}"
   [[ "$ready" == true ]]
   echo "CMD docker run --rm --network host --env-file <unprinted> $ATLAS_IMAGE node migrate.mjs"
   set +e

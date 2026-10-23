@@ -30,4 +30,4 @@ Preconditions:
 
 - After the session cookie is set, mutating auth calls need `Origin` equal to `BETTER_AUTH_URL`.
 - The recipe refuses a non-local `BASE_URL` as soon as the script loads.
-- Recipe `6` starts its own Postgres container. It does not reuse the database from Launch.
+- Recipe `6` starts its own Postgres container on `127.0.0.1`. It waits for the second ready line so migrate does not hit the temporary init server. It does not reuse the database from Launch.
