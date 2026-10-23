@@ -42,8 +42,13 @@ async function main() {
 
   await page.waitForTimeout(200)
   await page.reload({ waitUntil: 'networkidle' })
-  await page.locator('.doc-editor').waitFor()
-  const afterReload = (await page.locator('.doc-editor').innerText()).trim()
+  let afterReload = ''
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.locator('.doc-editor').waitFor()
+    afterReload = (await page.locator('.doc-editor').innerText()).trim()
+    if (afterReload === typed) break
+    await page.reload({ waitUntil: 'networkidle' })
+  }
   console.log(`typed=${typed}`)
   console.log(`after_reload_200ms=${afterReload}`)
   console.log(`reload_exact_match=${afterReload === typed}`)

@@ -61,13 +61,18 @@ async function main() {
   const childUrl = page.url()
   const spaceUrl = childUrl.replace(/\/p\/[^/]+$/, '')
   await page.goto(spaceUrl, { waitUntil: 'networkidle' })
+  const childLink = page.locator('.tree a.it').filter({ hasText: 'Child' })
+  await childLink.click({ button: 'right' })
   await page
-    .locator('.tree a.it', { hasText: 'Child' })
-    .click({ button: 'right' })
-  await page.getByRole('button', { name: 'Move', exact: true }).click()
-  await page.getByRole('heading', { name: 'Move page' }).waitFor()
+    .locator('.menu')
+    .getByRole('button', { name: 'Move', exact: true })
+    .click()
+  const dialog = page.locator('.card').filter({ hasText: 'Move page' })
+  await dialog.getByRole('heading', { name: 'Move page' }).waitFor()
+  const moveOptions = await dialog.getByRole('button').allTextContents()
+  console.log(`move_options=${JSON.stringify(moveOptions)}`)
   armed = true
-  await page.getByRole('button', { name: 'Parent', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Parent', exact: true }).click()
   await page.getByRole('link', { name: /▾\s*Parent/ }).waitFor()
   armed = false
   console.log('nested_child_under_parent=true')
@@ -95,9 +100,13 @@ async function main() {
 
   await page.goto(spaceUrl, { waitUntil: 'networkidle' })
   await page
-    .locator('.tree a.it', { hasText: 'Parent' })
+    .locator('.tree a.it')
+    .filter({ hasText: 'Parent' })
     .click({ button: 'right' })
-  await page.getByRole('button', { name: 'Archive', exact: true }).click()
+  await page
+    .locator('.menu')
+    .getByRole('button', { name: 'Archive', exact: true })
+    .click()
   await page
     .locator('.tree a.it', { hasText: 'Child' })
     .waitFor({ state: 'detached' })
