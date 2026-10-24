@@ -51,6 +51,7 @@ async function walk(dir, out) {
   for (const entry of entries) {
     if (skipDirs.has(entry.name)) continue
     const path = join(dir, entry.name)
+    if (relative(root, path) === join('tests', 'fixtures', 'clipboard')) continue
     if (entry.isDirectory()) {
       await walk(path, out)
       continue

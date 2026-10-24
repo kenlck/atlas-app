@@ -1,26 +1,9 @@
 import { chromium, type BrowserContext, type Page } from 'playwright'
-import { sheetsHtml, sheetsPlain } from './table-date-states.ts'
+import { excelClipboard, sheetsClipboard } from './clipboard-fixtures.ts'
 import { assertLocalBaseUrl, submitAuthForm } from './verify-local.ts'
 
 const BASE_URL = assertLocalBaseUrl(process.env.BASE_URL ?? 'http://127.0.0.1:3000')
 const PASSWORD = process.env.VERIFY_PASSWORD ?? 'tables-dates-password'
-
-function excelHtml() {
-  const rows = [
-    ['E11', 'E12', 'E13', 'E14'],
-    ['E21', 'E22', 'E23', 'E24'],
-    ['E31', 'E32', 'E33', 'E34'],
-    ['E41', 'E42', 'E43', 'E44'],
-    ['E51', 'E52', 'E53', ''],
-  ]
-  const body = rows
-    .map(
-      (row) =>
-        `<tr>${row.map((cell) => `<td style="mso-number-format:General">${cell}</td>`).join('')}</tr>`,
-    )
-    .join('')
-  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body><!--StartFragment--><table><colgroup><col width="64" span="4"></colgroup><tbody>${body}</tbody></table><!--EndFragment--></body></html>`
-}
 
 async function pasteHtml(page: Page, html: string, plain: string) {
   await page.locator('.ProseMirror').evaluate((el, payload) => {
@@ -135,18 +118,28 @@ async function reloadRecipe(page: Page) {
   if (before.scroll !== after.scroll) throw new Error('tools row shifted the document scroll')
 
   await page.getByRole('button', { name: 'Row below' }).click()
+  console.log('action=add_row_below')
   await page.getByRole('button', { name: 'Column right' }).click()
+  console.log('action=add_column_right')
   const table = page.locator('.doc-editor table').first()
   await table.locator('tr').nth(2).locator('td, th').nth(2).click()
   await table.locator('tr').nth(3).locator('td, th').nth(3).click({ modifiers: ['Shift'] })
   await page.getByRole('button', { name: 'Merge cells' }).click()
+  await table.locator('[rowspan="2"], [colspan="2"]').first().waitFor()
+  console.log('action=merge_cells')
+  const headerBefore = await table.locator('tr').first().locator('th').count()
+  console.log(`header_row_before=${headerBefore > 0 ? 'on' : 'off'}`)
   await page.getByRole('button', { name: 'Header row' }).click()
-  await page.getByRole('button', { name: 'Header row' }).click()
+  const headerAfter = await table.locator('tr').first().locator('th').count()
+  console.log('action=toggle_header_off')
+  console.log(`header_row_after=${headerAfter > 0 ? 'on' : 'off'}`)
+  if (headerBefore === 0 || headerAfter !== 0) throw new Error('header row did not toggle off')
   const edge = table.locator('th, td').first()
   const box = await edge.boundingBox()
   if (!box) throw new Error('missing cell box')
   await page.mouse.move(box.x + box.width - 1, box.y + 12)
   await page.locator('.column-resize-handle').first().waitFor()
+  console.log('action=drag_resize')
   await page.mouse.down()
   await page.mouse.move(box.x + box.width + 90, box.y + 12, { steps: 6 })
   await page.mouse.up()
@@ -167,17 +160,21 @@ async function reloadRecipe(page: Page) {
   }
   await page.locator('.date-picker [data-date="2026-01-15"]').click()
   await settleSave(page)
+  console.log('save_confirmed=true')
   const first = await fingerprint(page)
   console.log(`before_reload=${JSON.stringify(first)}`)
   await page.reload({ waitUntil: 'networkidle' })
   await page.locator('.doc-editor table').first().waitFor()
   await page.locator('.date-chip').waitFor()
   const second = await fingerprint(page)
+  const headerReload = await page.locator('.doc-editor table tr').first().locator('th').count()
+  console.log(`header_row_reload=${headerReload > 0 ? 'on' : 'off'}`)
   console.log(`after_reload=${JSON.stringify(second)}`)
   const same = JSON.stringify(first) === JSON.stringify(second)
   console.log(`reload_exact_match=${same}`)
   console.log(`date_label=${second.label}`)
   console.log(`date_value=${second.date}`)
+  if (headerReload !== 0) throw new Error('header row came back after reload')
   if (!same) throw new Error('table or date changed across reload')
   if (second.date !== '2026-01-15' || second.label !== 'Jan 15, 2026') {
     throw new Error(`date chip is ${second.date} ${second.label}`)
@@ -318,34 +315,50 @@ async function countTable(page: Page, index: number) {
 }
 
 async function pasteRecipe(page: Page) {
+  const sheets = sheetsClipboard()
+  const excel = excelClipboard()
+  console.log(`sheets_fixture=${sheets.path}`)
+  console.log('sheets_clipboard=google-sheets')
+  console.log(`excel_fixture=${excel.path}`)
+  console.log('excel_clipboard=excel')
   await createPage(page)
   await page.locator('.doc-editor').click()
-  await pasteHtml(page, sheetsHtml(), sheetsPlain())
-  const sheets = await countTable(page, 0)
-  console.log(`sheets_rows=${sheets.length}`)
-  console.log(`sheets_cells=${JSON.stringify(sheets)}`)
-  if (sheets.length !== 5 || sheets.some((row) => row.length !== 4)) {
+  await pasteHtml(page, sheets.html, sheets.plain)
+  const sheetsCells = await countTable(page, 0)
+  console.log(`sheets_rows=${sheetsCells.length}`)
+  console.log(`sheets_cells=${JSON.stringify(sheetsCells)}`)
+  if (sheetsCells.length !== 5 || sheetsCells.some((row) => row.length !== 4)) {
     throw new Error('sheets paste lost rows or cells')
   }
-  if (sheets[0][0] !== 'S11' || sheets[4][2] !== 'S53' || sheets[4][3] !== '') {
+  if (sheetsCells[0][0] !== 'S11' || sheetsCells[4][2] !== 'S53' || sheetsCells[4][3] !== '') {
     throw new Error('sheets paste changed cell text')
   }
   await page.keyboard.press('ControlOrMeta+End')
   await page.keyboard.press('Enter')
-  await pasteHtml(
-    page,
-    excelHtml(),
-    ['E11', 'E12', 'E13', 'E14'].join('\t'),
-  )
-  const excel = await countTable(page, 1)
-  console.log(`excel_rows=${excel.length}`)
-  console.log(`excel_cells=${JSON.stringify(excel)}`)
-  if (excel.length !== 5 || excel.some((row) => row.length !== 4)) {
+  await pasteHtml(page, excel.html, excel.plain)
+  const excelCells = await countTable(page, 1)
+  console.log(`excel_rows=${excelCells.length}`)
+  console.log(`excel_cells=${JSON.stringify(excelCells)}`)
+  if (excelCells.length !== 5 || excelCells.some((row) => row.length !== 4)) {
     throw new Error('excel paste lost rows or cells')
   }
-  if (excel[0][0] !== 'E11' || excel[4][3] !== '') {
+  if (excelCells[0][0] !== 'E11' || excelCells[4][2] !== 'E53' || excelCells[4][3] !== '') {
     throw new Error('excel paste changed cell text')
   }
+  await settleSave(page)
+  console.log('save_confirmed=true')
+  const sheetsBefore = JSON.stringify(sheetsCells)
+  const excelBefore = JSON.stringify(excelCells)
+  await page.reload({ waitUntil: 'networkidle' })
+  const sheetsReloaded = await countTable(page, 0)
+  const excelReloaded = await countTable(page, 1)
+  console.log(`sheets_reload_cells=${JSON.stringify(sheetsReloaded)}`)
+  console.log(`excel_reload_cells=${JSON.stringify(excelReloaded)}`)
+  const sheetsReloadMatch = JSON.stringify(sheetsReloaded) === sheetsBefore
+  const excelReloadMatch = JSON.stringify(excelReloaded) === excelBefore
+  console.log(`sheets_reload_match=${sheetsReloadMatch}`)
+  console.log(`excel_reload_match=${excelReloadMatch}`)
+  if (!sheetsReloadMatch || !excelReloadMatch) throw new Error('pasted rows changed across reload')
   console.log('paste_rows_kept=true')
   console.log('paste_cells_kept=true')
 }

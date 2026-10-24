@@ -46,6 +46,7 @@ run_recipe() {
   )
   local code=$?
   set -e
+  echo "recipe_exit=${code}"
   echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
   return "$code"
 }
@@ -353,6 +354,7 @@ recipe_3_5() {
     1280-table-tools.png
     1280-table-selection.png
     1280-table-resize.png
+    1280-table-merged.png
     1280-table-wide.png
     390-table-wide.png
     1280-table-paste.png

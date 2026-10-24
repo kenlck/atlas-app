@@ -23,15 +23,16 @@ Preconditions:
 - Doctor reports `sign_in_status=200`.
 - The editor shows `#page-title` and `.doc-editor`.
 
-- **Reload.** Run `./scripts/verify-fail-conditions.sh 3-1`. The log shows `reload_exact_match=true`, `doc_shrunk_by_36=true`, and `date_value=2026-01-15`.
+- **Reload.** Run `./scripts/verify-fail-conditions.sh 3-1`. The log shows `action=add_row_below`, `action=add_column_right`, `action=merge_cells`, `action=toggle_header_off`, `action=drag_resize`, `save_confirmed=true`, `header_row_after=off`, `header_row_reload=off`, `reload_exact_match=true`, `doc_shrunk_by_36=true`, and `date_value=2026-01-15`.
 - **Overflow.** Run `./scripts/verify-fail-conditions.sh 3-2`. The log shows `ok=true` at 1280 and 390, and the table wrapper `scrollWidth` is greater than `clientWidth`.
 - **Time zone.** Run `./scripts/verify-fail-conditions.sh 3-3`. The log shows `same_day=true` and `stored_day_stable=true`.
-- **Paste.** Run `./scripts/verify-fail-conditions.sh 3-4`. The log shows `sheets_rows=5`, `excel_rows=5`, and `paste_cells_kept=true`.
-- **Baselines.** Run `./scripts/verify-fail-conditions.sh 3-5`. The log lists each table and date baseline with a byte size.
+- **Paste.** Run `./scripts/verify-fail-conditions.sh 3-4`. The log shows `sheets_clipboard=google-sheets`, `excel_clipboard=excel`, `sheets_rows=5`, `excel_rows=5`, `save_confirmed=true`, `sheets_reload_match=true`, `excel_reload_match=true`, and `paste_cells_kept=true`.
+- **Baselines.** Run `./scripts/verify-fail-conditions.sh 3-5`. The log lists each table and date baseline with a byte size, including `1280-table-merged.png`.
 
 ## Gotchas
 
 - The date label is built from the `YYYY-MM-DD` parts. It does not parse the value with `Date`.
-- Paste uses the table schema. There is no second HTML walker.
+- Paste uses the table schema. There is no second HTML walker. The Sheets and Excel HTML are the clipboard fixtures in `tests/fixtures/clipboard/`.
+- The date picker closes when the document scrolls or the window resizes.
 - Merge cells stays disabled until two or more cells are selected.
 - At 390 the toolbar check fails unless `scrollWidth` is greater than `clientWidth` before the scroll.

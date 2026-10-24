@@ -61,27 +61,33 @@ function Picker({ request }: { request: DatePickerRequest }) {
   }, [request])
 
   useLayoutEffect(() => {
-    const place = () => {
-      const anchor = request.chip.getBoundingClientRect()
-      const picker = pickerRef.current
-      if (!picker) return
-      const width = Math.min(252, window.innerWidth - 32)
-      setBox({ ...placePicker(anchor, width, picker.offsetHeight), width })
-    }
-    place()
-    const doc = document.querySelector('.doc')
-    doc?.addEventListener('scroll', place)
-    window.addEventListener('resize', place)
-    return () => {
-      doc?.removeEventListener('scroll', place)
-      window.removeEventListener('resize', place)
-    }
+    const picker = pickerRef.current
+    if (!picker) return
+    const anchor = request.chip.getBoundingClientRect()
+    const width = Math.min(252, window.innerWidth - 32)
+    setBox({ ...placePicker(anchor, width, picker.offsetHeight), width })
   }, [request, visible.year, visible.month])
 
   useEffect(() => {
     const button = pickerRef.current?.querySelector<HTMLButtonElement>(`[data-date="${cursor}"]`)
     button?.focus()
-  }, [cursor, visible.year, visible.month])
+    let armed = false
+    const arm = window.requestAnimationFrame(() => {
+      armed = true
+    })
+    const close = () => {
+      if (!armed) return
+      closeDatePicker(request.id)
+    }
+    const doc = document.querySelector('.doc')
+    doc?.addEventListener('scroll', close)
+    window.addEventListener('resize', close)
+    return () => {
+      window.cancelAnimationFrame(arm)
+      doc?.removeEventListener('scroll', close)
+      window.removeEventListener('resize', close)
+    }
+  }, [cursor, request, visible.year, visible.month])
 
   const pick = (iso: string) => {
     if (!parseIso(iso)) return

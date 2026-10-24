@@ -772,10 +772,10 @@ body {
 .doc-editor .tableWrapper {
   display: block;
   overflow-x: auto;
-  width: 0;
-  min-width: 100%;
+  width: fit-content;
   max-width: 100%;
   margin: 0 0 12px;
+  border: 1px solid var(--line);
   border-radius: 6px;
   scrollbar-width: thin;
   scrollbar-color: var(--line) transparent;
@@ -791,7 +791,10 @@ body {
 
 .doc-editor table {
   border-collapse: collapse;
-  margin: 0;
+  /* `hidden` wins the collapsed outer edge, including on a rowspan or
+     colspan cell. first/last-child cannot see that cell. The wrapper
+     border is the only outer line, so the corners stay continuous. */
+  border-style: hidden;
 }
 
 .doc-editor td,
@@ -812,6 +815,22 @@ body {
 .doc-editor th {
   background: var(--sidebar);
   font-weight: 600;
+}
+
+.doc-editor tr:first-child > * {
+  border-top-width: 0;
+}
+
+.doc-editor tr:last-child > * {
+  border-bottom-width: 0;
+}
+
+.doc-editor tr > *:first-child {
+  border-left-width: 0;
+}
+
+.doc-editor tr > *:last-child {
+  border-right-width: 0;
 }
 
 .doc-editor .selectedCell {

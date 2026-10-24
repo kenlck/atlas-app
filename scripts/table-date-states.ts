@@ -1,23 +1,6 @@
+import { inflateSync } from 'node:zlib'
 import type { Page } from 'playwright'
-
-const SHEETS_ROWS = [
-  ['S11', 'S12', 'S13', 'S14'],
-  ['S21', 'S22', 'S23', 'S24'],
-  ['S31', 'S32', 'S33', 'S34'],
-  ['S41', 'S42', 'S43', 'S44'],
-  ['S51', 'S52', 'S53', ''],
-]
-
-export function sheetsHtml() {
-  const rows = SHEETS_ROWS.map(
-    (row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`,
-  ).join('')
-  return `<html><body><!--StartFragment--><google-sheets-html-origin><meta charset="utf-8"><table xmlns="http://www.w3.org/1999/xhtml"><tbody>${rows}</tbody></table><!--EndFragment--></body></html>`
-}
-
-export function sheetsPlain() {
-  return SHEETS_ROWS.map((row) => row.join('\t')).join('\n')
-}
+import { sheetsClipboard } from './clipboard-fixtures.ts'
 
 async function frame(
   page: Page,
@@ -108,6 +91,7 @@ export async function captureTableDateStates(
   await page.locator('.table-tools').waitFor()
   await page.getByText('Notes', { exact: true }).click()
   await page.locator('.table-tools').waitFor({ state: 'hidden' })
+  await settleSave(page)
   await frame(page, '1280-table-default', shot)
 
   await page.locator('.doc-editor tbody tr').nth(1).locator('td, th').first().click()
@@ -134,12 +118,11 @@ export async function captureTableDateStates(
 
   await hoverColumnEdge(page, table.locator('th').first())
   await frame(page, '1280-table-resize', shot)
-  await page.mouse.move(20, 20)
+  await captureMergedPair(page, shot)
 
   await appendParagraph(page)
-  for (let index = 0; index < 14; index += 1) {
-    await page.keyboard.press('Enter')
-  }
+  await page.keyboard.type('West region inventory sits with the notes above.')
+  await page.keyboard.press('Enter')
   await page.getByRole('button', { name: 'Table', exact: true }).click()
   for (let index = 0; index < 5; index += 1) {
     await page.getByRole('button', { name: 'Column right' }).click()
@@ -152,7 +135,9 @@ export async function captureTableDateStates(
   await wideHeader.scrollIntoViewIfNeeded()
   await widenColumn(page, wideHeader, 420)
   const wideWrap = page.locator('.doc-editor .tableWrapper').nth(1)
-  await wide.scrollIntoViewIfNeeded()
+  await page
+    .getByText('West region inventory sits with the notes above.', { exact: true })
+    .evaluate((el) => el.scrollIntoView({ block: 'start' }))
   const wideScroll = await wideWrap.evaluate((el) => {
     el.scrollLeft = Math.round((el.scrollWidth - el.clientWidth) / 2)
     return {
@@ -169,9 +154,10 @@ export async function captureTableDateStates(
   await frame(page, '1280-table-wide', shot)
 
   await appendParagraph(page)
-  await page.keyboard.type('Pasted')
+  await page.keyboard.type('Pasted from Sheets.')
   await page.keyboard.press('Enter')
-  await pasteHtml(page, sheetsHtml(), sheetsPlain())
+  const sheets = sheetsClipboard()
+  await pasteHtml(page, sheets.html, sheets.plain)
   const pasted = page.locator('.doc-editor table').nth(2)
   await pasted.waitFor()
   const pastedRows = await pasted.locator('tr').count()
@@ -180,7 +166,9 @@ export async function captureTableDateStates(
   if (pastedRows !== 5 || pastedCells !== 4) {
     throw new Error(`pasted table is ${pastedRows}x${pastedCells}`)
   }
-  await pasted.scrollIntoViewIfNeeded()
+  await page
+    .getByText('Pasted from Sheets.', { exact: true })
+    .evaluate((el) => el.scrollIntoView({ block: 'start' }))
   await frame(page, '1280-table-paste', shot)
 
   await appendParagraph(page)
@@ -253,27 +241,227 @@ export async function captureTableDateStates(
     throw new Error('wide table does not scroll inside the column at 390')
   }
   await logPageOverflow(page, '390-table-wide')
+  await clearChipFocus(page, wideWrap)
   await frame(page, '390-table-wide', shot)
-
-  await settleSave(page)
   await page.setViewportSize({ width: 1280, height: 800 })
+}
+
+async function docScroll(page: Page) {
+  return page.locator('.doc').evaluate((el) => el.scrollTop)
+}
+
+async function setDocScroll(page: Page, top: number) {
+  await page.locator('.doc').evaluate((el, value) => {
+    el.scrollTop = value
+  }, top)
+}
+
+function paeth(left: number, up: number, upLeft: number) {
+  const estimate = left + up - upLeft
+  const leftDistance = Math.abs(estimate - left)
+  const upDistance = Math.abs(estimate - up)
+  const upLeftDistance = Math.abs(estimate - upLeft)
+  if (leftDistance <= upDistance && leftDistance <= upLeftDistance) return left
+  if (upDistance <= upLeftDistance) return up
+  return upLeft
+}
+
+function decodePng(png: Buffer) {
+  let offset = 8
+  let width = 0
+  let height = 0
+  let colorType = 0
+  const parts: Buffer[] = []
+  while (offset + 8 <= png.length) {
+    const length = png.readUInt32BE(offset)
+    const type = png.toString('ascii', offset + 4, offset + 8)
+    const data = png.subarray(offset + 8, offset + 8 + length)
+    if (type === 'IHDR') {
+      width = data.readUInt32BE(0)
+      height = data.readUInt32BE(4)
+      colorType = data[9]
+    } else if (type === 'IDAT') {
+      parts.push(data)
+    } else if (type === 'IEND') {
+      break
+    }
+    offset += 12 + length
+  }
+  const channels = colorType === 6 ? 4 : colorType === 2 ? 3 : 0
+  if (!channels || !width || !height) throw new Error(`unsupported png color ${colorType}`)
+  const raw = inflateSync(Buffer.concat(parts))
+  const stride = width * channels
+  const rows: Buffer[] = []
+  let src = 0
+  for (let y = 0; y < height; y += 1) {
+    const filter = raw[src]
+    src += 1
+    const row = Buffer.from(raw.subarray(src, src + stride))
+    src += stride
+    const prev = rows[y - 1]
+    if (filter === 1 || filter === 3 || filter === 4) {
+      for (let index = 0; index < stride; index += 1) {
+        const left = index >= channels ? row[index - channels] : 0
+        const up = prev ? prev[index] : 0
+        const upLeft = prev && index >= channels ? prev[index - channels] : 0
+        const predictor =
+          filter === 1 ? left : filter === 3 ? Math.floor((left + up) / 2) : paeth(left, up, upLeft)
+        row[index] = (row[index] + predictor) & 255
+      }
+    } else if (filter === 2) {
+      for (let index = 0; index < stride; index += 1) {
+        row[index] = (row[index] + (prev ? prev[index] : 0)) & 255
+      }
+    } else if (filter !== 0) {
+      throw new Error(`png filter ${filter}`)
+    }
+    rows.push(row)
+  }
+  return { width, height, channels, rows }
+}
+
+function roundBox(box: { x: number; y: number; width: number; height: number }) {
+  const x = Math.round(box.x)
+  const y = Math.round(box.y)
+  const right = Math.round(box.x + box.width)
+  const bottom = Math.round(box.y + box.height)
+  return { x, y, width: right - x, height: bottom - y }
+}
+
+function pixelDiff(
+  before: ReturnType<typeof decodePng>,
+  after: ReturnType<typeof decodePng>,
+  box: { x: number; y: number; width: number; height: number },
+) {
+  let diff = 0
+  for (let y = 0; y < box.height; y += 1) {
+    const top = before.rows[box.y + y]
+    const bottom = after.rows[box.y + y]
+    if (!top || !bottom) throw new Error('table box is outside the screenshot')
+    for (let x = 0; x < box.width; x += 1) {
+      const left = (box.x + x) * before.channels
+      const right = (box.x + x) * after.channels
+      if (
+        top[left] !== bottom[right] ||
+        top[left + 1] !== bottom[right + 1] ||
+        top[left + 2] !== bottom[right + 2]
+      ) {
+        diff += 1
+      }
+    }
+  }
+  return diff
+}
+
+async function grab(page: Page) {
+  return page.screenshot({ animations: 'disabled', caret: 'hide', scale: 'css' })
+}
+
+// The title line box is 28px * 1.2, so a table below it sits on a fractional
+// pixel. The 6px corner then antialiases a few channels differently after a
+// reload even when the layout rect matches. Move the wrapper onto the pixel
+// grid for both frames so the bounding-box diff is exact.
+async function snapTable(table: ReturnType<Page['locator']>) {
+  await table.evaluate((el) => {
+    const wrap = el.closest('.tableWrapper')
+    const target = wrap instanceof HTMLElement ? wrap : el
+    target.style.transform = ''
+    const rect = target.getBoundingClientRect()
+    const dx = Math.round(rect.left) - rect.left
+    const dy = Math.round(rect.top) - rect.top
+    if (dx !== 0 || dy !== 0) target.style.transform = `translate(${dx}px, ${dy}px)`
+  })
+}
+
+async function focusFirstBodyCell(page: Page) {
+  await page.locator('.ProseMirror.doc-editor').waitFor()
+  const table = page.locator('.doc-editor table').first()
+  await table.locator('tr').nth(1).locator('td, th').first().click()
+  await page.locator('.table-tools').waitFor()
+  return table
+}
+
+async function captureMergedPair(
+  page: Page,
+  shot: (name: string) => Promise<void>,
+) {
+  await page.mouse.move(20, 20)
+  await focusFirstBodyCell(page)
+  await settleSave(page)
+  console.log('merged_save_confirmed=true')
+  const scroll = await docScroll(page)
+  await setDocScroll(page, scroll)
+  const table = page.locator('.doc-editor table').first()
+  await table.locator('[rowspan="2"]').waitFor()
+  await snapTable(table)
+  const beforeBox = await table.boundingBox()
+  if (!beforeBox) throw new Error('merged table has no box')
+  await frame(page, '1280-table-merged', shot)
+  const beforePng = decodePng(await grab(page))
   await page.reload({ waitUntil: 'networkidle' })
   await page.locator('.doc-editor table').first().waitFor()
-  await page.locator('.doc').evaluate((el) => {
-    el.scrollTop = 0
-  })
-  const reloaded = page.locator('.doc-editor table').first()
-  await reloaded.locator('[rowspan="2"]').waitFor()
-  await reloaded.locator('tbody tr').nth(1).locator('td, th').nth(0).click()
-  await reloaded.locator('tbody tr').nth(2).locator('td, th').nth(1).click({ modifiers: ['Shift'] })
-  await page.waitForFunction(() => {
-    const button = [...document.querySelectorAll('button')].find(
-      (item) => item.textContent?.trim() === 'Merge cells',
-    )
-    return Boolean(button && !button.disabled)
-  })
+  await page.locator('.doc-editor [rowspan="2"]').waitFor()
+  await focusFirstBodyCell(page)
+  await setDocScroll(page, scroll)
+  await snapTable(page.locator('.doc-editor table').first())
+  const before = roundBox(beforeBox)
+  let afterBox = await page.locator('.doc-editor table').first().boundingBox()
+  if (!afterBox) throw new Error('reloaded table has no box')
+  let after = roundBox(afterBox)
+  for (let attempt = 0; attempt < 4 && after.y !== before.y; attempt += 1) {
+    await setDocScroll(page, (await docScroll(page)) + (after.y - before.y))
+    afterBox = await page.locator('.doc-editor table').first().boundingBox()
+    if (!afterBox) throw new Error('reloaded table has no box')
+    after = roundBox(afterBox)
+  }
+  const same =
+    before.x === after.x &&
+    before.y === after.y &&
+    before.width === after.width &&
+    before.height === after.height
+  console.log(`table_bbox=${JSON.stringify(before)}`)
+  console.log(`table_bbox_reload=${JSON.stringify(after)}`)
+  console.log(`table_bbox_match=${same}`)
   await frame(page, '1280-table-reload', shot)
-  await page.setViewportSize({ width: 1280, height: 800 })
+  const afterPng = decodePng(await grab(page))
+  if (!same) throw new Error('reloaded table box moved')
+  const diff = pixelDiff(beforePng, afterPng, before)
+  console.log(`table_bbox_pixel_diff=${diff}`)
+  if (diff !== 0) throw new Error(`table bbox pixel diff ${diff}`)
+}
+
+async function clearChipFocus(page: Page, wrap: ReturnType<Page['locator']>) {
+  const scrollLeft = await wrap.evaluate((el) => el.scrollLeft)
+  const scrollTop = await docScroll(page)
+  await page.locator('.doc-editor').evaluate((el) => {
+    const host = el.parentElement
+    if (!host) throw new Error('editor host missing')
+    const key = Object.keys(host).find((name) => name.startsWith('__reactFiber'))
+    if (!key) throw new Error('editor fiber missing')
+    let fiber = (host as unknown as Record<string, any>)[key]
+    let editor = null
+    while (fiber) {
+      const props = fiber.memoizedProps
+      if (props && props.editor && props.editor.view) {
+        editor = props.editor
+        break
+      }
+      fiber = fiber.return
+    }
+    if (!editor) throw new Error('editor missing')
+    const chip = el.querySelector('.date-chip')
+    if (chip instanceof HTMLElement) chip.blur()
+    const wide = el.querySelectorAll('table')[1]
+    const cell = wide?.querySelector('td, th')
+    if (cell) editor.commands.setTextSelection(editor.view.posAtDOM(cell, 0))
+    const active = document.activeElement
+    if (active instanceof HTMLElement) active.blur()
+  })
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(undefined))))
+  await wrap.evaluate((el, left) => {
+    el.scrollLeft = left
+  }, scrollLeft)
+  await setDocScroll(page, scrollTop)
 }
 
 async function logPageOverflow(page: Page, label: string) {

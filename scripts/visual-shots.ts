@@ -85,6 +85,7 @@ async function shot(page: Page, width: number, screen: string, state: string) {
     fullPage: false,
     scale: 'css',
     animations: 'disabled',
+    caret: 'hide',
   })
   const png = pngSize(await readFile(path))
   if (png.width !== width || png.height !== size.height) {
