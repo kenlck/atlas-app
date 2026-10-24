@@ -410,6 +410,8 @@ async function fail1(dir: string) {
     'POST',
     '-H',
     'content-type: application/json',
+    '-H',
+    `origin: ${BASE_URL}`,
     '--data-binary',
     `@${savePayload}`,
     `${BASE_URL}/api/pages/save`,
@@ -519,7 +521,11 @@ async function fail2(dir: string) {
   const payload = join(dir, 'anon-save.json')
   await writeFile(
     payload,
-    JSON.stringify({ pageId: 'missing', title: 'x', body: {} }),
+    JSON.stringify({
+      pageId: 'missing',
+      title: 'x',
+      body: { type: 'doc', content: [] },
+    }),
   )
   const signedOutApi = await dumpCurl('signed-out page API', [
     '-D',
@@ -530,6 +536,8 @@ async function fail2(dir: string) {
     'POST',
     '-H',
     'content-type: application/json',
+    '-H',
+    `origin: ${BASE_URL}`,
     '--data-binary',
     `@${payload}`,
     `${BASE_URL}/api/pages/save`,
@@ -1037,7 +1045,11 @@ async function fail5g(dir: string) {
   const savePayload = join(dir, 'locked-save.json')
   await writeFile(
     savePayload,
-    JSON.stringify({ pageId: 'missing-page', title: 'x', body: {} }),
+    JSON.stringify({
+      pageId: 'missing-page',
+      title: 'x',
+      body: { type: 'doc', content: [] },
+    }),
   )
   const lockedSave = await dumpCurl('locked page API', [
     '-D',
@@ -1050,6 +1062,8 @@ async function fail5g(dir: string) {
     'POST',
     '-H',
     'content-type: application/json',
+    '-H',
+    `origin: ${BASE_URL}`,
     '--data-binary',
     `@${savePayload}`,
     `${BASE_URL}/api/pages/save`,

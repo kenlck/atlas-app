@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import { requestWithClientIp } from './client-ip'
 import { getAuth } from './auth'
 import { getDb } from './db'
 import { lockedAuthPathAllowed } from './gate'
@@ -17,9 +18,10 @@ async function sessionIsLocked(request: Request) {
   return Boolean(rows[0]?.mustChangePassword)
 }
 
-export async function handleAuthRequest(request: Request) {
-  if (await sessionIsLocked(request)) {
-    const path = new URL(request.url).pathname
+export async function handleAuthRequest(request: Request, socketIp?: string | null) {
+  const scoped = requestWithClientIp(request, socketIp)
+  if (await sessionIsLocked(scoped)) {
+    const path = new URL(scoped.url).pathname
     if (!lockedAuthPathAllowed(path)) {
       return new Response(JSON.stringify({ message: 'Password change required' }), {
         status: 403,
@@ -27,5 +29,5 @@ export async function handleAuthRequest(request: Request) {
       })
     }
   }
-  return getAuth().handler(request)
+  return getAuth().handler(scoped)
 }

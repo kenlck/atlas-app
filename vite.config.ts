@@ -13,6 +13,7 @@ const config = defineConfig({
     devtools(),
     nitro({
       preset: 'node-server',
+      plugins: ['src/server/production-env.ts'],
       rollupConfig: { external: [/^@sentry\//] },
     }),
     tailwindcss(),

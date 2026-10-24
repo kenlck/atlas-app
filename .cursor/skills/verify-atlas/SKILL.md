@@ -35,7 +35,7 @@ docker run -d --name atlas-verify --network host \
 
 Ready means `curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/sign-in` prints `200`. A database health check is not enough. The sign-in page has to answer.
 
-`ADMIN_API_SECRET` must be at least 32 characters or the reset route returns an empty 404. Leave it unset or empty for recipe `5a`. Recipe `5e` sets a 12-character secret and a 31-character secret.
+`ADMIN_API_SECRET` must be at least 32 characters or the reset route returns an empty 404. Production refuses to boot when it is missing or empty: recipe `5a` expects that exit. Recipe `5e` sets a 12-character secret and a 31-character secret and still returns an empty 404.
 
 Teardown is in Cleanup. Do not point `DATABASE_URL` at a database you need to keep. Recipe `all` drops the `public` schema.
 
