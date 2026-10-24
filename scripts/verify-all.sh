@@ -16,6 +16,7 @@ fi
 
 SHA=$(git rev-parse HEAD)
 ART="artifacts/${SHA}"
+rm -rf "$ART" || exit 1
 LOG="${ART}/logs"
 mkdir -p "$LOG"
 
@@ -274,7 +275,7 @@ run_baselines() {
 }
 
 run_side_by_side() {
-  git fetch origin main
+  git fetch origin main || return 1
   BASELINE_FROM=origin/main pnpm exec tsx scripts/baseline-side-by-side.ts
 }
 
@@ -354,7 +355,10 @@ run_step fail6 ./scripts/verify-fail-conditions.sh 6
 run_step screenshots pnpm visual-shots
 run_step baselines run_baselines
 run_step baseline-side-by-side run_side_by_side
-sweep_artifacts
+sweep_artifacts || {
+  echo "sweep_artifacts failed" >&2
+  exit 1
+}
 
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "tree became dirty" >&2
@@ -362,4 +366,4 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
-echo "verify_all sha=${SHA} result=pass"
+echo "verify_all sha=${SHA} result=pass" | tee "${ART}/result.txt"
