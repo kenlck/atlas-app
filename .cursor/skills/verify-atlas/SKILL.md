@@ -60,10 +60,17 @@ Prefer the recipe script. It is the maintained check for issue 1.
 ./scripts/verify-fail-conditions.sh 5h
 ./scripts/verify-fail-conditions.sh forgot-password
 ./scripts/verify-fail-conditions.sh design-lock
+./scripts/verify-fail-conditions.sh 3-1
+./scripts/verify-fail-conditions.sh 3-2
+./scripts/verify-fail-conditions.sh 3-3
+./scripts/verify-fail-conditions.sh 3-4
+./scripts/verify-fail-conditions.sh 3-5
 ./scripts/verify-fail-conditions.sh 6
 ```
 
 Each recipe prints `START <utc> sha=<head>` and `END <utc> sha=<head>`. A non-zero exit means that check failed. `5d` reads `docker logs` for its own container and greps the full `admin_audit` row. `5f` and `5g` grep that audit row for the secret, the temporary password, and the new password. `5a`, `5e`, `5b`, `5c`, `5d`, `5h`, and `6` start their own containers from `ATLAS_IMAGE` (default `atlas-app`). `5h` uses a fresh process so the in-memory rate limit starts at zero. `5f` performs two resets on the shared app. `5g` performs one more. That stays under the limit of five. Recipe `5b` does not time requests. Constant-time comparison is the unit test `rejects a wrong secret, returns a temp password once, locks the user, and audits` in `tests/admin-reset.test.ts`.
+
+Issue 3 recipes drive the page editor. `3-1` changes rows, columns, a merge, the header, a column width, and a date, then reloads and compares the rendered table and chip. `3-2` checks an 8-column table at 1280 and 390: the page `scrollWidth` stays within `innerWidth`, and the table wrapper scrolls inside the column. `3-3` inserts a date in Pacific/Kiritimati and reads it in Pacific/Midway, with the clock at `2026-03-01T02:00:00Z`. `3-4` pastes a Sheets table and an Excel table and counts rows and cells. `3-5` checks that the table and date baseline files are on disk. `design-lock` prints `tokens_result` from the token lint exit code and `baseline_count` from the PNG files in `tests/visual/baselines`.
 
 Screenshots, one command:
 
@@ -71,9 +78,9 @@ Screenshots, one command:
 BASE_URL=http://127.0.0.1:3000 pnpm visual-shots
 ```
 
-PNGs land in `artifacts/<head sha>/`. Loading shots hold a `_serverFn` request open. Error shots fulfill that request with HTTP 500. The 390 run opens the drawer, scrolls the toolbar sideways, and prints `scrollWidth` and `innerWidth`. If `scrollWidth` is greater than `innerWidth`, the command exits non-zero.
+PNGs land in `artifacts/<head sha>/`. Loading shots hold a `_serverFn` request open. Error shots fulfill that request with HTTP 500. The set includes `1280-page-default` and `1280-space-error`. The 390 run opens the drawer, asserts the toolbar overflows (`scrollWidth` greater than `clientWidth`), scrolls it, and prints `scrollWidth` and `innerWidth`. If the toolbar does not overflow, or the page `scrollWidth` is greater than `innerWidth`, the command exits non-zero.
 
-Screenshot baselines use `pnpm verify:baselines` and run only inside `mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea` with `ATLAS_PLAYWRIGHT_IMAGE` set to that same reference. The clock is frozen at `2026-01-15T12:00:00Z`, the user is `Ada Baseline`, and animations are disabled. There are 12 baselines. The empty-page shot is not one of them.
+Screenshot baselines use `pnpm verify:baselines` and run only inside `mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea` with `ATLAS_PLAYWRIGHT_IMAGE` set to that same reference. The clock is frozen at `2026-01-15T12:00:00Z`, the user is `Ada Baseline`, and animations are disabled. Baseline files live in `tests/visual/baselines`. `design-lock` counts them. The empty-page shot is not one of them. Table and date states are in that directory and in the side-by-side review set.
 
 Stable handles: headings `Create an account`, `Sign in`, `Forgot your password?`, `Set a new password`, `No pages yet`, `Move page`, `Couldn't load this page.`, `Page not found.`. Buttons `Create account`, `Sign in`, `+ New page`, `Open pages`, `Move`, `Archive`, `Retry`, `Try again`, `Save password`. Fields `#name`, `#email`, `#password`, `#confirm`, `#page-title`. Editor `.doc-editor`. Banner `.retry` reads `Couldn't save.` plus `Retry`.
 

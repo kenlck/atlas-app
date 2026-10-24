@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { expect, test, type Request } from '@playwright/test'
+import { captureTableDateStates } from '../../scripts/table-date-states.ts'
 import { submitAuthForm } from '../../scripts/verify-local.ts'
 
 const PINNED =
@@ -195,6 +196,10 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
   await page.getByText("Couldn't save.").waitFor()
   await shot('page-retry')
   mode = 'pass'
+
+  await captureTableDateStates(page, async (name) => {
+    await shot(name)
+  })
 
   await page.getByRole('button', { name: 'Sign out' }).click()
   await page.getByRole('heading', { name: 'Sign in' }).waitFor()

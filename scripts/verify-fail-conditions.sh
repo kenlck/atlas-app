@@ -323,14 +323,58 @@ recipe_forgot() {
   pnpm exec tsx scripts/forgot-password-note.ts
 }
 
+recipe_editor() {
+  pnpm exec tsx scripts/editor-tables-dates.ts "$1"
+}
+
 recipe_design_lock() {
+  local lint_code=0
+  set +e
   node scripts/lint-tokens.mjs
-  echo "tokens_script=scripts/lint-tokens.mjs"
-  echo "tokens_result=pass"
-  echo "baseline_count=12"
-  echo "baselines=sign-in-empty sign-in-error sign-up-empty sign-up-error forgot-password set-password-error space-empty space-loading page-default page-loading page-error page-retry"
-  echo "page_empty=dropped"
-  echo "sarah_visual=pending"
+  lint_code=$?
+  set -e
+  if [[ "$lint_code" -eq 0 ]]; then
+    echo "tokens_result=pass"
+  else
+    echo "tokens_result=fail"
+  fi
+  local count
+  count=$(find tests/visual/baselines -type f -name '*.png' | wc -l | tr -d ' ')
+  echo "baseline_count=${count}"
+  find tests/visual/baselines -type f -name '*.png' -printf '%f\n' | sort | while read -r name; do
+    echo "baseline=${name}"
+  done
+  return "$lint_code"
+}
+
+recipe_3_5() {
+  local names=(
+    1280-table-default.png
+    1280-table-tools.png
+    1280-table-selection.png
+    1280-table-resize.png
+    1280-table-wide.png
+    390-table-wide.png
+    1280-table-paste.png
+    1280-date-chip.png
+    1280-date-chip-focus.png
+    1280-date-picker.png
+    390-date-picker.png
+    1280-table-reload.png
+  )
+  local missing=0
+  local name bytes
+  for name in "${names[@]}"; do
+    if [[ ! -s "tests/visual/baselines/${name}" ]]; then
+      echo "baseline_missing=${name}"
+      missing=1
+      continue
+    fi
+    bytes=$(wc -c < "tests/visual/baselines/${name}" | tr -d ' ')
+    echo "baseline=${name} bytes=${bytes}"
+  done
+  echo "table_date_baselines_missing=${missing}"
+  return "$missing"
 }
 
 recipe_5h() {
@@ -491,6 +535,11 @@ case "${1:-}" in
   5h) run_recipe recipe_5h ;;
   forgot-password) run_recipe recipe_forgot ;;
   design-lock) run_recipe recipe_design_lock ;;
+  3-1) run_recipe recipe_editor 3-1 ;;
+  3-2) run_recipe recipe_editor 3-2 ;;
+  3-3) run_recipe recipe_editor 3-3 ;;
+  3-4) run_recipe recipe_editor 3-4 ;;
+  3-5) run_recipe recipe_3_5 ;;
   6|fail6) run_recipe recipe_6 ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
@@ -500,7 +549,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|6|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|6|all]" >&2
     exit 2
     ;;
 esac

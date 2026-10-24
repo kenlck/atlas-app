@@ -165,6 +165,11 @@ jobs:
           run_one fail5g ./scripts/verify-fail-conditions.sh 5g
           run_one forgot-password ./scripts/verify-fail-conditions.sh forgot-password
           run_one design-lock ./scripts/verify-fail-conditions.sh design-lock
+          run_one fail3-1 ./scripts/verify-fail-conditions.sh 3-1
+          run_one fail3-2 ./scripts/verify-fail-conditions.sh 3-2
+          run_one fail3-3 ./scripts/verify-fail-conditions.sh 3-3
+          run_one fail3-4 ./scripts/verify-fail-conditions.sh 3-4
+          run_one fail3-5 ./scripts/verify-fail-conditions.sh 3-5
           run_one fail6 ./scripts/verify-fail-conditions.sh 6
       - name: Screenshots
         run: |
