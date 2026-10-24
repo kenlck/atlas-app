@@ -18,8 +18,26 @@ function swapIds(body: string, pageId: string, parentId: string) {
 
 async function createNamed(page: Page, title: string) {
   const previous = page.url()
+  const previousTitle = await page
+    .locator('#page-title')
+    .inputValue()
+    .catch(() => '')
   await page.getByRole('button', { name: '+ New page' }).last().click()
-  await page.waitForFunction((href) => window.location.href !== href, previous)
+  // The address changes before the new editor replaces the previous one.
+  // Filling the input that still shows the previous title saves onto that page.
+  await page.waitForFunction(
+    ({ href, priorTitle }) => {
+      const priorId = new URL(href).pathname.split('/').pop()
+      const nextId = window.location.pathname.split('/').pop()
+      if (!nextId || nextId === priorId) return false
+      const field = document.getElementById(
+        'page-title',
+      ) as HTMLInputElement | null
+      if (!field || field.value !== 'Untitled') return false
+      return priorTitle === '' || field.value !== priorTitle
+    },
+    { href: previous, priorTitle: previousTitle },
+  )
   const input = page.locator('#page-title')
   await input.waitFor()
   const saved = page.waitForResponse(
