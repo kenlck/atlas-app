@@ -207,12 +207,19 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
 
   await page.getByRole('button', { name: 'Sign out' }).click()
   await page.getByRole('heading', { name: 'Sign in' }).waitFor()
+  // Sign out loads /sign-in from the server. The heading is in that HTML
+  // before React hydrates the controlled inputs. A fill before hydration
+  // is wiped back to an empty email, and the click never leaves the form.
+  await page.waitForFunction(() => {
+    const field = document.getElementById('email')
+    if (!field) return false
+    return Object.getOwnPropertyNames(field).some((key) =>
+      key.startsWith('__reactProps$'),
+    )
+  })
   mode = 'hold-tree'
   await page.locator('#email').fill(EMAIL)
   await page.locator('#password').fill(PASSWORD)
-  await page.waitForFunction(() =>
-    Object.prototype.hasOwnProperty.call(window, '__TSR_ROUTER__'),
-  )
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.locator('.tree .skel').first().waitFor()
   await shot('space-loading')
