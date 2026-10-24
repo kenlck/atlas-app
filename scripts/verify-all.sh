@@ -119,22 +119,12 @@ pick_port() {
 }
 
 prepare_database() {
+  # Always use the throwaway container. An inherited URL, local or not, is
+  # dropped here. The old guard exited 2 for a remote URL and then returned 0,
+  # so the unchecked status still exported that URL.
   if [[ -n "${DATABASE_URL:-}" ]]; then
-    python3 - "$DATABASE_URL" << 'PY'
-import sys
-from urllib.parse import urlparse
-
-parsed = urlparse(sys.argv[1])
-host = (parsed.hostname or "").lower()
-if parsed.scheme not in {"postgres", "postgresql"} or host not in {"localhost", "127.0.0.1", "::1"}:
-    sys.stderr.write("refusing non-local DATABASE_URL\n")
-    raise SystemExit(2)
-print("postgres=provided")
-print(f"database_host={host}")
-print(f"database_port={parsed.port or 5432}")
-PY
-    export TEST_DATABASE_URL="$DATABASE_URL"
-    return 0
+    echo "inherited_database_url=ignored"
+    unset DATABASE_URL
   fi
 
   local port password ready="false" i lines
