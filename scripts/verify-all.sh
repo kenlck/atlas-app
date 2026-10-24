@@ -235,7 +235,7 @@ ensure_psql() {
 
 build_image() {
   echo "CMD docker build -t atlas-app -t atlas-app:${SHA} ."
-  docker build -t atlas-app -t "atlas-app:${SHA}" .
+  docker build -t atlas-app -t "atlas-app:${SHA}" . || return 1
   export ATLAS_IMAGE="atlas-app:${SHA}"
 }
 
