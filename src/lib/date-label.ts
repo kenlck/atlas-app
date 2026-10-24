@@ -30,13 +30,20 @@ const MONTH_NAMES = [
 
 export type IsoParts = { year: number; month: number; day: number }
 
+function daysInMonth(year: number, month: number) {
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const lengths = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  return lengths[month - 1] ?? 0
+}
+
 export function parseIso(iso: string): IsoParts | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
   if (!match) return null
   const year = Number(match[1])
   const month = Number(match[2])
   const day = Number(match[3])
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null
+  if (month < 1 || month > 12) return null
+  if (day < 1 || day > daysInMonth(year, month)) return null
   return { year, month, day }
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDateLabel, shiftIso, todayIso } from '../src/lib/date-label'
+import { formatDateLabel, parseIso, shiftIso, todayIso } from '../src/lib/date-label'
 
 describe('date labels', () => {
   it('formats a stored day from its parts', () => {
@@ -17,5 +17,19 @@ describe('date labels', () => {
   it('reads today from the local calendar parts', () => {
     expect(todayIso(new Date(2026, 0, 15, 23, 30))).toBe('2026-01-15')
     expect(shiftIso('2026-03-01', -1)).toBe('2026-02-28')
+  })
+
+  it('rejects dates that are not real calendar days', () => {
+    expect(parseIso('2026-02-31')).toBeNull()
+    expect(parseIso('2026-04-31')).toBeNull()
+    expect(parseIso('2026-02-29')).toBeNull()
+    expect(parseIso('1900-02-29')).toBeNull()
+    expect(parseIso('2026-13-01')).toBeNull()
+    expect(parseIso('2026-00-10')).toBeNull()
+    expect(parseIso('2026-02-00')).toBeNull()
+    expect(formatDateLabel('2026-02-31')).toBe('2026-02-31')
+    expect(parseIso('2024-02-29')).toEqual({ year: 2024, month: 2, day: 29 })
+    expect(parseIso('2000-02-29')).toEqual({ year: 2000, month: 2, day: 29 })
+    expect(parseIso('2026-02-28')).toEqual({ year: 2026, month: 2, day: 28 })
   })
 })
