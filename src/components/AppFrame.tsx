@@ -99,7 +99,24 @@ export function AppFrame({
         <button className="menu-btn" type="button" aria-label="Open pages" onClick={() => setDrawer(true)}>
           ☰
         </button>
-        <Outlet />
+        {error ? (
+          <>
+            <div className="top">
+              <b>Pages</b>
+            </div>
+            <div className="nf">
+              <h1>Couldn't load this space.</h1>
+              <p className="empty">Something went wrong.</p>
+              {onRetry ? (
+                <button type="button" className="btn secondary" onClick={onRetry}>
+                  Try again
+                </button>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <Outlet />
+        )}
       </div>
       {moving ? (
         <MoveDialog tree={tree} pageId={moving} onCancel={() => setMoving(null)} onMove={(parentId) => void move(parentId)} />

@@ -1,6 +1,10 @@
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import StarterKit from '@tiptap/starter-kit'
+import { Table } from '@tiptap/extension-table'
+import TableCell from '@tiptap/extension-table-cell'
+import TableHeader from '@tiptap/extension-table-header'
+import TableRow from '@tiptap/extension-table-row'
 import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import Underline from '@tiptap/extension-underline'
@@ -11,6 +15,9 @@ import type { Json } from '#/lib/body-text'
 import type { PageView } from '#/lib/pages'
 import { relativeTime } from '#/lib/relative-time'
 import { savePageFn } from '#/server/fns'
+import { DateChip } from '#/lib/date-chip'
+import { TableCursor } from '#/lib/table-cursor'
+import { DatePickerHost } from './DatePicker'
 import { EditorToolbar } from './EditorToolbar'
 
 type SaveState = 'saved' | 'saving' | 'error'
@@ -90,6 +97,17 @@ export function PageEditor({ page }: { page: PageView }) {
       Link.configure({ openOnClick: false, autolink: true }),
       TaskList,
       TaskItem.configure({ nested: true }),
+      Table.configure({
+        resizable: true,
+        handleWidth: 4,
+        cellMinWidth: 80,
+        lastColumnResizable: true,
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      DateChip,
+      TableCursor,
       Placeholder.configure({ placeholder: 'Start writing' }),
     ],
     content: page.body as object,
@@ -156,6 +174,7 @@ export function PageEditor({ page }: { page: PageView }) {
         </div>
       </div>
       <EditorToolbar editor={editor} />
+      <DatePickerHost />
       {saveState === 'error' ? (
         <div className="retry">
           Couldn't save.

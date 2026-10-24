@@ -13,4 +13,21 @@ describe('tiptapToText', () => {
       }),
     ).toBe('Hello World')
   })
+
+  it('labels a date chip from its stored day', () => {
+    expect(
+      tiptapToText({
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'Due' },
+              { type: 'dateChip', attrs: { date: '2026-01-15' } },
+            ],
+          },
+        ],
+      }),
+    ).toBe('Due Jan 15, 2026')
+  })
 })

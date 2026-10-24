@@ -1,4 +1,4 @@
-import { createFileRoute, getRouteApi, notFound, redirect } from '@tanstack/react-router'
+import { createFileRoute, getRouteApi, notFound, redirect, useRouter } from '@tanstack/react-router'
 import { AppFrame } from '#/components/AppFrame'
 import { fetchPageTree } from '#/server/fns'
 
@@ -26,6 +26,7 @@ export const Route = createFileRoute('/_app/s/$spaceId')({
   pendingMinMs: 0,
   component: SpaceLayout,
   pendingComponent: SpacePending,
+  errorComponent: SpaceError,
   notFoundComponent: () => (
     <div className="nf">
       <h1>Page not found.</h1>
@@ -42,6 +43,24 @@ function SpaceLayout() {
       spaceName={data.space.name}
       userName={session.user.name}
       tree={data.tree}
+    />
+  )
+}
+
+function SpaceError() {
+  const router = useRouter()
+  const { session } = appRoute.useRouteContext()
+  const { spaceId } = Route.useParams()
+  return (
+    <AppFrame
+      spaceId={spaceId}
+      spaceName={session.user.name}
+      userName={session.user.name}
+      tree={[]}
+      error="Couldn't load this space."
+      onRetry={() => {
+        void router.invalidate()
+      }}
     />
   )
 }
