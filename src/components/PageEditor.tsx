@@ -32,11 +32,11 @@ function readDraft(pageId: string): { title: string; body: Json } | null {
   try {
     const raw = sessionStorage.getItem(draftKey(pageId))
     if (!raw) return null
-    const parsed = JSON.parse(raw) as { title?: unknown; body?: unknown }
-    if (!parsed || typeof parsed.title !== 'string' || parsed.body == null) {
-      return null
-    }
-    return { title: parsed.title, body: parsed.body as Json }
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return null
+    const record = parsed as { title?: unknown; body?: unknown }
+    if (typeof record.title !== 'string' || record.body == null) return null
+    return { title: record.title, body: record.body as Json }
   } catch {
     return null
   }

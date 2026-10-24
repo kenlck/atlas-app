@@ -4,7 +4,8 @@ import { emptyDoc, tiptapToText, type Json } from './body-text'
 import { getDb } from './db'
 import { HttpError, notFound } from './http'
 import { newId } from './ids'
-import { peopleForBody, type MentionPerson } from './mentions'
+import { peopleForBody } from './mentions'
+import type { MentionPerson } from './mentions'
 import { page, space, user, type Page } from './schema'
 
 export type TreeNode = {

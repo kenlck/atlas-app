@@ -3,7 +3,8 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { chromium, type BrowserContext } from 'playwright'
+import { chromium } from 'playwright'
+import type { BrowserContext } from 'playwright'
 
 const execFileAsync = promisify(execFile)
 const BASE_URL = (process.env.BASE_URL ?? '').replace(/\/$/, '')
@@ -1427,7 +1428,7 @@ async function fail6(dir: string) {
   await editor.locator('.mention.former').waitFor()
   const fetched = await Promise.all(loads)
   const chip = editor.locator('.mention.former').first()
-  const chipText = ((await chip.innerText()) ?? '').trim()
+  const chipText = (await chip.innerText()).trim()
   const chipClass = (await chip.getAttribute('class')) ?? ''
   const editorHtml = await editor.locator('.doc').innerHTML()
   const pageHtml = await editor.content()

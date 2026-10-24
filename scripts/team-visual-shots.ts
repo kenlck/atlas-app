@@ -1,6 +1,7 @@
 import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { chromium, type Browser, type Page, type Request } from 'playwright'
+import { chromium } from 'playwright'
+import type { Browser, Page, Request } from 'playwright'
 
 const BASE_URL = process.env.BASE_URL ?? 'http://127.0.0.1:3010'
 const OUT = process.env.VISUAL_OUT ?? 'artifacts'
@@ -279,8 +280,8 @@ async function main() {
     await page
       .getByText("Delete Northwind and all its pages? This can't be undone.")
       .waitFor()
-    const cancelFocused = await page.evaluate(
-      () => document.activeElement?.textContent?.trim() ?? '',
+    const cancelFocused = await page.evaluate(() =>
+      document.activeElement ? document.activeElement.textContent.trim() : '',
     )
     if (cancelFocused !== 'Cancel') {
       throw new Error(`delete focus ${cancelFocused}`)
@@ -309,7 +310,7 @@ async function main() {
     const activeStyle = await active.evaluate((el) => ({
       className: el.className,
       background: getComputedStyle(el).backgroundColor,
-      text: (el.textContent ?? '').trim(),
+      text: el.textContent.trim(),
     }))
     if (
       !activeStyle.className.includes('on') ||

@@ -182,9 +182,9 @@ export const archivePageFn = createServerFn({ method: 'POST' })
 
 export const fetchTeamSettings = createServerFn({ method: 'GET' })
   .middleware([unlocked])
-  .validator((data: { spaceId: string; screen: 'members' }) => {
+  .validator((data: { spaceId: string; screen: string }) => {
     if (data.screen !== 'members') throw new Error('Bad request')
-    return data
+    return { spaceId: data.spaceId, screen: 'members' as const }
   })
   .handler(async ({ data, context }) => {
     try {
@@ -196,9 +196,9 @@ export const fetchTeamSettings = createServerFn({ method: 'GET' })
 
 export const fetchInvitations = createServerFn({ method: 'GET' })
   .middleware([unlocked])
-  .validator((data: { screen: 'invitations' }) => {
+  .validator((data: { screen: string }) => {
     if (data.screen !== 'invitations') throw new Error('Bad request')
-    return data
+    return { screen: 'invitations' as const }
   })
   .handler(async ({ context }) => {
     try {
@@ -236,9 +236,13 @@ export const createTeamFn = createServerFn({ method: 'POST' })
 
 export const lookupAccountFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
-  .validator((data: { teamId: string; email: string; screen: 'lookup' }) => {
+  .validator((data: { teamId: string; email: string; screen: string }) => {
     if (data.screen !== 'lookup') throw new Error('Bad request')
-    return data
+    return {
+      teamId: data.teamId,
+      email: data.email,
+      screen: 'lookup' as const,
+    }
   })
   .handler(async ({ data, context }) => {
     try {

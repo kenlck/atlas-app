@@ -1,5 +1,6 @@
 import { and, asc, count, eq, sql } from 'drizzle-orm'
-import { assertAccess, type SpaceRole } from './access'
+import { assertAccess } from './access'
+import type { SpaceRole } from './access'
 import { getDb } from './db'
 import { forbiddenRole, HttpError, notFound } from './http'
 import { newId } from './ids'
@@ -33,7 +34,8 @@ async function teamSpace(teamId: string) {
     .from(space)
     .where(eq(space.teamId, teamId))
     .limit(1)
-  return rows[0] ?? null
+  if (rows.length === 0) return null
+  return rows[0]
 }
 
 export async function assertTeamAccess(userId: string, teamId: string) {
@@ -92,8 +94,8 @@ export async function lookupAccount(
     .from(user)
     .where(sql`lower(${user.email}) = ${normalized}`)
     .limit(1)
+  if (rows.length === 0) throw new HttpError(404, NO_ACCOUNT)
   const found = rows[0]
-  if (!found) throw new HttpError(404, NO_ACCOUNT)
   return { id: found.id, name: found.name, email: found.email }
 }
 
@@ -153,12 +155,9 @@ export async function acceptInvite(userId: string, inviteId: string) {
       .from(teamInvite)
       .where(eq(teamInvite.id, inviteId))
       .limit(1)
+    if (rows.length === 0) notFound()
     const invite = rows[0]
-    if (
-      !invite ||
-      invite.status !== 'pending' ||
-      invite.inviteeUserId !== userId
-    )
+    if (invite.status !== 'pending' || invite.inviteeUserId !== userId)
       notFound()
     await tx.insert(teamMember).values({
       teamId: invite.teamId,
@@ -191,12 +190,9 @@ export async function declineInvite(userId: string, inviteId: string) {
       .from(teamInvite)
       .where(eq(teamInvite.id, inviteId))
       .limit(1)
+    if (rows.length === 0) notFound()
     const invite = rows[0]
-    if (
-      !invite ||
-      invite.status !== 'pending' ||
-      invite.inviteeUserId !== userId
-    )
+    if (invite.status !== 'pending' || invite.inviteeUserId !== userId)
       notFound()
     await tx
       .update(teamInvite)
@@ -220,8 +216,8 @@ export async function removeMember(
       and(eq(teamMember.teamId, teamId), eq(teamMember.userId, memberUserId)),
     )
     .limit(1)
+  if (rows.length === 0) notFound()
   const target = rows[0]
-  if (!target) notFound()
   if (target.role === 'owner')
     throw new HttpError(400, 'Cannot remove the owner')
   await db

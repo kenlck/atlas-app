@@ -2,12 +2,8 @@ import Mention from '@tiptap/extension-mention'
 import type { SuggestionProps } from '@tiptap/suggestion'
 import { fetchMentionCandidates } from '#/server/fns'
 import { initials } from '#/lib/relative-time'
-import {
-  createMentionCache,
-  mentionChipText,
-  type MentionCandidate,
-  type MentionPerson,
-} from '#/lib/mention-label'
+import { createMentionCache, mentionChipText } from '#/lib/mention-label'
+import type { MentionCandidate, MentionPerson } from '#/lib/mention-label'
 
 function paintList(
   root: HTMLElement,
@@ -250,9 +246,8 @@ export function createMentionExtension(input: {
               return true
             }
             if (event.key === 'Enter' || event.key === 'Tab') {
-              const item = latest.items[selected]
-              if (!item) return false
-              latest.command(item)
+              if (latest.items.length === 0) return false
+              latest.command(latest.items[selected])
               return true
             }
             return false

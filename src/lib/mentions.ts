@@ -3,8 +3,9 @@ import type { Json } from './body-text'
 import { assertAccess } from './access'
 import { getDb } from './db'
 import { notFound } from './http'
-import { type MentionCandidate, type MentionPerson } from './mention-label'
-import { teamInvite, teamMember, user, type Space } from './schema'
+import type { MentionCandidate, MentionPerson } from './mention-label'
+import { teamInvite, teamMember, user } from './schema'
+import type { Space } from './schema'
 
 export {
   createMentionCache,
@@ -51,8 +52,8 @@ export async function peopleForBody(
       .from(user)
       .where(eq(user.id, ownerId))
       .limit(1)
+    if (rows.length === 0) return []
     const owner = rows[0]
-    if (!owner) return []
     return [{ id: owner.id, name: owner.name, member: true }]
   }
   if (!spaceRow.teamId) return []
@@ -106,8 +107,8 @@ export async function listMentionCandidates(
       .from(user)
       .where(eq(user.id, userId))
       .limit(1)
+    if (rows.length === 0) return []
     const me = rows[0]
-    if (!me) return []
     if (q && !me.name.toLowerCase().includes(q)) return []
     return [{ id: me.id, name: me.name }]
   }

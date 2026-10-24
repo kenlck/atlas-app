@@ -22,6 +22,7 @@ export function createEditorSave(
 ) {
   let tail: Promise<void> = Promise.resolve()
   let pending: EditorSnapshot | null = null
+  const latestPending = () => pending
 
   return {
     update(snapshot: EditorSnapshot) {
@@ -29,13 +30,14 @@ export function createEditorSave(
     },
     flush() {
       const run = tail.then(async () => {
-        while (pending) {
-          const snapshot = pending
+        while (latestPending()) {
+          const snapshot = latestPending()
+          if (!snapshot) break
           pending = null
           try {
             await save(snapshot)
           } catch (error) {
-            if (!pending) pending = snapshot
+            if (latestPending() == null) pending = snapshot
             throw error
           }
         }
