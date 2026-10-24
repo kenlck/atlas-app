@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { flushEditor, registerEditorFlush } from '../src/lib/editor-flush'
+import {
+  createEditorSave,
+  flushEditor,
+  registerEditorFlush,
+} from '../src/lib/editor-flush'
 import {
   deliverPageSave,
   type PageSaveTransport,
@@ -66,6 +70,35 @@ describe('in-progress save before leaving the editor', () => {
     })
     expect(deliverPageSave(payload, via)).toBe('fetch')
     expect(via.calls).toEqual(['sync', 'beacon', 'fetch'])
+  })
+})
+
+describe('flush while a save is in flight', () => {
+  it('awaits the save in flight, then saves the latest content', async () => {
+    const saved: string[] = []
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const queue = createEditorSave(async (snapshot) => {
+      saved.push(snapshot.title)
+      if (snapshot.title === 'stale') await gate
+    })
+    queue.update({ pageId: 'p', title: 'stale', body: null })
+    const inflight = queue.flush()
+    await Promise.resolve()
+    expect(saved).toEqual(['stale'])
+    queue.update({ pageId: 'p', title: 'latest', body: null })
+    let finished = false
+    const flushed = queue.flush().then(() => {
+      finished = true
+    })
+    await Promise.resolve()
+    expect(finished).toBe(false)
+    release()
+    await Promise.all([inflight, flushed])
+    expect(saved).toEqual(['stale', 'latest'])
+    expect(finished).toBe(true)
   })
 })
 

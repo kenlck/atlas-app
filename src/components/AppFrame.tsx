@@ -4,7 +4,7 @@ import {
   useParams,
   useRouter,
 } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { SpaceRole } from '#/lib/access'
 import type { TreeNode } from '#/lib/pages'
 import type { SpaceSummary } from '#/lib/teams'
@@ -45,6 +45,7 @@ export function AppFrame({
   const [drawer, setDrawer] = useState(false)
   const [moving, setMoving] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const createTeamTrigger = useRef<HTMLElement | null>(null)
   const navigate = useNavigate()
   const router = useRouter()
   const params = useParams({ strict: false }) as { pageId?: string }
@@ -117,6 +118,14 @@ export function AppFrame({
         role={role}
         pendingInvites={pendingInvites}
         onCreateTeam={() => {
+          const active = document.activeElement
+          const trigger =
+            active instanceof HTMLElement
+              ? (active
+                  .closest('.switcher-wrap')
+                  ?.querySelector<HTMLElement>('.sw') ?? active)
+              : null
+          createTeamTrigger.current = trigger
           setDrawer(false)
           setCreating(true)
         }}
@@ -143,7 +152,12 @@ export function AppFrame({
       ) : null}
       {creating ? (
         <CreateTeamDialog
-          onCancel={() => setCreating(false)}
+          onCancel={() => {
+            setCreating(false)
+            const trigger = createTeamTrigger.current
+            createTeamTrigger.current = null
+            trigger?.focus()
+          }}
           onCreated={(nextSpaceId) => {
             setCreating(false)
             void router.invalidate().then(() =>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createTeamFn } from '#/server/fns'
 
 function messageOf(error: unknown) {
@@ -16,13 +16,36 @@ export function CreateTeamDialog({
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const dialogRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    const node = dialogRef.current
+    if (!node) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCancel()
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onCancel()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const focusable = [
+        ...node.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href]',
+        ),
+      ]
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    node.addEventListener('keydown', onKey)
+    return () => node.removeEventListener('keydown', onKey)
   }, [onCancel])
 
   const submit = async () => {
@@ -46,6 +69,7 @@ export function CreateTeamDialog({
     <div className="team-modal">
       <div className="scrim" onClick={onCancel} />
       <div
+        ref={dialogRef}
         className="card"
         role="dialog"
         aria-modal="true"

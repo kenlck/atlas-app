@@ -9,7 +9,7 @@ import { EditorContent, useEditor } from '@tiptap/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Json } from '#/lib/body-text'
 import type { PageView } from '#/lib/pages'
-import { registerEditorFlush } from '#/lib/editor-flush'
+import { createEditorSave, registerEditorFlush } from '#/lib/editor-flush'
 import {
   browserPageSaveTransport,
   deliverPageSave,
@@ -58,14 +58,6 @@ function clearDraft(pageId: string) {
   }
 }
 
-function flushKeepalive(payload: {
-  pageId: string
-  title: string
-  body: Json
-}) {
-  deliverPageSave(payload, browserPageSaveTransport())
-}
-
 export function PageEditor({ page }: { page: PageView }) {
   const router = useRouter()
   const draftRef = useRef(readDraft(page.id))
@@ -90,44 +82,58 @@ export function PageEditor({ page }: { page: PageView }) {
     [page.spaceId],
   )
 
-  const persist = async () => {
+  const routerRef = useRef(router)
+  routerRef.current = router
+  const queueRef = useRef(
+    createEditorSave(async (snapshot) => {
+      await savePageFn({
+        data: {
+          pageId: snapshot.pageId,
+          title: snapshot.title,
+          body: snapshot.body as Json,
+        },
+      })
+      clearDraft(snapshot.pageId)
+      if (savedTitle.current !== snapshot.title) {
+        savedTitle.current = snapshot.title
+        void routerRef.current.invalidate({
+          filter: (match) => match.routeId === '/_app/s/$spaceId',
+        })
+      }
+    }),
+  )
+
+  const flushSave = async () => {
     if (timer.current) {
       clearTimeout(timer.current)
       timer.current = null
     }
-    if (!dirtyRef.current) return
-    dirtyRef.current = false
-    setSaveState('saving')
-    try {
-      await savePageFn({
-        data: {
-          pageId: pageIdRef.current,
-          title: titleRef.current,
-          body: bodyRef.current as Json,
-        },
+    if (dirtyRef.current) {
+      queueRef.current.update({
+        pageId: pageIdRef.current,
+        title: titleRef.current,
+        body: bodyRef.current,
       })
-      setSaveState('saved')
-      clearDraft(pageIdRef.current)
-      if (savedTitle.current !== titleRef.current) {
-        savedTitle.current = titleRef.current
-        void router.invalidate({
-          filter: (match) => match.routeId === '/_app/s/$spaceId',
-        })
-      }
+      dirtyRef.current = false
+      setSaveState('saving')
+    }
+    try {
+      await queueRef.current.flush()
+      setSaveState((state) => (state === 'error' ? state : 'saved'))
     } catch {
       dirtyRef.current = true
       setSaveState('error')
     }
   }
-  const persistRef = useRef(persist)
-  persistRef.current = persist
+  const flushSaveRef = useRef(flushSave)
+  flushSaveRef.current = flushSave
 
   const schedule = () => {
     dirtyRef.current = true
     writeDraft(pageIdRef.current, titleRef.current, bodyRef.current as Json)
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => {
-      void persistRef.current()
+      void flushSaveRef.current()
     }, 800)
   }
 
@@ -154,7 +160,7 @@ export function PageEditor({ page }: { page: PageView }) {
     },
   })
 
-  useEffect(() => registerEditorFlush(() => persistRef.current()), [])
+  useEffect(() => registerEditorFlush(() => flushSaveRef.current()), [])
 
   useEffect(() => {
     const saved = draftRef.current
@@ -163,7 +169,7 @@ export function PageEditor({ page }: { page: PageView }) {
       setTitle(saved.title)
     }
     if (!dirtyRef.current) return
-    void persistRef.current()
+    void flushSaveRef.current()
   }, [page.title])
 
   useEffect(() => {
@@ -191,14 +197,7 @@ export function PageEditor({ page }: { page: PageView }) {
         clearTimeout(timer.current)
         timer.current = null
       }
-      if (dirtyRef.current) {
-        flushKeepalive({
-          pageId: pageIdRef.current,
-          title: titleRef.current,
-          body: bodyRef.current as Json,
-        })
-      }
-      void persistRef.current()
+      void flushSaveRef.current()
     }
   }, [page.id])
 
@@ -208,13 +207,20 @@ export function PageEditor({ page }: { page: PageView }) {
         clearTimeout(timer.current)
         timer.current = null
       }
-      if (!dirtyRef.current) return
-      dirtyRef.current = false
-      flushKeepalive({
+      if (!dirtyRef.current) {
+        void flushSaveRef.current()
+        return
+      }
+      const snapshot = {
         pageId: pageIdRef.current,
         title: titleRef.current,
         body: bodyRef.current as Json,
-      })
+      }
+      queueRef.current.update(snapshot)
+      dirtyRef.current = false
+      const delivered = deliverPageSave(snapshot, browserPageSaveTransport())
+      if (delivered === 'sync') clearDraft(snapshot.pageId)
+      void flushSaveRef.current()
     }
     window.addEventListener('pagehide', onHide)
     window.addEventListener('beforeunload', onHide)
@@ -251,7 +257,7 @@ export function PageEditor({ page }: { page: PageView }) {
       {saveState === 'error' ? (
         <div className="retry">
           Couldn't save.
-          <button type="button" onClick={() => void persist()}>
+          <button type="button" onClick={() => void flushSave()}>
             Retry
           </button>
         </div>
@@ -274,7 +280,7 @@ export function PageEditor({ page }: { page: PageView }) {
               titleRef.current = next
               setTitle(next)
               if (next !== savedTitle.current) dirtyRef.current = true
-              void persistRef.current()
+              void flushSaveRef.current()
             }}
           />
           <div className="meta">
