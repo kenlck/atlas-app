@@ -28,7 +28,10 @@ export function saveOriginAllowed(request: Request) {
 function isDoc(value: unknown): value is Json {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
   const record = value as Record<string, unknown>
-  return typeof record.type === 'string' && record.type.length > 0
+  if (typeof record.type !== 'string' || record.type.length === 0) return false
+  if (!('content' in record) || record.content === undefined) return true
+  if (!Array.isArray(record.content)) return false
+  return record.content.every(isDoc)
 }
 
 export function parseSavePayload(

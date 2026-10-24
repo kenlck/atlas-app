@@ -11,7 +11,7 @@ The app is configured only by:
 - `BETTER_AUTH_URL` — public origin, e.g. `http://localhost:3000`. This is the better-auth base URL. Production refuses to boot if it is missing or empty.
 - `ADMIN_API_SECRET` — required in production (the process refuses to boot if it is missing or empty). If it is unset, empty, or shorter than 32 characters, `POST /api/admin/reset-password` returns 404.
 - `TRUST_PROXY` — optional. Default off. When `1`, the client IP is the hop `TRUSTED_PROXY_HOPS` from the right of `X-Forwarded-For` (default 1, the rightmost hop). Admin reset and the auth rate limiter use that same address. Otherwise both use the TCP socket peer.
-- `TRUSTED_PROXY_HOPS` — optional. Default `1`.
+- `TRUSTED_PROXY_HOPS` — optional. Default `1` when unset. A set value must be a positive integer, or production refuses to boot.
 
 ## Local
 

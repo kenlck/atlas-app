@@ -1,3 +1,5 @@
+import { trustedProxyHops } from './client-ip'
+
 const REQUIRED_IN_PRODUCTION = [
   'BETTER_AUTH_SECRET',
   'BETTER_AUTH_URL',
@@ -15,4 +17,5 @@ export function assertProductionEnv() {
       throw new Error(`${name} is required`)
     }
   }
+  trustedProxyHops()
 }

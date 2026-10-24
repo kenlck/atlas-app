@@ -8,9 +8,15 @@ export function trustProxyEnabled() {
 
 export function trustedProxyHops() {
   const raw = process.env.TRUSTED_PROXY_HOPS
-  if (raw == null || raw.trim() === '') return TRUSTED_PROXY_HOPS
-  const parsed = Number(raw)
-  if (!Number.isInteger(parsed) || parsed < 1) return TRUSTED_PROXY_HOPS
+  if (raw == null) return TRUSTED_PROXY_HOPS
+  const trimmed = raw.trim()
+  if (!/^[1-9]\d*$/.test(trimmed)) {
+    throw new Error('TRUSTED_PROXY_HOPS must be a positive integer')
+  }
+  const parsed = Number(trimmed)
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error('TRUSTED_PROXY_HOPS must be a positive integer')
+  }
   return parsed
 }
 

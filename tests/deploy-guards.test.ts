@@ -5,11 +5,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { adminCallerIp, resetAdminRateLimit } from '../src/lib/admin-reset'
 import { requestWithClientIp } from '../src/lib/client-ip'
 import { handlePageSave } from '../src/lib/page-save-request'
+import { testDatabaseUrl } from './db-url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const TSX = join(ROOT, 'node_modules/tsx/dist/cli.mjs')
 const ORIGIN = 'http://127.0.0.1:3000'
-const LOCAL_DATABASE = 'postgres://atlas:atlas@127.0.0.1:5432/atlas_test'
 const DUMMY_AUTH = 'dummy-better-auth-secret-32-chars'
 const DUMMY_ADMIN = 'dummy-admin-api-secret-32-characters'
 
@@ -17,7 +17,7 @@ function boot(overrides: Record<string, string | undefined>, unset: string[] = [
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     NODE_ENV: 'production',
-    DATABASE_URL: LOCAL_DATABASE,
+    DATABASE_URL: testDatabaseUrl(),
     BETTER_AUTH_SECRET: DUMMY_AUTH,
     BETTER_AUTH_URL: ORIGIN,
     ADMIN_API_SECRET: DUMMY_ADMIN,
@@ -57,6 +57,18 @@ describe('production boot', () => {
       const output = outputOf(result)
       expect(result.status).not.toBe(0)
       expect(output).toContain('ADMIN_API_SECRET is required')
+      expect(output).not.toContain(DUMMY_AUTH)
+      expect(output).not.toContain(DUMMY_ADMIN)
+      expect(output).not.toContain('127.0.0.1:5432')
+    }
+  })
+
+  it('refuses to boot when TRUSTED_PROXY_HOPS is not a positive integer', () => {
+    for (const value of ['0', '-1', 'abc', '']) {
+      const result = boot({ TRUSTED_PROXY_HOPS: value })
+      const output = outputOf(result)
+      expect(result.status, output).not.toBe(0)
+      expect(output).toContain('TRUSTED_PROXY_HOPS must be a positive integer')
       expect(output).not.toContain(DUMMY_AUTH)
       expect(output).not.toContain(DUMMY_ADMIN)
       expect(output).not.toContain('127.0.0.1:5432')
@@ -115,7 +127,7 @@ describe('client ip', () => {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       NODE_ENV: 'production',
-      DATABASE_URL: LOCAL_DATABASE,
+      DATABASE_URL: testDatabaseUrl(),
       BETTER_AUTH_SECRET: DUMMY_AUTH,
       BETTER_AUTH_URL: ORIGIN,
       ADMIN_API_SECRET: DUMMY_ADMIN,
@@ -184,5 +196,16 @@ describe('page save request', () => {
       ),
     )
     expect(response.status).toBe(400)
+    const numericContent = await handlePageSave(
+      saveRequest(
+        ORIGIN,
+        JSON.stringify({
+          pageId: 'page-1',
+          title: 'Notes',
+          body: { type: 'doc', content: 5 },
+        }),
+      ),
+    )
+    expect(numericContent.status).toBe(400)
   })
 })
