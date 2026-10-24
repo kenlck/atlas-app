@@ -10,6 +10,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Json } from '#/lib/body-text'
 import type { PageView } from '#/lib/pages'
 import { registerEditorFlush } from '#/lib/editor-flush'
+import {
+  browserPageSaveTransport,
+  deliverPageSave,
+} from '#/lib/page-save-keepalive'
 import { relativeTime } from '#/lib/relative-time'
 import { savePageFn } from '#/server/fns'
 import { EditorToolbar } from './EditorToolbar'
@@ -59,30 +63,7 @@ function flushKeepalive(payload: {
   title: string
   body: Json
 }) {
-  const body = JSON.stringify(payload)
-  try {
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', '/api/pages/save', false)
-    xhr.setRequestHeader('content-type', 'application/json')
-    xhr.send(body)
-    if (xhr.status >= 200 && xhr.status < 300) return
-  } catch {
-    // Page dismissal can reject a synchronous request.
-  }
-  const blob = new Blob([body], { type: 'application/json' })
-  if (
-    typeof navigator !== 'undefined' &&
-    typeof navigator.sendBeacon === 'function'
-  ) {
-    if (navigator.sendBeacon('/api/pages/save', blob)) return
-  }
-  void fetch('/api/pages/save', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body,
-    credentials: 'include',
-    keepalive: true,
-  })
+  deliverPageSave(payload, browserPageSaveTransport())
 }
 
 export function PageEditor({ page }: { page: PageView }) {
