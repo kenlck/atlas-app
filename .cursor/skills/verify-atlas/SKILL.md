@@ -9,6 +9,12 @@ Drive the running Atlas app the way a person does. The recipes shell out to Play
 
 On load, every driver refuses a `BASE_URL` whose scheme is not `http` or whose host is not `localhost`, `127.0.0.1`, or `::1`. The recipe script applies the same host check to `DATABASE_URL` before `psql` or Docker uses it. The scheme has to be `postgres` or `postgresql`.
 
+## Full run
+
+`./scripts/verify-all.sh` is the full check. It installs, migrates, typechecks, tests, builds, starts the app, takes visual shots, runs the autosave flush, lints tokens, builds the Docker image at HEAD, runs every fail-condition recipe, takes screenshots, compares baselines in the pinned Playwright image, and writes the side-by-side set. Proof is `artifacts/<head sha>/`, with `logs/` next to the screenshots. It uses a local Postgres 16 unless `DATABASE_URL` is already set to a local database. It refuses a dirty tree and exits non-zero on the first failure. Throwaway secrets are generated at runtime and are not printed or written to the artifact.
+
+Drive one recipe with the commands below when the app is already running.
+
 ## Launch
 
 From the repo root, with Docker available:
@@ -88,7 +94,7 @@ Read `features/README.md` before a journey. A path the map lists and the run did
 
 ## Evidence
 
-Keep proof in `artifacts/<head sha>/`. Recipes write `logs/<recipe>.log` when CI runs them. Screenshots and `scrollwidth.log` sit next to those logs. Cleanup must not delete this directory.
+Keep proof in `artifacts/<head sha>/`. `./scripts/verify-all.sh` writes `logs/<recipe>.log` there. Screenshots and `scrollwidth.log` sit next to those logs. Cleanup must not delete this directory.
 
 A proof shows the action and the result. For a page, that is the HTTP status and the following read of the row or the reloaded editor text. For reset, that is the status, `temporaryPassword_len`, the session count, `password_hash_shape`, `user_fields_unchanged`, and the `secret_not_in_logs`, `temp_not_in_logs`, `new_not_in_logs`, and `*_not_in_audit` lines. A screenshot without those lines does not pass a fail condition.
 
@@ -97,7 +103,7 @@ A proof shows the action and the result. For a page, that is the HTTP status and
 Stop only the containers this run started:
 
 ```bash
-docker rm -f atlas-verify atlas-verify-pg atlas-5a-unset atlas-5a-empty atlas-5e-short atlas-5e-boundary atlas-5b atlas-5c atlas-5d atlas-5h atlas-fail6-app atlas-fail6-pg
+docker rm -f atlas-verify atlas-verify-pg atlas-verify-all-pg atlas-5a-unset atlas-5a-empty atlas-5e-short atlas-5e-boundary atlas-5b atlas-5c atlas-5d atlas-5h atlas-fail6-app atlas-fail6-pg
 ```
 
 Ignore missing names. Do not kill by process name. Leave `artifacts/<head sha>/` in place.

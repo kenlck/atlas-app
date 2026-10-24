@@ -12,6 +12,7 @@ This directory is the maintained source for verifying Atlas. Read it before driv
 
 ## Driving conventions
 
+- Run the full check with `./scripts/verify-all.sh`. It writes `artifacts/<head sha>/`.
 - Start every recipe from a fresh sign-up unless its preconditions say otherwise.
 - Prefer roles and accessible names over coordinates.
 - Run issue 1 checks through `./scripts/verify-fail-conditions.sh`.

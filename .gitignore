@@ -10,7 +10,7 @@ dist-ssr
 .output
 .vinxi
 .netlify
-artifacts/*/
+artifacts/
 test-results/
 playwright-report/
 __unconfig*
