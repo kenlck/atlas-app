@@ -121,6 +121,8 @@ describe('client ip', () => {
       ADMIN_API_SECRET: DUMMY_ADMIN,
       TRUST_PROXY: '1',
       BETTER_AUTH_TELEMETRY: '0',
+      // tests/setup.ts already applied migrations for this database.
+      ATLAS_DB_MIGRATED: '1',
     }
     delete env.TRUSTED_PROXY_HOPS
     const result = spawnSync(process.execPath, [TSX, 'scripts/verify-client-ip.ts'], {

@@ -55,15 +55,19 @@ async function main() {
   process.env.TRUST_PROXY = '1'
   delete process.env.TRUSTED_PROXY_HOPS
 
-  const sql = postgres(databaseUrl, { ...postgresPoolOptions(databaseUrl), max: 1 })
-  try {
-    await migrate(drizzle(sql), {
-      migrationsFolder: join(dirname(fileURLToPath(import.meta.url)), '..', 'drizzle'),
-    })
-  } catch (error) {
-    fail(redact(error instanceof Error ? error.message : 'migrate failed'))
-  } finally {
-    await sql.end({ timeout: 5 })
+  // vitest tests/setup.ts already migrated this database. A second migrate
+  // races the other worker on CREATE SCHEMA.
+  if (process.env.ATLAS_DB_MIGRATED !== '1') {
+    const sql = postgres(databaseUrl, { ...postgresPoolOptions(databaseUrl), max: 1 })
+    try {
+      await migrate(drizzle(sql), {
+        migrationsFolder: join(dirname(fileURLToPath(import.meta.url)), '..', 'drizzle'),
+      })
+    } catch (error) {
+      fail(redact(error instanceof Error ? error.message : 'migrate failed'))
+    } finally {
+      await sql.end({ timeout: 5 })
+    }
   }
 
   const resolved = resolveClientIp(
