@@ -4,6 +4,8 @@ import { emptyDoc, tiptapToText, type Json } from './body-text'
 import { getDb } from './db'
 import { HttpError, notFound } from './http'
 import { newId } from './ids'
+import { peopleForBody } from './mentions'
+import type { MentionPerson } from './mentions'
 import { page, space, user, type Page } from './schema'
 
 export type TreeNode = {
@@ -24,6 +26,7 @@ export type PageView = {
   updatedAt: string
   updatedByName: string
   breadcrumbs: Array<{ id: string; title: string }>
+  people: MentionPerson[]
 }
 
 function asTree(rows: Page[]): TreeNode[] {
@@ -86,7 +89,11 @@ function executeHasRow(result: unknown) {
   return false
 }
 
-async function targetIsSelfOrDescendant(tx: MoveTx, pageId: string, parentId: string) {
+async function targetIsSelfOrDescendant(
+  tx: MoveTx,
+  pageId: string,
+  parentId: string,
+) {
   const result = await tx.execute(sql`
     with recursive descendants as (
       select id from page where id = ${pageId}
@@ -113,13 +120,16 @@ async function breadcrumbsFor(row: Page) {
 }
 
 export async function listPageTree(userId: string, spaceId: string) {
-  const { space } = await assertAccess(userId, { spaceId })
+  const access = await assertAccess(userId, { spaceId })
   const db = getDb()
   const rows = await db.select().from(page).where(eq(page.spaceId, spaceId))
-  return { space, tree: asTree(rows) }
+  return { space: access.space, tree: asTree(rows), role: access.role }
 }
 
-export async function getPageView(userId: string, pageId: string): Promise<PageView> {
+export async function getPageView(
+  userId: string,
+  pageId: string,
+): Promise<PageView> {
   const { space, page: row } = await assertAccess(userId, { pageId })
   if (!row) notFound()
   const db = getDb()
@@ -138,6 +148,7 @@ export async function getPageView(userId: string, pageId: string): Promise<PageV
     updatedAt: row.updatedAt.toISOString(),
     updatedByName: authors[0]?.name ?? space.name,
     breadcrumbs: await breadcrumbsFor(row),
+    people: await peopleForBody(space, row.body as Json),
   }
 }
 
@@ -221,19 +232,34 @@ export async function movePage(
   const db = getDb()
   await db.transaction(async (tx) => {
     await lockSpaces(tx, [row.spaceId, parentSpaceId])
-    const currentRows = await tx.select().from(page).where(eq(page.id, row.id)).limit(1)
+    const currentRows = await tx
+      .select()
+      .from(page)
+      .where(eq(page.id, row.id))
+      .limit(1)
     const current = currentRows[0]
     if (!current || current.archivedAt) notFound()
     if (input.parentId) {
-      const parentRows = await tx.select().from(page).where(eq(page.id, input.parentId)).limit(1)
+      const parentRows = await tx
+        .select()
+        .from(page)
+        .where(eq(page.id, input.parentId))
+        .limit(1)
       const parent = parentRows[0]
-      if (!parent || parent.archivedAt || parent.spaceId !== current.spaceId) notFound()
+      if (!parent || parent.archivedAt || parent.spaceId !== current.spaceId)
+        notFound()
       if (await targetIsSelfOrDescendant(tx, current.id, input.parentId)) {
-        throw new HttpError(400, 'Cannot move a page under itself or a descendant')
+        throw new HttpError(
+          400,
+          'Cannot move a page under itself or a descendant',
+        )
       }
     }
     const siblingFilter = input.parentId
-      ? and(eq(page.spaceId, current.spaceId), eq(page.parentId, input.parentId))
+      ? and(
+          eq(page.spaceId, current.spaceId),
+          eq(page.parentId, input.parentId),
+        )
       : and(eq(page.spaceId, current.spaceId), isNull(page.parentId))
     const posRows = await tx
       .select({ value: max(page.position) })

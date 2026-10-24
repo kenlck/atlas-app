@@ -19,3 +19,7 @@ export function unauthorized(): never {
 export function forbidden(): never {
   throw new HttpError(403, 'Password change required')
 }
+
+export function forbiddenRole(): never {
+  throw new HttpError(403, 'Forbidden')
+}

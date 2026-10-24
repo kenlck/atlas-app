@@ -1,4 +1,11 @@
-import { createFileRoute, getRouteApi, notFound, redirect, useParams, useRouter } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  getRouteApi,
+  notFound,
+  redirect,
+  useParams,
+  useRouter,
+} from '@tanstack/react-router'
 import { PageEditor } from '#/components/PageEditor'
 import type { TreeNode } from '#/lib/pages'
 import { fetchPage } from '#/server/fns'
@@ -17,7 +24,8 @@ function findTitle(nodes: TreeNode[], id: string): string | null {
 function loaderError(error: unknown): never {
   const message = error instanceof Error ? error.message : ''
   if (message === 'Unauthorized') throw redirect({ to: '/sign-in' })
-  if (message === 'Password change required') throw redirect({ to: '/set-password' })
+  if (message === 'Password change required')
+    throw redirect({ to: '/set-password' })
   if (message === 'Not found') throw notFound()
   throw error
 }
@@ -46,7 +54,10 @@ export const Route = createFileRoute('/_app/s/$spaceId/p/$pageId')({
       <div className="doc">
         <div className="col">
           <div className="skel" style={{ height: 34, marginBottom: 6 }} />
-          <div className="skel" style={{ height: 16, width: 220, marginBottom: 26 }} />
+          <div
+            className="skel"
+            style={{ height: 16, width: 220, marginBottom: 26 }}
+          />
           <div className="skel" style={{ height: 16 }} />
         </div>
       </div>
@@ -89,5 +100,8 @@ function PageError() {
 
 function PageRoute() {
   const page = Route.useLoaderData()
-  return <PageEditor key={page.id} page={page} />
+  const peopleKey = page.people
+    .map((person) => `${person.id}:${person.member ? 1 : 0}`)
+    .join(',')
+  return <PageEditor key={`${page.id}:${peopleKey}`} page={page} />
 }

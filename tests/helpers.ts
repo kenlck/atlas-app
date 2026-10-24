@@ -5,12 +5,12 @@ import { and, eq } from 'drizzle-orm'
 
 let seq = 0
 
-export async function createUser(name = 'Test User') {
+export async function createUser(name = 'Test User', email?: string) {
   seq += 1
-  const email = `user${seq}-${Date.now()}@example.com`
+  const address = email ?? `user${seq}-${Date.now()}@example.com`
   const password = 'correct-horse-battery'
   const result = await getAuth().api.signUpEmail({
-    body: { name, email, password },
+    body: { name, email: address, password },
   })
   if (!result.user) {
     throw new Error('sign-up failed')
@@ -19,7 +19,9 @@ export async function createUser(name = 'Test User') {
   const spaces = await db
     .select()
     .from(space)
-    .where(and(eq(space.kind, 'personal'), eq(space.ownerUserId, result.user.id)))
+    .where(
+      and(eq(space.kind, 'personal'), eq(space.ownerUserId, result.user.id)),
+    )
     .limit(1)
   if (!spaces[0]) {
     throw new Error('personal space missing')
