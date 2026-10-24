@@ -6,13 +6,19 @@ import { promisify } from 'node:util'
 import { chromium, type BrowserContext, type Page } from 'playwright'
 
 const execFileAsync = promisify(execFile)
-const BASE_URL = (process.env.BASE_URL ?? 'http://127.0.0.1:3010').replace(/\/$/, '')
+const BASE_URL = (process.env.BASE_URL ?? 'http://127.0.0.1:3010').replace(
+  /\/$/,
+  '',
+)
 const PASSWORD = process.env.VERIFY_PASSWORD ?? 'evidence-password-ok'
 const ADMIN_SECRET = process.env.ADMIN_API_SECRET ?? ''
 
 function redact(text: string) {
   return text
-    .replace(/better-auth\.session_token=[^;\s]+/g, 'better-auth.session_token=[redacted]')
+    .replace(
+      /better-auth\.session_token=[^;\s]+/g,
+      'better-auth.session_token=[redacted]',
+    )
     .replace(/("temporaryPassword"\s*:\s*")[^"]+"/g, '$1[redacted]"')
     .replace(/("token"\s*:\s*")[^"]+"/g, '$1[redacted]"')
     .replace(/("password"\s*:\s*")[^"]+"/g, '$1[redacted]"')
@@ -44,7 +50,11 @@ async function cookieJar(context: BrowserContext, dir: string, name: string) {
         cookie.domain.startsWith('.') ? 'TRUE' : 'FALSE',
         cookie.path,
         cookie.secure ? 'TRUE' : 'FALSE',
-        String(cookie.expires > 0 ? Math.floor(cookie.expires) : Math.floor(Date.now() / 1000) + 60 * 60 * 24),
+        String(
+          cookie.expires > 0
+            ? Math.floor(cookie.expires)
+            : Math.floor(Date.now() / 1000) + 60 * 60 * 24,
+        ),
         cookie.name,
         cookie.value,
       ].join('\t'),
@@ -55,20 +65,28 @@ async function cookieJar(context: BrowserContext, dir: string, name: string) {
 }
 
 async function signUp(context: BrowserContext, name: string, email: string) {
-  const response = await context.request.post(`${BASE_URL}/api/auth/sign-up/email`, {
-    headers: { origin: BASE_URL, 'content-type': 'application/json' },
-    data: { name, email, password: PASSWORD },
-  })
+  const response = await context.request.post(
+    `${BASE_URL}/api/auth/sign-up/email`,
+    {
+      headers: { origin: BASE_URL, 'content-type': 'application/json' },
+      data: { name, email, password: PASSWORD },
+    },
+  )
   const body = await response.text()
   printRaw(
     `sign-up ${name}`,
     `HTTP ${response.status()}\n${headerBlock(response)}\n${body}`,
   )
-  if (response.status() !== 200) throw new Error(`sign-up ${name} status ${response.status()}`)
-  const parsed = JSON.parse(body) as { user?: { id?: string; email?: string; name?: string } }
+  if (response.status() !== 200)
+    throw new Error(`sign-up ${name} status ${response.status()}`)
+  const parsed = JSON.parse(body) as {
+    user?: { id?: string; email?: string; name?: string }
+  }
   const id = parsed.user?.id
   if (!id) throw new Error('sign-up missing user id')
-  console.log(`signup_user id=${id} email=${parsed.user?.email} name=${parsed.user?.name}`)
+  console.log(
+    `signup_user id=${id} email=${parsed.user?.email} name=${parsed.user?.name}`,
+  )
   return id
 }
 
@@ -78,23 +96,39 @@ function headerBlock(response: { headers: () => Record<string, string> }) {
     .join('\n')
 }
 
-async function signIn(context: BrowserContext, email: string, password: string) {
-  const response = await context.request.post(`${BASE_URL}/api/auth/sign-in/email`, {
-    headers: { origin: BASE_URL, 'content-type': 'application/json' },
-    data: { email, password },
-  })
+async function signIn(
+  context: BrowserContext,
+  email: string,
+  password: string,
+) {
+  const response = await context.request.post(
+    `${BASE_URL}/api/auth/sign-in/email`,
+    {
+      headers: { origin: BASE_URL, 'content-type': 'application/json' },
+      data: { email, password },
+    },
+  )
   const body = await response.text()
-  printRaw(`sign-in ${email}`, `HTTP ${response.status()}\n${headerBlock(response)}\n${body}`)
-  if (response.status() !== 200) throw new Error(`sign-in status ${response.status()}`)
+  printRaw(
+    `sign-in ${email}`,
+    `HTTP ${response.status()}\n${headerBlock(response)}\n${body}`,
+  )
+  if (response.status() !== 200)
+    throw new Error(`sign-in status ${response.status()}`)
   return body
 }
 
 async function spaceIdFromHome(context: BrowserContext) {
-  const response = await context.request.get(`${BASE_URL}/`, { maxRedirects: 0 })
+  const response = await context.request.get(`${BASE_URL}/`, {
+    maxRedirects: 0,
+  })
   const location = response.headers()['location'] ?? ''
   printRaw('GET /', `HTTP ${response.status()}\nlocation: ${location}`)
   const match = location.match(/\/s\/([^/?]+)/)
-  if (!match) throw new Error(`home did not redirect to a space: ${response.status()} ${location}`)
+  if (!match)
+    throw new Error(
+      `home did not redirect to a space: ${response.status()} ${location}`,
+    )
   return match[1]
 }
 
@@ -109,7 +143,9 @@ async function createPage(page: Page) {
     const url = response.url()
     if (!isAppServerFn(url)) return
     const parsed = new URL(url)
-    seen.push(`${response.request().method()} ${response.status()} ${parsed.pathname}`)
+    seen.push(
+      `${response.request().method()} ${response.status()} ${parsed.pathname}`,
+    )
   })
   await page.goto(previous, { waitUntil: 'networkidle' })
   await page.getByRole('button', { name: '+ New page' }).last().click()
@@ -124,13 +160,42 @@ async function createPage(page: Page) {
   return pageId
 }
 
+function libpqEnv(): NodeJS.ProcessEnv {
+  const raw = process.env.DATABASE_URL
+  if (!raw) throw new Error('DATABASE_URL is required')
+  const url = new URL(raw)
+  if (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
+    throw new Error('refusing non-local DATABASE_URL')
+  }
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PGHOST: url.hostname,
+    PGPORT: url.port || '5432',
+    PGUSER: decodeURIComponent(url.username),
+    PGPASSWORD: decodeURIComponent(url.password),
+    PGDATABASE: decodeURIComponent(url.pathname.replace(/^\//, '')),
+  }
+  const sslmode = url.searchParams.get('sslmode')
+  if (sslmode) env.PGSSLMODE = sslmode
+  return env
+}
+
 async function psql(sql: string) {
-  const result = await execFileAsync(
-    'psql',
-    ['-v', 'ON_ERROR_STOP=1', '-At', '-c', sql],
-    { env: process.env, maxBuffer: 2 * 1024 * 1024 },
-  )
-  return result.stdout.trimEnd()
+  const env = libpqEnv()
+  try {
+    const result = await execFileAsync(
+      'psql',
+      ['-v', 'ON_ERROR_STOP=1', '-At', '-c', sql],
+      { env, maxBuffer: 2 * 1024 * 1024 },
+    )
+    return result.stdout.trimEnd()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'psql failed'
+    const secret = env.PGPASSWORD ?? ''
+    throw new Error(
+      redact(secret ? message.split(secret).join('[redacted]') : message),
+    )
+  }
 }
 
 async function userSnapshot(userId: string) {
@@ -140,10 +205,16 @@ async function userSnapshot(userId: string) {
   const accountRow = await psql(
     `SELECT provider_id, length(password), md5(password), updated_at FROM account WHERE user_id = '${userId}' ORDER BY provider_id`,
   )
-  const sessions = await psql(`SELECT count(*) FROM session WHERE user_id = '${userId}'`)
-  console.log('user_row id|name|email|email_verified|image|created_at|updated_at|must_change_password')
+  const sessions = await psql(
+    `SELECT count(*) FROM session WHERE user_id = '${userId}'`,
+  )
+  console.log(
+    'user_row id|name|email|email_verified|image|created_at|updated_at|must_change_password',
+  )
   console.log(userRow)
-  console.log('account_row provider_id|password_len|password_hash_md5|updated_at')
+  console.log(
+    'account_row provider_id|password_len|password_hash_md5|updated_at',
+  )
   console.log(accountRow)
   console.log(`session_count=${sessions}`)
   return { userRow, accountRow, sessions }
@@ -155,15 +226,31 @@ function diffSnapshots(
 ) {
   const userBefore = before.userRow.split('|')
   const userAfter = after.userRow.split('|')
-  const labels = ['id', 'name', 'email', 'email_verified', 'image', 'created_at', 'updated_at', 'must_change_password']
+  const labels = [
+    'id',
+    'name',
+    'email',
+    'email_verified',
+    'image',
+    'created_at',
+    'updated_at',
+    'must_change_password',
+  ]
   console.log('user_diff')
   labels.forEach((label, index) => {
     const same = userBefore[index] === userAfter[index]
-    console.log(`${label} ${same ? 'SAME' : `CHANGED ${userBefore[index]} -> ${userAfter[index]}`}`)
+    console.log(
+      `${label} ${same ? 'SAME' : `CHANGED ${userBefore[index]} -> ${userAfter[index]}`}`,
+    )
   })
   const accountBefore = before.accountRow.split('|')
   const accountAfter = after.accountRow.split('|')
-  const accountLabels = ['provider_id', 'password_len', 'password_hash_md5', 'updated_at']
+  const accountLabels = [
+    'provider_id',
+    'password_len',
+    'password_hash_md5',
+    'updated_at',
+  ]
   console.log('account_diff')
   accountLabels.forEach((label, index) => {
     const same = accountBefore[index] === accountAfter[index]
@@ -172,7 +259,9 @@ function diffSnapshots(
 }
 
 async function dumpCurl(label: string, args: string[]) {
-  console.log(`$ curl ${args.map((arg) => (arg.startsWith('-') || arg.startsWith('http') ? arg : '<redacted-or-flag>')).join(' ')}`)
+  console.log(
+    `$ curl ${args.map((arg) => (arg.startsWith('-') || arg.startsWith('http') ? arg : '<redacted-or-flag>')).join(' ')}`,
+  )
   const raw = await curl(args)
   printRaw(label, raw)
   const status = raw.match(/^HTTP\/\S+\s+(\d+)/m)?.[1] ?? ''
@@ -181,7 +270,9 @@ async function dumpCurl(label: string, args: string[]) {
 
 async function fail1(dir: string) {
   const stamp = Date.now()
-  const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
   const a = await browser.newContext()
   const b = await browser.newContext()
   const aEmail = `ada.${stamp}@example.com`
@@ -197,7 +288,8 @@ async function fail1(dir: string) {
   const pageId = await createPage(page)
   const serverFnUrls = new Set<string>()
   page.on('request', (request) => {
-    if (isAppServerFn(request.url())) serverFnUrls.add(`${request.method()} ${request.url()}`)
+    if (isAppServerFn(request.url()))
+      serverFnUrls.add(`${request.method()} ${request.url()}`)
   })
   await page.locator('#page-title').fill('Ada private title')
   await page.locator('#page-title').blur()
@@ -205,7 +297,9 @@ async function fail1(dir: string) {
   await page.keyboard.type('Ada private body')
   let before = ''
   for (let attempt = 0; attempt < 25; attempt += 1) {
-    before = await psql(`SELECT title || '|' || coalesce(body_text, '') FROM page WHERE id = '${pageId}'`)
+    before = await psql(
+      `SELECT title || '|' || coalesce(body_text, '') FROM page WHERE id = '${pageId}'`,
+    )
     if (before === 'Ada private title|Ada private body') break
     await page.waitForTimeout(200)
   }
@@ -215,13 +309,36 @@ async function fail1(dir: string) {
   const bJar = await cookieJar(b, dir, 'b.txt')
   const pageUrl = `${BASE_URL}/s/${aSpace}/p/${pageId}`
   const spaceUrl = `${BASE_URL}/s/${aSpace}`
-  await dumpCurl('A opens own page', ['-D', '-', '-o', join(dir, 'a-open'), '-b', aJar, pageUrl])
-  await dumpCurl('B opens A page', ['-D', '-', '-o', join(dir, 'open-body'), '-b', bJar, pageUrl])
+  await dumpCurl('A opens own page', [
+    '-D',
+    '-',
+    '-o',
+    join(dir, 'a-open'),
+    '-b',
+    aJar,
+    pageUrl,
+  ])
+  await dumpCurl('B opens A page', [
+    '-D',
+    '-',
+    '-o',
+    join(dir, 'open-body'),
+    '-b',
+    bJar,
+    pageUrl,
+  ])
   const openText = await readFile(join(dir, 'open-body'), 'utf8')
   console.log(`open_has_page_not_found=${openText.includes('Page not found.')}`)
 
   const savePayload = join(dir, 'save.json')
-  await writeFile(savePayload, JSON.stringify({ pageId, title: 'stolen', body: { type: 'doc', content: [] } }))
+  await writeFile(
+    savePayload,
+    JSON.stringify({
+      pageId,
+      title: 'stolen',
+      body: { type: 'doc', content: [] },
+    }),
+  )
   await dumpCurl('B saves A page', [
     '-D',
     '-',
@@ -237,12 +354,24 @@ async function fail1(dir: string) {
     `@${savePayload}`,
     `${BASE_URL}/api/pages/save`,
   ])
-  console.log(`save_body=${(await readFile(join(dir, 'save-body'), 'utf8')).trim()}`)
-  const after = await psql(`SELECT title || '|' || body_text FROM page WHERE id = '${pageId}'`)
+  console.log(
+    `save_body=${(await readFile(join(dir, 'save-body'), 'utf8')).trim()}`,
+  )
+  const after = await psql(
+    `SELECT title || '|' || body_text FROM page WHERE id = '${pageId}'`,
+  )
   console.log(`page_after=${after}`)
   console.log(`content_unchanged=${before === after}`)
 
-  await dumpCurl('B lists A space tree', ['-D', '-', '-o', join(dir, 'tree-body'), '-b', bJar, spaceUrl])
+  await dumpCurl('B lists A space tree', [
+    '-D',
+    '-',
+    '-o',
+    join(dir, 'tree-body'),
+    '-b',
+    bJar,
+    spaceUrl,
+  ])
   const treeText = await readFile(join(dir, 'tree-body'), 'utf8')
   console.log(`tree_has_page_not_found=${treeText.includes('Page not found.')}`)
 
@@ -250,7 +379,9 @@ async function fail1(dir: string) {
   await bPage.goto(`${BASE_URL}/s/${bSpace}`, { waitUntil: 'networkidle' })
   const ownHtml = await bPage.content()
   console.log(`B_tree_contains_A_page=${ownHtml.includes(pageId)}`)
-  console.log(`B_tree_contains_A_title=${ownHtml.includes('Ada private title')}`)
+  console.log(
+    `B_tree_contains_A_title=${ownHtml.includes('Ada private title')}`,
+  )
 
   let replay = 0
   for (const entry of serverFnUrls) {
@@ -272,7 +403,9 @@ async function fail1(dir: string) {
     if (method !== 'GET') args.push('-X', method)
     args.push(target)
     await dumpCurl(`B replays ${method} server function`, args)
-    console.log(`replay_body=${redact(await readFile(join(dir, `replay-${replay}.body`), 'utf8')).slice(0, 300)}`)
+    console.log(
+      `replay_body=${redact(await readFile(join(dir, `replay-${replay}.body`), 'utf8')).slice(0, 300)}`,
+    )
   }
 
   await browser.close()
@@ -280,7 +413,9 @@ async function fail1(dir: string) {
 }
 
 async function fail2(dir: string) {
-  const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
   const context = await browser.newContext()
   const stamp = Date.now()
   await signUp(context, 'Signed', `signed.${stamp}@example.com`)
@@ -296,7 +431,9 @@ async function fail2(dir: string) {
   await page.locator('#page-title').waitFor()
   console.log('observed_server_fns')
   for (const line of fnUrls) console.log(line.split('?')[0])
-  const getFn = [...fnUrls].find((line) => line.startsWith('GET ') && line.includes('payload='))
+  const getFn = [...fnUrls].find(
+    (line) => line.startsWith('GET ') && line.includes('payload='),
+  )
   await browser.close()
 
   await dumpCurl('signed-out page', [
@@ -307,7 +444,10 @@ async function fail2(dir: string) {
     `${BASE_URL}/s/${space}/p/missing`,
   ])
   const payload = join(dir, 'anon-save.json')
-  await writeFile(payload, JSON.stringify({ pageId: 'missing', title: 'x', body: {} }))
+  await writeFile(
+    payload,
+    JSON.stringify({ pageId: 'missing', title: 'x', body: {} }),
+  )
   await dumpCurl('signed-out page API', [
     '-D',
     '-',
@@ -321,7 +461,9 @@ async function fail2(dir: string) {
     `@${payload}`,
     `${BASE_URL}/api/pages/save`,
   ])
-  console.log(`api_body=${(await readFile(join(dir, 'anon-api'), 'utf8')).trim()}`)
+  console.log(
+    `api_body=${(await readFile(join(dir, 'anon-api'), 'utf8')).trim()}`,
+  )
   if (getFn) {
     const target = getFn.slice(4)
     await dumpCurl('signed-out server function', [
@@ -335,15 +477,20 @@ async function fail2(dir: string) {
       `origin: ${BASE_URL}`,
       target,
     ])
-    console.log(`server_fn_body=${redact(await readFile(join(dir, 'anon-fn'), 'utf8')).slice(0, 400)}`)
+    console.log(
+      `server_fn_body=${redact(await readFile(join(dir, 'anon-fn'), 'utf8')).slice(0, 400)}`,
+    )
   }
 }
 
 async function fail5(dir: string) {
-  if (ADMIN_SECRET.length < 32) throw new Error('ADMIN_API_SECRET unset or short')
+  if (ADMIN_SECRET.length < 32)
+    throw new Error('ADMIN_API_SECRET unset or short')
   const stamp = Date.now()
   const email = `lock.${stamp}@example.com`
-  const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
   const context = await browser.newContext()
   const userId = await signUp(context, 'Lock Name', email)
   const before = await userSnapshot(userId)
@@ -375,7 +522,8 @@ async function fail5(dir: string) {
   const temporary = tempMatch?.[1] ?? ''
   console.log(`reset_status=${resetStatus}`)
   console.log(`temporaryPassword_len=${temporary.length}`)
-  if (resetStatus !== '200' || !temporary) throw new Error('reset did not return a temporary password')
+  if (resetStatus !== '200' || !temporary)
+    throw new Error('reset did not return a temporary password')
   const after = await userSnapshot(userId)
   diffSnapshots(before, after)
   const audit = await psql(
@@ -384,7 +532,9 @@ async function fail5(dir: string) {
   console.log(`audit_row action|target_user_id|caller_ip|created_at`)
   console.log(audit)
 
-  const locked = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
+  const locked = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
   const lockedContext = await locked.newContext()
   await signIn(lockedContext, email, temporary)
   const lockedJar = await cookieJar(lockedContext, dir, 'locked.txt')
@@ -406,10 +556,15 @@ async function fail5(dir: string) {
     `@${savePayload}`,
     `${BASE_URL}/api/pages/save`,
   ])
-  console.log(`locked_api_body=${(await readFile(join(dir, 'locked-api'), 'utf8')).trim()}`)
+  console.log(
+    `locked_api_body=${(await readFile(join(dir, 'locked-api'), 'utf8')).trim()}`,
+  )
 
   const updatePayload = join(dir, 'update.json')
-  await writeFile(updatePayload, JSON.stringify({ name: 'Renamed while locked' }))
+  await writeFile(
+    updatePayload,
+    JSON.stringify({ name: 'Renamed while locked' }),
+  )
   await dumpCurl('locked update-user', [
     '-D',
     '-',
@@ -427,7 +582,9 @@ async function fail5(dir: string) {
     `@${updatePayload}`,
     `${BASE_URL}/api/auth/update-user`,
   ])
-  console.log(`update_body=${(await readFile(join(dir, 'update-body'), 'utf8')).trim()}`)
+  console.log(
+    `update_body=${(await readFile(join(dir, 'update-body'), 'utf8')).trim()}`,
+  )
   const nameAfter = await psql(`SELECT name FROM "user" WHERE id = '${userId}'`)
   console.log(`name_after_update_user=${nameAfter}`)
 
@@ -435,18 +592,27 @@ async function fail5(dir: string) {
   const fnStatuses: string[] = []
   page.on('response', async (response) => {
     const url = response.url()
-    if (!isAppServerFn(url) && !new URL(url).pathname.startsWith('/api/auth/')) return
-    fnStatuses.push(`${response.request().method()} ${response.status()} ${new URL(url).pathname}`)
+    if (!isAppServerFn(url) && !new URL(url).pathname.startsWith('/api/auth/'))
+      return
+    fnStatuses.push(
+      `${response.request().method()} ${response.status()} ${new URL(url).pathname}`,
+    )
   })
   await page.goto(`${BASE_URL}/set-password`, { waitUntil: 'networkidle' })
   await page.locator('#password').fill('new-password-ok')
   await page.locator('#confirm').fill('new-password-ok')
   await page.getByRole('button', { name: 'Save password' }).click()
-  await page.waitForURL((url) => !url.pathname.startsWith('/set-password'), { timeout: 15000 }).catch(() => undefined)
+  await page
+    .waitForURL((url) => !url.pathname.startsWith('/set-password'), {
+      timeout: 15000,
+    })
+    .catch(() => undefined)
   console.log('change_password_responses')
   for (const line of fnStatuses) console.log(line)
   console.log(`after_change_password_path=${new URL(page.url()).pathname}`)
-  const unlocked = await psql(`SELECT must_change_password FROM "user" WHERE id = '${userId}'`)
+  const unlocked = await psql(
+    `SELECT must_change_password FROM "user" WHERE id = '${userId}'`,
+  )
   console.log(`must_change_password_after_change=${unlocked}`)
 
   const fresh = await cookieJar(lockedContext, dir, 'after-change.txt')
@@ -471,7 +637,9 @@ async function fail5(dir: string) {
     `@${emptyBody}`,
     `${BASE_URL}/api/auth/sign-out`,
   ])
-  console.log(`signout_body=${redact((await readFile(join(dir, 'signout-body'), 'utf8')).trim())}`)
+  console.log(
+    `signout_body=${redact((await readFile(join(dir, 'signout-body'), 'utf8')).trim())}`,
+  )
   await dumpCurl('get-session after sign-out', [
     '-D',
     '-',
@@ -481,14 +649,20 @@ async function fail5(dir: string) {
     fresh,
     `${BASE_URL}/api/auth/get-session`,
   ])
-  console.log(`session_body=${redact((await readFile(join(dir, 'session-body'), 'utf8')).trim())}`)
+  console.log(
+    `session_body=${redact((await readFile(join(dir, 'session-body'), 'utf8')).trim())}`,
+  )
   await locked.close()
 }
 
 async function fail5h(dir: string) {
-  if (ADMIN_SECRET.length < 32) throw new Error('ADMIN_API_SECRET unset or short')
+  if (ADMIN_SECRET.length < 32)
+    throw new Error('ADMIN_API_SECRET unset or short')
   const payload = join(dir, 'wrong.json')
-  await writeFile(payload, JSON.stringify({ email: `missing.${Date.now()}@example.com` }))
+  await writeFile(
+    payload,
+    JSON.stringify({ email: `missing.${Date.now()}@example.com` }),
+  )
   for (let i = 0; i < 6; i += 1) {
     const raw = await curl([
       '-D',
@@ -527,6 +701,12 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(redact(error instanceof Error ? error.stack ?? error.message : 'http evidence failed'))
+  console.error(
+    redact(
+      error instanceof Error
+        ? (error.stack ?? error.message)
+        : 'http evidence failed',
+    ),
+  )
   process.exit(1)
 })
