@@ -128,9 +128,11 @@ function SpacePending() {
   return (
     <div className="app">
       <aside className="side">
-        <div className="sw">
-          <div className="av">A</div>
-          Atlas
+        <div className="switcher-wrap">
+          <div className="sw">
+            <div className="av">A</div>
+            Atlas
+          </div>
         </div>
         <div className="lab">Pages</div>
         <div className="tree">
