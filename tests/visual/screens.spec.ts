@@ -109,7 +109,11 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
     await route.continue()
   })
 
-  async function shot(name: string) {
+  async function shot(name: string, png?: Buffer) {
+    if (png) {
+      await expect(png).toMatchSnapshot(`${name}.png`)
+      return
+    }
     await expect(page).toHaveScreenshot(`${name}.png`, {
       animations: 'disabled',
       caret: 'hide',
@@ -197,8 +201,8 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
   await shot('page-retry')
   mode = 'pass'
 
-  await captureTableDateStates(page, async (name) => {
-    await shot(name)
+  await captureTableDateStates(page, async (name, png) => {
+    await shot(name, png)
   })
 
   await page.getByRole('button', { name: 'Sign out' }).click()

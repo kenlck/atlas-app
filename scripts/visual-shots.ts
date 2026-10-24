@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { chromium, type Page, type Request } from 'playwright'
 import { captureTableDateStates } from './table-date-states.ts'
@@ -58,7 +58,13 @@ function classify(request: Request) {
   return 'other'
 }
 
-async function shot(page: Page, width: number, screen: string, state: string) {
+async function shot(
+  page: Page,
+  width: number,
+  screen: string,
+  state: string,
+  png?: Buffer,
+) {
   const size = page.viewportSize()
   if (!size || size.width !== width) {
     throw new Error(
@@ -80,20 +86,22 @@ async function shot(page: Page, width: number, screen: string, state: string) {
   }
   const name = `${width}-${screen}-${state}.png`
   const path = join(OUT, name)
-  await page.screenshot({
-    path,
-    fullPage: false,
-    scale: 'css',
-    animations: 'disabled',
-    caret: 'hide',
-  })
-  const png = pngSize(await readFile(path))
-  if (png.width !== width || png.height !== size.height) {
+  const buffer =
+    png ??
+    (await page.screenshot({
+      fullPage: false,
+      scale: 'css',
+      animations: 'disabled',
+      caret: 'hide',
+    }))
+  await writeFile(path, buffer)
+  const image = pngSize(buffer)
+  if (image.width !== width || image.height !== size.height) {
     throw new Error(
-      `${name} is ${png.width}x${png.height}, expected ${width}x${size.height}`,
+      `${name} is ${image.width}x${image.height}, expected ${width}x${size.height}`,
     )
   }
-  console.log(`wrote ${name} ${png.width}x${png.height} dpr=${meta.dpr}`)
+  console.log(`wrote ${name} ${image.width}x${image.height} dpr=${meta.dpr}`)
   return path
 }
 
@@ -588,7 +596,7 @@ async function main() {
     await page.locator('#page-title').click()
     await shot(page, 1280, 'page', 'link')
 
-    await captureTableDateStates(page, async (name) => {
+    await captureTableDateStates(page, async (name, png) => {
       const width = name.startsWith('390-') ? 390 : 1280
       const rest = name.slice(String(width).length + 1)
       const dash = rest.indexOf('-')
@@ -597,7 +605,7 @@ async function main() {
       if (page.viewportSize()?.width !== width) {
         await setViewport(page, width, width === 390 ? 844 : 800)
       }
-      await shot(page, width, screen, state)
+      await shot(page, width, screen, state, png)
     })
     await setViewport(page, 1280, 800)
 

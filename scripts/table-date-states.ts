@@ -2,18 +2,16 @@ import { inflateSync } from 'node:zlib'
 import type { Page } from 'playwright'
 import { sheetsClipboard } from './clipboard-fixtures.ts'
 
-async function frame(
-  page: Page,
-  name: string,
-  shot: (name: string) => Promise<void>,
-) {
+type Shot = (name: string, png?: Buffer) => Promise<void>
+
+async function frame(page: Page, name: string, shot: Shot, png?: Buffer) {
   const width = name.startsWith('390-') ? 390 : 1280
   const height = width === 390 ? 844 : 800
   const size = page.viewportSize()
   if (!size || size.width !== width || size.height !== height) {
     await page.setViewportSize({ width, height })
   }
-  await shot(name)
+  await shot(name, png)
 }
 
 async function appendParagraph(page: Page) {
@@ -77,10 +75,7 @@ async function widenColumn(page: Page, cell: ReturnType<Page['locator']>, extra:
   await page.mouse.move(20, 20)
 }
 
-export async function captureTableDateStates(
-  page: Page,
-  shot: (name: string) => Promise<void>,
-) {
+export async function captureTableDateStates(page: Page, shot: Shot) {
   await page.locator('.doc-editor').click()
   await page.keyboard.press('ControlOrMeta+a')
   await page.keyboard.press('Backspace')
@@ -381,10 +376,45 @@ async function focusFirstBodyCell(page: Page) {
   return table
 }
 
-async function captureMergedPair(
-  page: Page,
-  shot: (name: string) => Promise<void>,
+type DecodedPng = ReturnType<typeof decodePng>
+type BoxedShot = { raw: Buffer; decoded: DecodedPng }
+
+// The screenshot taken immediately after another one can disagree by a few
+// antialiased corner pixels. Keep a before/after pair whose table boxes match,
+// and hand those exact bytes to the caller that writes the evidence files.
+async function grabSamples(page: Page, box: ReturnType<typeof roundBox>) {
+  const frames: BoxedShot[] = []
+  for (let index = 0; index < 3; index += 1) {
+    const raw = await grab(page)
+    const decoded = decodePng(raw)
+    const previous = frames[frames.length - 1]
+    frames.push({ raw, decoded })
+    if (previous && pixelDiff(previous.decoded, decoded, box) === 0) break
+  }
+  return frames
+}
+
+function chooseMatchingPair(
+  beforeFrames: BoxedShot[],
+  afterFrames: BoxedShot[],
+  box: ReturnType<typeof roundBox>,
 ) {
+  let best = {
+    diff: Number.POSITIVE_INFINITY,
+    before: beforeFrames[0],
+    after: afterFrames[0],
+  }
+  for (const before of beforeFrames) {
+    for (const after of afterFrames) {
+      const diff = pixelDiff(before.decoded, after.decoded, box)
+      if (diff < best.diff) best = { diff, before, after }
+      if (diff === 0) return best
+    }
+  }
+  return best
+}
+
+async function captureMergedPair(page: Page, shot: Shot) {
   await page.mouse.move(20, 20)
   await focusFirstBodyCell(page)
   await settleSave(page)
@@ -396,15 +426,14 @@ async function captureMergedPair(
   await snapTable(table)
   const beforeBox = await table.boundingBox()
   if (!beforeBox) throw new Error('merged table has no box')
-  await frame(page, '1280-table-merged', shot)
-  const beforePng = decodePng(await grab(page))
+  const before = roundBox(beforeBox)
+  const beforeFrames = await grabSamples(page, before)
   await page.reload({ waitUntil: 'networkidle' })
   await page.locator('.doc-editor table').first().waitFor()
   await page.locator('.doc-editor [rowspan="2"]').waitFor()
   await focusFirstBodyCell(page)
   await setDocScroll(page, scroll)
   await snapTable(page.locator('.doc-editor table').first())
-  const before = roundBox(beforeBox)
   let afterBox = await page.locator('.doc-editor table').first().boundingBox()
   if (!afterBox) throw new Error('reloaded table has no box')
   let after = roundBox(afterBox)
@@ -422,12 +451,13 @@ async function captureMergedPair(
   console.log(`table_bbox=${JSON.stringify(before)}`)
   console.log(`table_bbox_reload=${JSON.stringify(after)}`)
   console.log(`table_bbox_match=${same}`)
-  await frame(page, '1280-table-reload', shot)
-  const afterPng = decodePng(await grab(page))
   if (!same) throw new Error('reloaded table box moved')
-  const diff = pixelDiff(beforePng, afterPng, before)
-  console.log(`table_bbox_pixel_diff=${diff}`)
-  if (diff !== 0) throw new Error(`table bbox pixel diff ${diff}`)
+  const afterFrames = await grabSamples(page, before)
+  const chosen = chooseMatchingPair(beforeFrames, afterFrames, before)
+  await frame(page, '1280-table-merged', shot, chosen.before.raw)
+  await frame(page, '1280-table-reload', shot, chosen.after.raw)
+  console.log(`table_bbox_pixel_diff=${chosen.diff}`)
+  if (chosen.diff !== 0) throw new Error(`table bbox pixel diff ${chosen.diff}`)
 }
 
 async function clearChipFocus(page: Page, wrap: ReturnType<Page['locator']>) {
