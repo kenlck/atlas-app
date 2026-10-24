@@ -26,10 +26,9 @@ SERVER_PID=
 PLAYWRIGHT_IMAGE="mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea"
 
 cleanup() {
-  if declare -F stop_server >/dev/null 2>&1; then
-    stop_server
-  elif [[ -n "${SERVER_PID:-}" ]]; then
+  if [[ -n "${SERVER_PID:-}" ]]; then
     kill -- "-${SERVER_PID}" >/dev/null 2>&1 || kill "${SERVER_PID}" >/dev/null 2>&1 || true
+    SERVER_PID=
   fi
   rm -f "${REDACTOR:-}" "${PG_ENV:-}"
 }
@@ -176,24 +175,50 @@ PY
   export TEST_DATABASE_URL="$DATABASE_URL"
 }
 
+free_port_3000() {
+  local i pid cmd
+  for i in $(seq 1 20); do
+    pid=$(ss -ltnp | sed -n 's/.*:3000 .*pid=\([0-9]*\).*/\1/p' | head -1 || true)
+    if [[ -z "${pid:-}" ]]; then
+      return 0
+    fi
+    cmd=$(ps -p "$pid" -o cmd= || true)
+    case "$cmd" in
+      *".output/server/index.mjs"*)
+        kill "$pid" >/dev/null 2>&1 || true
+        sleep 0.3
+        if kill -0 "$pid" >/dev/null 2>&1; then
+          kill -9 "$pid" >/dev/null 2>&1 || true
+        fi
+        ;;
+      *)
+        echo "port 3000 is in use" >&2
+        return 1
+        ;;
+    esac
+  done
+  echo "port 3000 stayed busy" >&2
+  return 1
+}
+
 stop_server() {
-  if [[ -z "${SERVER_PID:-}" ]]; then
-    return 0
+  if [[ -n "${SERVER_PID:-}" ]]; then
+    kill -- "-${SERVER_PID}" >/dev/null 2>&1 || kill "${SERVER_PID}" >/dev/null 2>&1 || true
+    sleep 0.5
+    if kill -0 "${SERVER_PID}" >/dev/null 2>&1; then
+      kill -9 -- "-${SERVER_PID}" >/dev/null 2>&1 || kill -9 "${SERVER_PID}" >/dev/null 2>&1 || true
+    fi
+    SERVER_PID=
+    echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=${SHA}" >> "${LOG}/server.log"
   fi
-  kill -- "-${SERVER_PID}" >/dev/null 2>&1 || kill "${SERVER_PID}" >/dev/null 2>&1 || true
-  sleep 0.5
-  if kill -0 "${SERVER_PID}" >/dev/null 2>&1; then
-    kill -9 -- "-${SERVER_PID}" >/dev/null 2>&1 || kill -9 "${SERVER_PID}" >/dev/null 2>&1 || true
-  fi
-  SERVER_PID=
-  echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=${SHA}" >> "${LOG}/server.log"
+  free_port_3000
 }
 
 start_server() {
-  stop_server
+  stop_server || return 1
   docker rm -f atlas-verify >/dev/null 2>&1 || true
   echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=${SHA}" > "${LOG}/server.log"
-  setsid bash -c 'pnpm start 2>&1 | python3 -u "$1"' _ "$REDACTOR" >> "${LOG}/server.log" &
+  bash -c 'pnpm start 2>&1 | python3 -u "$1"' _ "$REDACTOR" >> "${LOG}/server.log" &
   SERVER_PID=$!
 }
 
@@ -230,13 +255,19 @@ migrate_image() {
 }
 
 start_image() {
-  stop_server
+  stop_server || return 1
   docker rm -f atlas-verify >/dev/null 2>&1 || true
   echo "CMD docker run -d --name atlas-verify --network host -e DATABASE_URL -e BETTER_AUTH_SECRET -e BETTER_AUTH_URL -e ADMIN_API_SECRET ${ATLAS_IMAGE}"
   docker run -d --name atlas-verify --network host \
     -e DATABASE_URL -e BETTER_AUTH_SECRET -e BETTER_AUTH_URL -e ADMIN_API_SECRET \
     -e HOST=127.0.0.1 -e PORT=3000 \
-    "$ATLAS_IMAGE"
+    "$ATLAS_IMAGE" || return 1
+  local running
+  running=$(docker inspect -f '{{.State.Running}}' atlas-verify 2>/dev/null || echo false)
+  echo "container_running=${running}"
+  if [[ "$running" != "true" ]]; then
+    return 1
+  fi
   wait_for_sign_in
 }
 
@@ -301,7 +332,7 @@ run_step typecheck pnpm typecheck
 run_step test pnpm test
 run_step build pnpm build
 run_step playwright-install pnpm exec playwright install --with-deps chromium
-start_server
+start_server || exit 1
 run_step server-ready wait_for_sign_in
 run_step visual-shots pnpm visual-shots
 run_step autosave-flush pnpm autosave-flush
