@@ -328,6 +328,10 @@ recipe_editor() {
   pnpm exec tsx scripts/editor-tables-dates.ts "$1"
 }
 
+recipe_space_error() {
+  pnpm exec tsx scripts/space-error-actions.ts
+}
+
 recipe_design_lock() {
   local lint_code=0
   set +e
@@ -552,6 +556,7 @@ case "${1:-}" in
   3-3) run_recipe recipe_editor 3-3 ;;
   3-4) run_recipe recipe_editor 3-4 ;;
   3-5) run_recipe recipe_3_5 ;;
+  space-error) run_recipe recipe_space_error ;;
   6|fail6) run_recipe recipe_6 ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
@@ -561,7 +566,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|6|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|all]" >&2
     exit 2
     ;;
 esac

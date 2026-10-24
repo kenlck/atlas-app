@@ -351,6 +351,7 @@ run_step fail3-2 ./scripts/verify-fail-conditions.sh 3-2
 run_step fail3-3 ./scripts/verify-fail-conditions.sh 3-3
 run_step fail3-4 ./scripts/verify-fail-conditions.sh 3-4
 run_step fail3-5 ./scripts/verify-fail-conditions.sh 3-5
+run_step space-error ./scripts/verify-fail-conditions.sh space-error
 run_step fail6 ./scripts/verify-fail-conditions.sh 6
 run_step screenshots pnpm visual-shots
 run_step baselines run_baselines
