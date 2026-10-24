@@ -321,6 +321,45 @@ async function main() {
     await shot(page, 1280, 'mentions', 'list')
     await page.keyboard.press('Escape')
 
+    await page.locator('.doc-editor').click()
+    await page.keyboard.press('Control+a')
+    await page.keyboard.press('Backspace')
+    await page.keyboard.type('@Bea')
+    await page.getByRole('option', { name: 'Bea Member' }).waitFor()
+    await page.keyboard.press('Enter')
+    await page.locator('.doc-editor [data-type="mention"]').first().waitFor()
+    await page.keyboard.type('@Cara')
+    await page.getByRole('option', { name: 'Cara North' }).waitFor()
+    await page.keyboard.press('Enter')
+    await page
+      .getByRole('listbox', { name: 'Mention someone' })
+      .waitFor({ state: 'hidden' })
+    const chips = await page
+      .locator('.doc-editor [data-type="mention"]')
+      .evaluateAll((els) =>
+        els.map((el) => ({
+          text: el.textContent ? el.textContent.trim() : '',
+          className: el.className,
+        })),
+      )
+    if (chips.length !== 2) {
+      throw new Error(`two chips ${JSON.stringify(chips)}`)
+    }
+    const beaChip = chips[0]
+    const caraChip = chips[1]
+    if (
+      beaChip.text !== 'Bea Member' ||
+      caraChip.text !== 'Cara North' ||
+      chips.some(
+        (chip) =>
+          chip.text.includes('Unknown person') ||
+          chip.className.split(' ').includes('unknown'),
+      )
+    ) {
+      throw new Error(`two chips ${JSON.stringify(chips)}`)
+    }
+    await shot(page, 1280, 'mentions', 'two-chips')
+
     await page.locator('.sw').focus()
     await page.locator('.sw').click()
     await page.getByRole('menu').waitFor()
@@ -358,6 +397,7 @@ async function main() {
       '1280-members-found.png',
       '1280-members-owner.png',
       '1280-mentions-list.png',
+      '1280-mentions-two-chips.png',
       '1280-space-error.png',
       '1280-switcher-focus-row.png',
       '390-create-team-rest.png',

@@ -8,6 +8,7 @@ import { teamInvite, teamMember, user } from './schema'
 import type { Space } from './schema'
 
 export {
+  applyMentionQuery,
   createMentionCache,
   looksLikeEmail,
   mentionChipText,

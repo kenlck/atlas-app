@@ -2,7 +2,11 @@ import Mention from '@tiptap/extension-mention'
 import type { SuggestionProps } from '@tiptap/suggestion'
 import { fetchMentionCandidates } from '#/server/fns'
 import { initials } from '#/lib/relative-time'
-import { createMentionCache, mentionChipText } from '#/lib/mention-label'
+import {
+  applyMentionQuery,
+  createMentionCache,
+  mentionChipText,
+} from '#/lib/mention-label'
 import type { MentionCandidate, MentionPerson } from '#/lib/mention-label'
 
 function paintList(
@@ -109,8 +113,7 @@ export function createMentionExtension(input: {
   const load = async (query: string) => {
     retryQuery = query
     const ticket = ++generation
-    cache.clear()
-    onRefresh?.()
+    const filtered = query.trim() !== ''
     try {
       const rows = await fetchMentionCandidates({
         data: { spaceId: input.spaceId, mentionQuery: query },
@@ -118,13 +121,13 @@ export function createMentionExtension(input: {
       if (ticket !== generation) return []
       if (!Array.isArray(rows)) throw new Error('Mention lookup failed')
       mentionFailed = false
-      cache.replace(rows)
+      applyMentionQuery(cache, query, rows)
       onRefresh?.()
       return rows
     } catch {
       if (ticket !== generation) return []
       mentionFailed = true
-      cache.clear()
+      if (!filtered) cache.clear()
       onRefresh?.()
       paintError()
       return []

@@ -4,6 +4,7 @@ import { assertAccess } from '../src/lib/access'
 import { getDb, getSql } from '../src/lib/db'
 import { HttpError } from '../src/lib/http'
 import {
+  applyMentionQuery,
   createMentionCache,
   mentionChipText,
   mentionPerson,
@@ -569,6 +570,38 @@ describe('teams', () => {
       'Outsider',
     )
     expect(mentionChipText(null, 'outsider@example.com')).not.toContain('@')
+  })
+
+  it('keeps Bea Member when a later filtered query picks Cara', () => {
+    const page = createMentionCache()
+    page.remember({ id: 'bea', name: 'Bea Member' })
+    applyMentionQuery(page, 'Cara', [{ id: 'cara', name: 'Cara North' }])
+    page.remember({ id: 'cara', name: 'Cara North' })
+
+    const bea = page.person('bea', [])
+    const cara = page.person('cara', [])
+    expect(mentionChipText(bea, null)).toBe('Bea Member')
+    expect(mentionChipText(bea, null)).not.toBe('Unknown person')
+    expect(bea).not.toBeNull()
+    expect(mentionChipText(cara, null)).toBe('Cara North')
+    expect(mentionChipText(cara, null)).not.toBe('Unknown person')
+
+    applyMentionQuery(page, '', [
+      { id: 'cara', name: 'Cara North' },
+      { id: 'ada', name: 'Ada West' },
+    ])
+    expect(page.person('bea', [])).toBeNull()
+    expect(mentionChipText(page.person('cara', []), null)).toBe('Cara North')
+
+    page.clear()
+    const former = page.person('ada', [
+      { id: 'ada', name: 'Ada West', member: false },
+    ])
+    expect(former?.member).toBe(false)
+    expect(mentionChipText(former, null)).toBe('Former member')
+    expect(mentionChipText(former, null)).not.toBe('Unknown person')
+    expect(mentionChipText(former, 'ada@example.com')).not.toContain('@')
+    expect(mentionChipText(former, 'ada@example.com')).not.toContain('Ada')
   })
 
   it('refreshes the cached @ list and hides outsiders', () => {

@@ -45,6 +45,9 @@ export function createMentionCache() {
       listed.clear()
       for (const row of rows) listed.set(row.id, { id: row.id, name: row.name })
     },
+    merge(rows: Iterable<{ id: string; name: string }>) {
+      for (const row of rows) listed.set(row.id, { id: row.id, name: row.name })
+    },
     remember(row: { id: string; name: string }) {
       listed.set(row.id, { id: row.id, name: row.name })
     },
@@ -55,4 +58,16 @@ export function createMentionCache() {
       return mentionPerson(id, people, listed.values())
     },
   }
+}
+
+export function applyMentionQuery(
+  cache: {
+    merge: (rows: Iterable<{ id: string; name: string }>) => void
+    replace: (rows: Iterable<{ id: string; name: string }>) => void
+  },
+  query: string,
+  rows: Iterable<{ id: string; name: string }>,
+) {
+  if (query.trim() === '') cache.replace(rows)
+  else cache.merge(rows)
 }
