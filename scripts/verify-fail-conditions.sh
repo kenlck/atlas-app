@@ -447,7 +447,17 @@ for path in (work / "pg.env", work / "app.env", work / "signup.json", work / "si
     os.chmod(path, 0o600)
 PY
   echo "CMD docker run -d --name atlas-fail6-pg --env-file <unprinted> -p 127.0.0.1:${pg_port}:5432 postgres:16"
-  docker run -d --name atlas-fail6-pg --env-file "$work/pg.env" -p "127.0.0.1:${pg_port}:5432" postgres:16 >/dev/null
+  local attempt
+  for attempt in 1 2 3; do
+    docker rm -f atlas-fail6-pg >/dev/null 2>&1 || true
+    if docker run -d --name atlas-fail6-pg --env-file "$work/pg.env" -p "127.0.0.1:${pg_port}:5432" postgres:16 >/dev/null; then
+      break
+    fi
+    if [[ "$attempt" -eq 3 ]]; then
+      return 1
+    fi
+    sleep 1
+  done
   # First boot logs "ready to accept connections" for the temporary init
   # server, then again for the real postmaster. Migrating on the first
   # ready hits ECONNRESET when that temporary server exits.
