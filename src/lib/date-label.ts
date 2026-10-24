@@ -47,6 +47,22 @@ export function parseIso(iso: string): IsoParts | null {
   return { year, month, day }
 }
 
+export function dateAttribute(value: unknown) {
+  if (typeof value !== 'string' || !parseIso(value)) return null
+  return value
+}
+
+export function findDayButton<T extends { getAttribute(name: string): string | null }>(
+  buttons: Iterable<T>,
+  iso: string,
+) {
+  if (!parseIso(iso)) return null
+  for (const button of buttons) {
+    if (button.getAttribute('data-date') === iso) return button
+  }
+  return null
+}
+
 export function isoFromDate(date: Date) {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')

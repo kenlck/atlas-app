@@ -1,7 +1,7 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { DateChipView } from '#/components/DateChipView'
-import { formatDateLabel } from '#/lib/date-label'
+import { dateAttribute, formatDateLabel } from '#/lib/date-label'
 
 export const DateChip = Node.create({
   name: 'dateChip',
@@ -15,10 +15,11 @@ export const DateChip = Node.create({
     return {
       date: {
         default: null,
-        parseHTML: (element) => element.getAttribute('data-date'),
+        parseHTML: (element) => dateAttribute(element.getAttribute('data-date')),
         renderHTML: (attributes) => {
-          if (!attributes.date) return {}
-          return { 'data-date': attributes.date }
+          const date = dateAttribute(attributes.date)
+          if (!date) return {}
+          return { 'data-date': date }
         },
       },
     }
@@ -29,14 +30,13 @@ export const DateChip = Node.create({
   },
 
   renderHTML({ node, HTMLAttributes }) {
-    const date = String(node.attrs.date ?? '')
+    const date = dateAttribute(node.attrs.date)
     return [
       'span',
-      mergeAttributes(HTMLAttributes, {
-        'data-date': date,
+      mergeAttributes(HTMLAttributes, date ? { 'data-date': date } : {}, {
         class: 'date-chip',
       }),
-      formatDateLabel(date),
+      formatDateLabel(date ?? ''),
     ]
   },
 

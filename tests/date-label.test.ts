@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { formatDateLabel, parseIso, shiftIso, todayIso } from '../src/lib/date-label'
+import {
+  dateAttribute,
+  findDayButton,
+  formatDateLabel,
+  parseIso,
+  shiftIso,
+  todayIso,
+} from '../src/lib/date-label'
 
 describe('date labels', () => {
   it('formats a stored day from its parts', () => {
@@ -31,5 +38,25 @@ describe('date labels', () => {
     expect(parseIso('2024-02-29')).toEqual({ year: 2024, month: 2, day: 29 })
     expect(parseIso('2000-02-29')).toEqual({ year: 2000, month: 2, day: 29 })
     expect(parseIso('2026-02-28')).toEqual({ year: 2026, month: 2, day: 28 })
+  })
+
+  it('keeps only a valid YYYY-MM-DD attribute', () => {
+    expect(dateAttribute('2026-01-15')).toBe('2026-01-15')
+    expect(dateAttribute('2024-02-29')).toBe('2024-02-29')
+    expect(dateAttribute('2026-02-31')).toBeNull()
+    expect(dateAttribute('2026-02-29')).toBeNull()
+    expect(dateAttribute('2026-2-01')).toBeNull()
+    expect(dateAttribute('not-a-date')).toBeNull()
+    expect(dateAttribute(null)).toBeNull()
+    expect(dateAttribute('')).toBeNull()
+  })
+
+  it('finds a day button by attribute equality', () => {
+    const invalid = { getAttribute: (name: string) => (name === 'data-date' ? '2026-02-31' : null) }
+    const valid = { getAttribute: (name: string) => (name === 'data-date' ? '2026-02-28' : null) }
+    expect(findDayButton([invalid, valid], '2026-02-31')).toBeNull()
+    expect(findDayButton([invalid, valid], '2026-02-29')).toBeNull()
+    expect(findDayButton([invalid, valid], '2026-02-28"]')).toBeNull()
+    expect(findDayButton([invalid, valid], '2026-02-28')).toBe(valid)
   })
 })

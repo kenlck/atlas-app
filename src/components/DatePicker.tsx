@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import {
+  findDayButton,
   formatMonthYear,
   monthMatrix,
   parseIso,
@@ -69,8 +70,8 @@ function Picker({ request }: { request: DatePickerRequest }) {
   }, [request, visible.year, visible.month])
 
   useEffect(() => {
-    const button = pickerRef.current?.querySelector<HTMLButtonElement>(`[data-date="${cursor}"]`)
-    button?.focus()
+    const buttons = pickerRef.current?.querySelectorAll<HTMLButtonElement>('button[data-date]')
+    findDayButton(buttons ?? [], cursor)?.focus()
     let armed = false
     const arm = window.requestAnimationFrame(() => {
       armed = true
