@@ -4,6 +4,7 @@ import { assertAccess } from '../src/lib/access'
 import { getDb, getSql } from '../src/lib/db'
 import { HttpError } from '../src/lib/http'
 import {
+  createMentionCache,
   mentionChipText,
   mentionPerson,
   listMentionCandidates,
@@ -509,13 +510,21 @@ describe('teams', () => {
       view.people.find((item) => item.id === teammate.user.id) ?? null
     expect(person?.member).toBe(false)
     expect(JSON.stringify(view.people)).not.toContain(teammate.user.email)
-    expect(mentionChipText(person, teammate.user.email)).toBe('Ada West')
+    expect(mentionChipText(person, teammate.user.email)).toBe('Former member')
     expect(mentionChipText(person, teammate.user.email)).not.toContain('@')
-    expect(mentionChipText(null, outsider.user.email)).toBe('Former member')
+    expect(mentionChipText(person, teammate.user.email)).not.toContain(
+      teammate.user.name,
+    )
+    expect(mentionChipText(null, outsider.user.email)).toBe('Unknown person')
+    expect(mentionChipText(null, outsider.user.name)).toBe('Unknown person')
+    expect(mentionChipText(null, outsider.user.email)).not.toContain('@')
+    expect(mentionChipText(null, outsider.user.name)).not.toContain(
+      outsider.user.name,
+    )
     expect(
       mentionChipText(
-        { id: outsider.user.id, name: outsider.user.email, member: false },
-        outsider.user.email,
+        { id: teammate.user.id, name: teammate.user.email, member: false },
+        teammate.user.email,
       ),
     ).toBe('Former member')
 
@@ -549,11 +558,49 @@ describe('teams', () => {
       [],
     )
     expect(former).toEqual({ id: 'ada', name: 'Ada West', member: false })
-    expect(mentionChipText(former, 'ada@example.com')).toBe('Ada West')
+    expect(mentionChipText(former, 'ada@example.com')).toBe('Former member')
+    expect(mentionChipText(former, 'ada@example.com')).not.toContain('@')
+    expect(mentionChipText(former, 'ada@example.com')).not.toContain('Ada')
 
     expect(mentionPerson('outsider', [], [])).toBeNull()
-    expect(mentionChipText(null, 'Outsider Secret Name')).toBe('Former member')
-    expect(mentionChipText(null, 'outsider@example.com')).toBe('Former member')
+    expect(mentionChipText(null, 'Outsider Secret Name')).toBe('Unknown person')
+    expect(mentionChipText(null, 'outsider@example.com')).toBe('Unknown person')
+    expect(mentionChipText(null, 'Outsider Secret Name')).not.toContain(
+      'Outsider',
+    )
+    expect(mentionChipText(null, 'outsider@example.com')).not.toContain('@')
+  })
+
+  it('refreshes the cached @ list and hides outsiders', () => {
+    const cache = createMentionCache()
+    cache.replace([{ id: 'ada', name: 'Ada West' }])
+    expect(cache.person('ada', [])).toEqual({
+      id: 'ada',
+      name: 'Ada West',
+      member: true,
+    })
+
+    cache.replace([])
+    expect(cache.person('ada', [])).toBeNull()
+
+    cache.replace([{ id: 'ada', name: 'Ada West' }])
+    const removed = cache.person('ada', [
+      { id: 'ada', name: 'Ada West', member: false },
+    ])
+    expect(removed).toEqual({ id: 'ada', name: 'Ada West', member: false })
+    expect(mentionChipText(removed, 'ada@example.com')).toBe('Former member')
+    expect(mentionChipText(removed, 'ada@example.com')).not.toContain('Ada')
+    expect(mentionChipText(removed, 'ada@example.com')).not.toContain('@')
+
+    cache.clear()
+    expect(cache.person('ada', [])).toBeNull()
+    expect(
+      mentionChipText(cache.person('missing', []), 'secret@example.com'),
+    ).toBe('Unknown person')
+    expect(mentionChipText(null, 'Outsider Secret Name')).not.toContain(
+      'Outsider',
+    )
+    expect(mentionChipText(null, 'secret@example.com')).not.toContain('@')
   })
 
   it('names only current and former members of that space', async () => {

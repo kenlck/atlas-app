@@ -823,7 +823,9 @@ body {
 }
 
 .doc-editor .mention.former,
-.mention.former {
+.mention.former,
+.doc-editor .mention.unknown,
+.mention.unknown {
   background: var(--sidebar-active);
   color: var(--muted);
   font-weight: 500;

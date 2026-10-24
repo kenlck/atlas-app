@@ -6,7 +6,12 @@ import { notFound } from './http'
 import { type MentionCandidate, type MentionPerson } from './mention-label'
 import { teamInvite, teamMember, user, type Space } from './schema'
 
-export { looksLikeEmail, mentionChipText, mentionPerson } from './mention-label'
+export {
+  createMentionCache,
+  looksLikeEmail,
+  mentionChipText,
+  mentionPerson,
+} from './mention-label'
 export type { MentionCandidate, MentionPerson } from './mention-label'
 
 export function mentionIdsFromBody(body: Json) {

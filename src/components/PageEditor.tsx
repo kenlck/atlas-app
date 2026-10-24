@@ -4,9 +4,9 @@ import StarterKit from '@tiptap/starter-kit'
 import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import Underline from '@tiptap/extension-underline'
-import { useRouter } from '@tanstack/react-router'
+import { getRouteApi, useRouter } from '@tanstack/react-router'
 import { EditorContent, useEditor } from '@tiptap/react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Json } from '#/lib/body-text'
 import type { PageView } from '#/lib/pages'
 import { registerEditorFlush } from '#/lib/editor-flush'
@@ -17,12 +17,58 @@ import { createMentionExtension } from './MentionExtension'
 
 type SaveState = 'saved' | 'saving' | 'error'
 
+const spaceRoute = getRouteApi('/_app/s/$spaceId')
+
+function draftKey(pageId: string) {
+  return `atlas-draft:${pageId}`
+}
+
+function readDraft(pageId: string): { title: string; body: Json } | null {
+  if (typeof sessionStorage === 'undefined') return null
+  try {
+    const raw = sessionStorage.getItem(draftKey(pageId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { title?: unknown; body?: unknown }
+    if (!parsed || typeof parsed.title !== 'string' || parsed.body == null) {
+      return null
+    }
+    return { title: parsed.title, body: parsed.body as Json }
+  } catch {
+    return null
+  }
+}
+
+function writeDraft(pageId: string, title: string, body: Json) {
+  try {
+    sessionStorage.setItem(draftKey(pageId), JSON.stringify({ title, body }))
+  } catch {
+    // The server flush still runs when storage is full.
+  }
+}
+
+function clearDraft(pageId: string) {
+  try {
+    sessionStorage.removeItem(draftKey(pageId))
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
 function flushKeepalive(payload: {
   pageId: string
   title: string
   body: Json
 }) {
   const body = JSON.stringify(payload)
+  try {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/pages/save', false)
+    xhr.setRequestHeader('content-type', 'application/json')
+    xhr.send(body)
+    if (xhr.status >= 200 && xhr.status < 300) return
+  } catch {
+    // Page dismissal can reject a synchronous request.
+  }
   const blob = new Blob([body], { type: 'application/json' })
   if (
     typeof navigator !== 'undefined' &&
@@ -41,16 +87,27 @@ function flushKeepalive(payload: {
 
 export function PageEditor({ page }: { page: PageView }) {
   const router = useRouter()
+  const draftRef = useRef(readDraft(page.id))
+  const draft = draftRef.current
   const [title, setTitle] = useState(page.title)
   const [saveState, setSaveState] = useState<SaveState>('saved')
-  const titleRef = useRef(title)
+  const titleRef = useRef(page.title)
   const savedTitle = useRef(page.title)
-  const bodyRef = useRef(page.body)
-  const dirtyRef = useRef(false)
+  const bodyRef = useRef(draft?.body ?? page.body)
+  const dirtyRef = useRef(draft != null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pageIdRef = useRef(page.id)
   const peopleRef = useRef(page.people)
   peopleRef.current = page.people
+  const spaceData = spaceRoute.useLoaderData()
+  const mentions = useMemo(
+    () =>
+      createMentionExtension({
+        spaceId: page.spaceId,
+        getPeople: () => peopleRef.current,
+      }),
+    [page.spaceId],
+  )
 
   const persist = async () => {
     if (timer.current) {
@@ -69,6 +126,7 @@ export function PageEditor({ page }: { page: PageView }) {
         },
       })
       setSaveState('saved')
+      clearDraft(pageIdRef.current)
       if (savedTitle.current !== titleRef.current) {
         savedTitle.current = titleRef.current
         void router.invalidate({
@@ -85,6 +143,7 @@ export function PageEditor({ page }: { page: PageView }) {
 
   const schedule = () => {
     dirtyRef.current = true
+    writeDraft(pageIdRef.current, titleRef.current, bodyRef.current as Json)
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => {
       void persistRef.current()
@@ -102,12 +161,9 @@ export function PageEditor({ page }: { page: PageView }) {
       TaskList,
       TaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder: 'Start writing' }),
-      createMentionExtension({
-        spaceId: page.spaceId,
-        getPeople: () => peopleRef.current,
-      }),
+      mentions.extension,
     ],
-    content: page.body as object,
+    content: (draft?.body ?? page.body) as object,
     editorProps: {
       attributes: { class: 'doc-editor' },
     },
@@ -118,6 +174,34 @@ export function PageEditor({ page }: { page: PageView }) {
   })
 
   useEffect(() => registerEditorFlush(() => persistRef.current()), [])
+
+  useEffect(() => {
+    const saved = draftRef.current
+    if (saved?.title && saved.title !== page.title) {
+      titleRef.current = saved.title
+      setTitle(saved.title)
+    }
+    if (!dirtyRef.current) return
+    void persistRef.current()
+  }, [page.title])
+
+  useEffect(() => {
+    mentions.setOnRefresh(() => {
+      if (!editor) return
+      mentions.sync(editor.view.dom)
+    })
+    return () => mentions.setOnRefresh(null)
+  }, [mentions, editor])
+
+  const peopleToken = page.people
+    .map((person) => `${person.id}:${person.member ? 1 : 0}`)
+    .join('|')
+
+  useEffect(() => {
+    mentions.clear()
+    if (!editor) return
+    mentions.sync(editor.view.dom)
+  }, [mentions, editor, spaceData, peopleToken])
 
   useEffect(() => {
     pageIdRef.current = page.id

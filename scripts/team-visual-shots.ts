@@ -201,6 +201,15 @@ async function main() {
     await page.getByRole('button', { name: 'Sign out' }).waitFor()
     await page.locator('.top b', { hasText: 'Pages' }).waitFor()
     await shot(page, 1280, 'space', 'error')
+    await setViewport(page, 390, 844)
+    await page.getByRole('button', { name: 'Try again' }).click({ trial: true })
+    await page.getByRole('button', { name: 'Open pages' }).click()
+    await page.locator('aside.side.open').waitFor()
+    await page.getByRole('button', { name: 'Sign out' }).click({ trial: true })
+    await shot(page, 390, 'space', 'error')
+    await page.keyboard.press('Escape')
+    await page.locator('aside.side.open').waitFor({ state: 'hidden' })
+    await setViewport(page, 1280, 800)
     mode = 'pass'
     await page.getByRole('button', { name: 'Try again' }).click()
     await page.getByRole('heading', { name: 'No pages yet' }).waitFor()
@@ -352,6 +361,7 @@ async function main() {
       '1280-switcher-focus-row.png',
       '390-create-team-rest.png',
       '390-members-owner.png',
+      '390-space-error.png',
     ]
     const names = [...written].sort()
     if (names.join('\n') !== expected.join('\n')) {

@@ -20,11 +20,13 @@ export function mentionPerson(
   people: MentionPerson[],
   listed: Iterable<{ id: string; name: string }>,
 ): MentionPerson | null {
+  const known = people.find((person) => person.id === id)
+  if (known) return known
   for (const row of listed) {
     if (row.id !== id) continue
     return { id: row.id, name: row.name, member: true }
   }
-  return people.find((person) => person.id === id) ?? null
+  return null
 }
 
 export function mentionChipText(
@@ -32,6 +34,25 @@ export function mentionChipText(
   _storedLabel?: string | null,
 ) {
   if (person?.member) return person.name
-  if (person && !looksLikeEmail(person.name)) return person.name
-  return 'Former member'
+  if (person) return 'Former member'
+  return 'Unknown person'
+}
+
+export function createMentionCache() {
+  const listed = new Map<string, { id: string; name: string }>()
+  return {
+    replace(rows: Iterable<{ id: string; name: string }>) {
+      listed.clear()
+      for (const row of rows) listed.set(row.id, { id: row.id, name: row.name })
+    },
+    remember(row: { id: string; name: string }) {
+      listed.set(row.id, { id: row.id, name: row.name })
+    },
+    clear() {
+      listed.clear()
+    },
+    person(id: string, people: MentionPerson[]) {
+      return mentionPerson(id, people, listed.values())
+    },
+  }
 }

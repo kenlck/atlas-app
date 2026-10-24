@@ -5,6 +5,7 @@ import {
   redirect,
   useRouter,
 } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
 import { AppFrame } from '#/components/AppFrame'
 import { Sidebar } from '#/components/Sidebar'
 import { fetchPageTree } from '#/server/fns'
@@ -63,8 +64,22 @@ function SpaceError() {
   const { spaceId } = Route.useParams()
   const { session } = appRoute.useRouteContext()
   const name = session.user.name
+  const [drawer, setDrawer] = useState(false)
+
+  useEffect(() => {
+    if (!drawer) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDrawer(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [drawer])
+
   return (
     <div className="app">
+      {drawer ? (
+        <div className="scrim" onClick={() => setDrawer(false)} />
+      ) : null}
       <Sidebar
         spaceId={spaceId}
         spaceName={name}
@@ -73,20 +88,20 @@ function SpaceError() {
         spaces={[{ id: spaceId, name, kind: 'personal', role: 'personal' }]}
         role="personal"
         pendingInvites={0}
-        open={false}
+        open={drawer}
         onCreate={() => undefined}
         onRename={() => undefined}
         onMove={() => undefined}
         onArchive={() => undefined}
         onCreateTeam={() => undefined}
-        onNavigate={() => undefined}
+        onNavigate={() => setDrawer(false)}
       />
       <div className="main" style={{ position: 'relative' }}>
         <button
           className="menu-btn"
           type="button"
           aria-label="Open pages"
-          onClick={() => undefined}
+          onClick={() => setDrawer(true)}
         >
           ☰
         </button>

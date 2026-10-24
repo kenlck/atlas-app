@@ -3,8 +3,8 @@ import type { SuggestionProps } from '@tiptap/suggestion'
 import { fetchMentionCandidates } from '#/server/fns'
 import { initials } from '#/lib/relative-time'
 import {
+  createMentionCache,
   mentionChipText,
-  mentionPerson,
   type MentionCandidate,
   type MentionPerson,
 } from '#/lib/mention-label'
@@ -77,7 +77,20 @@ export function createMentionExtension(input: {
   let mentionFailed = false
   let listRoot: HTMLElement | null = null
   let retryQuery = ''
-  const listed = new Map<string, MentionCandidate>()
+  let generation = 0
+  let onRefresh: (() => void) | null = null
+  const cache = createMentionCache()
+  const chipFor = (id: string) => {
+    const person = cache.person(id, input.getPeople())
+    return {
+      text: mentionChipText(person, null),
+      className: !person
+        ? 'mention unknown'
+        : person.member
+          ? 'mention'
+          : 'mention former',
+    }
+  }
   const paintError = () => {
     if (!listRoot) return
     listRoot.replaceChildren()
@@ -99,21 +112,29 @@ export function createMentionExtension(input: {
   }
   const load = async (query: string) => {
     retryQuery = query
+    const ticket = ++generation
+    cache.clear()
+    onRefresh?.()
     try {
       const rows = await fetchMentionCandidates({
         data: { spaceId: input.spaceId, mentionQuery: query },
       })
+      if (ticket !== generation) return []
       if (!Array.isArray(rows)) throw new Error('Mention lookup failed')
       mentionFailed = false
-      for (const row of rows) listed.set(row.id, row)
+      cache.replace(rows)
+      onRefresh?.()
       return rows
     } catch {
+      if (ticket !== generation) return []
       mentionFailed = true
+      cache.clear()
+      onRefresh?.()
       paintError()
       return []
     }
   }
-  return Mention.extend({
+  const extension = Mention.extend({
     addAttributes() {
       return {
         ...this.parent?.(),
@@ -129,28 +150,19 @@ export function createMentionExtension(input: {
     HTMLAttributes: { class: 'mention' },
     renderText({ node }) {
       const id = typeof node.attrs.id === 'string' ? node.attrs.id : ''
-      const person = mentionPerson(id, input.getPeople(), listed.values())
-      return mentionChipText(
-        person,
-        typeof node.attrs.label === 'string' ? node.attrs.label : null,
-      )
+      return chipFor(id).text
     },
     renderHTML({ node }) {
       const id = typeof node.attrs.id === 'string' ? node.attrs.id : ''
-      const person = mentionPerson(id, input.getPeople(), listed.values())
-      const text = mentionChipText(
-        person,
-        typeof node.attrs.label === 'string' ? node.attrs.label : null,
-      )
-      const former = !person?.member
+      const chip = chipFor(id)
       return [
         'span',
         {
           'data-type': 'mention',
           'data-id': node.attrs.id,
-          class: former ? 'mention former' : 'mention',
+          class: chip.className,
         },
-        text,
+        chip.text,
       ]
     },
     suggestion: {
@@ -158,7 +170,7 @@ export function createMentionExtension(input: {
       items: ({ query }) => load(query),
       command: ({ editor, range, props }) => {
         const person = props as MentionCandidate
-        listed.set(person.id, person)
+        cache.remember(person)
         editor
           .chain()
           .focus()
@@ -256,4 +268,23 @@ export function createMentionExtension(input: {
       },
     },
   })
+  return {
+    extension,
+    clear() {
+      generation += 1
+      cache.clear()
+    },
+    sync(root: ParentNode) {
+      root
+        .querySelectorAll<HTMLElement>('[data-type="mention"]')
+        .forEach((el) => {
+          const chip = chipFor(el.getAttribute('data-id') ?? '')
+          el.textContent = chip.text
+          el.className = chip.className
+        })
+    },
+    setOnRefresh(fn: (() => void) | null) {
+      onRefresh = fn
+    },
+  }
 }
