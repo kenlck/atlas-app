@@ -189,9 +189,28 @@ async function renameCurrent(page: Page, title: string) {
 
 async function createNamedPage(page: Page, title: string) {
   const previous = page.url()
+  const previousTitle = await page.locator('#page-title').inputValue()
   await page.getByRole('button', { name: '+ New page' }).last().click()
-  await page.waitForFunction((href) => window.location.href !== href, previous)
-  await page.locator('#page-title').waitFor()
+  // Navigation updates the address, and the new page's loader can finish,
+  // before the previous PageEditor unmounts. That input still shows the
+  // previous title, and renameCurrent would save onto that page. A created
+  // page mounts its own editor with the title Untitled.
+  await page.waitForFunction(
+    ({ href, priorTitle }) => {
+      const priorId = new URL(href).pathname.split('/').pop()
+      const nextId = window.location.pathname.split('/').pop()
+      if (!nextId || nextId === priorId) return false
+      const field = document.getElementById(
+        'page-title',
+      ) as HTMLInputElement | null
+      return (
+        field !== null &&
+        field.value === 'Untitled' &&
+        field.value !== priorTitle
+      )
+    },
+    { href: previous, priorTitle: previousTitle },
+  )
   await page.locator('.doc-editor').waitFor()
   await renameCurrent(page, title)
 }
