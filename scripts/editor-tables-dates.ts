@@ -280,7 +280,24 @@ async function timezoneRecipe(browser: Awaited<ReturnType<typeof chromium.launch
   }
   const chipBox = await west.locator('.date-chip').boundingBox()
   if (!chipBox) throw new Error('missing date chip')
-  await west.mouse.click(chipBox.x + chipBox.width + 24, chipBox.y + chipBox.height / 2)
+  await west.locator('.doc-editor').evaluate((el) => {
+    const host = el.parentElement
+    if (!host) throw new Error('editor host missing')
+    const key = Object.keys(host).find((name) => name.startsWith('__reactFiber'))
+    if (!key) throw new Error('editor fiber missing')
+    let fiber = (host as unknown as Record<string, any>)[key]
+    let editor = null
+    while (fiber) {
+      const props = fiber.memoizedProps
+      if (props && props.editor && typeof props.editor.chain === 'function') {
+        editor = props.editor
+        break
+      }
+      fiber = fiber.return
+    }
+    if (!editor) throw new Error('editor missing')
+    editor.chain().focus('end').run()
+  })
   await west.keyboard.press('Enter')
   await west.getByRole('button', { name: 'Date', exact: true }).click()
   await settleSave(west)
