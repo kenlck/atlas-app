@@ -1519,8 +1519,11 @@ async function fail6(dir: string) {
     { pageId: mentionedPageId },
   )
   expectSame404('outsider_fetchPage', missingRead, outsiderRead)
-  if (chipText !== 'Ada West' || chipClass !== 'mention former') {
+  if (chipText !== 'Former member' || chipClass !== 'mention former') {
     throw new Error(`former chip rendered ${chipClass} ${chipText}`)
+  }
+  if (chipText.includes('Ada')) {
+    throw new Error('former chip included the member name')
   }
   if (
     chipText.includes('@') ||
