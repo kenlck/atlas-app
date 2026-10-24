@@ -7,7 +7,8 @@ const appRoute = getRouteApi('/_app')
 function loaderError(error: unknown): never {
   const message = error instanceof Error ? error.message : ''
   if (message === 'Unauthorized') throw redirect({ to: '/sign-in' })
-  if (message === 'Password change required') throw redirect({ to: '/set-password' })
+  if (message === 'Password change required')
+    throw redirect({ to: '/set-password' })
   if (message === 'Not found') throw notFound()
   throw error
 }
@@ -43,6 +44,9 @@ function SpaceLayout() {
       spaceName={data.space.name}
       userName={session.user.name}
       tree={data.tree}
+      spaces={data.spaces}
+      role={data.role}
+      pendingInvites={data.pendingInvites}
     />
   )
 }
@@ -51,12 +55,16 @@ function SpaceError() {
   const router = useRouter()
   const { session } = appRoute.useRouteContext()
   const { spaceId } = Route.useParams()
+  const name = session.user.name
   return (
     <AppFrame
       spaceId={spaceId}
-      spaceName={session.user.name}
-      userName={session.user.name}
+      spaceName={name}
+      userName={name}
       tree={[]}
+      spaces={[{ id: spaceId, name, kind: 'personal', role: 'personal' }]}
+      role="personal"
+      pendingInvites={0}
       error="Couldn't load this space."
       onRetry={() => {
         void router.invalidate()
@@ -69,9 +77,11 @@ function SpacePending() {
   return (
     <div className="app">
       <aside className="side">
-        <div className="sw">
-          <div className="av">A</div>
-          Atlas
+        <div className="switcher-wrap">
+          <div className="sw">
+            <div className="av">A</div>
+            Atlas
+          </div>
         </div>
         <div className="lab">Pages</div>
         <div className="tree">

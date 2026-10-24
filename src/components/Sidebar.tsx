@@ -1,8 +1,11 @@
 import { Link } from '@tanstack/react-router'
 import { authClient } from '#/lib/auth-client'
+import type { SpaceRole } from '#/lib/access'
 import { initials } from '#/lib/relative-time'
 import type { TreeNode } from '#/lib/pages'
+import type { SpaceSummary } from '#/lib/teams'
 import { PageTree } from './PageTree'
+import { SpaceSwitcher } from './SpaceSwitcher'
 
 export function Sidebar({
   open,
@@ -13,11 +16,16 @@ export function Sidebar({
   activeId,
   loading,
   error,
+  spaces,
+  role,
+  pendingInvites,
   onRetry,
   onCreate,
   onRename,
   onMove,
   onArchive,
+  onCreateTeam,
+  onNavigate,
 }: {
   open: boolean
   spaceId: string
@@ -27,25 +35,27 @@ export function Sidebar({
   activeId?: string
   loading?: boolean
   error?: string | null
+  spaces: SpaceSummary[]
+  role: SpaceRole
+  pendingInvites: number
   onRetry?: () => void
   onCreate: (parentId: string | null) => void
   onRename: (pageId: string, title: string) => void
   onMove: (pageId: string) => void
   onArchive: (pageId: string) => void
+  onCreateTeam: () => void
+  onNavigate: () => void
 }) {
   return (
     <aside className={open ? 'side open' : 'side'}>
-      <Link
-        to="/s/$spaceId"
-        params={{ spaceId }}
-        className="sw"
-        preload={false}
-        aria-label="Personal space"
-        style={{ textDecoration: 'none', color: 'inherit' }}
-      >
-        <div className="av">{initials(spaceName)}</div>
-        {spaceName}
-      </Link>
+      <SpaceSwitcher
+        spaceId={spaceId}
+        spaceName={spaceName}
+        role={role}
+        spaces={spaces}
+        onCreateTeam={onCreateTeam}
+        onNavigate={onNavigate}
+      />
       <div className="lab">Pages</div>
       {loading ? (
         <div className="tree">
@@ -74,7 +84,19 @@ export function Sidebar({
         />
       )}
       <div className="foot">
-        <div className="me">{initials(userName)}</div>
+        <Link
+          to="/s/$spaceId/profile"
+          params={{ spaceId }}
+          className="me-link"
+          aria-label="Profile"
+          preload={false}
+          onClick={onNavigate}
+        >
+          <div className="me">{initials(userName)}</div>
+          {pendingInvites > 0 ? (
+            <span className="pending-dot" aria-label="Pending invitations" />
+          ) : null}
+        </Link>
         <div>
           <div style={{ fontWeight: 600, fontSize: 13 }}>{userName}</div>
         </div>
@@ -82,7 +104,13 @@ export function Sidebar({
           type="button"
           className="it"
           style={{ marginLeft: 'auto', width: 'auto' }}
-          onClick={() => authClient.signOut({ fetchOptions: { onSuccess: () => window.location.assign('/sign-in') } })}
+          onClick={() =>
+            authClient.signOut({
+              fetchOptions: {
+                onSuccess: () => window.location.assign('/sign-in'),
+              },
+            })
+          }
         >
           Sign out
         </button>

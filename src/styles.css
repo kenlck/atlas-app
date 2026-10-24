@@ -1,6 +1,6 @@
-@import "@fontsource-variable/geist";
-@import "@fontsource-variable/geist-mono";
-@import "tailwindcss";
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+@import 'tailwindcss';
 
 :root {
   --bg: #ffffff;
@@ -53,7 +53,7 @@ body,
 }
 
 html {
-  font-family: "Geist Variable", Geist, sans-serif;
+  font-family: 'Geist Variable', Geist, sans-serif;
   color: var(--ink);
   background: var(--bg);
   font-size: 14px;
@@ -64,7 +64,7 @@ body {
 }
 
 .mono {
-  font-family: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace;
+  font-family: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
 }
 
 .app {
@@ -94,8 +94,34 @@ body {
   gap: 8px;
   padding: 6px 8px;
   border-radius: 6px;
+  margin-bottom: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sw-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.switcher-wrap {
+  position: relative;
   margin-bottom: 8px;
+}
+
+.switcher-wrap .menu {
+  top: calc(100% - 4px);
+  left: 0;
+  right: 0;
+  min-width: 0;
 }
 
 .av {
@@ -137,7 +163,7 @@ body {
   margin-left: auto;
   font-size: 11px;
   color: var(--muted);
-  font-family: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace;
+  font-family: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
 }
 
 .lab {
@@ -174,6 +200,25 @@ body {
   font-size: var(--avatar-initials-size);
   font-weight: var(--avatar-initials-weight);
   flex-shrink: 0;
+}
+
+.me-link {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+
+.pending-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--sidebar);
 }
 
 .main {
@@ -310,7 +355,7 @@ body {
   width: 100%;
   max-width: var(--page-column-max);
   margin: 0 auto;
-  font-family: "Geist Variable", Geist, sans-serif;
+  font-family: 'Geist Variable', Geist, sans-serif;
   font-size: var(--body-size);
   line-height: var(--body-line);
   padding: 0 20px;
@@ -337,7 +382,7 @@ body {
 }
 
 .meta {
-  font-family: "Geist Variable", Geist, sans-serif;
+  font-family: 'Geist Variable', Geist, sans-serif;
   font-size: 12.5px;
   color: var(--muted);
   margin-bottom: 26px;
@@ -367,7 +412,7 @@ body {
 .auth {
   min-height: 100vh;
   background: var(--sidebar);
-  font-family: "Geist Variable", Geist, sans-serif;
+  font-family: 'Geist Variable', Geist, sans-serif;
   color: var(--ink);
   display: grid;
   place-items: center;
@@ -597,8 +642,211 @@ body {
   color: var(--ink);
 }
 
-.menu button:hover {
+.menu button:hover,
+.menu button.on,
+.menu a:hover,
+.menu a.act {
   background: var(--sidebar-active);
+}
+
+.menu a:focus-visible,
+.menu button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+.menu a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 4px;
+  color: inherit;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.menu a .av {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  font-size: 9px;
+}
+
+.section {
+  font-size: var(--h3-size);
+  font-weight: var(--h3-weight);
+  line-height: var(--h3-line);
+  margin: 22px 0 8px;
+}
+
+.member-row,
+.found,
+.invite-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.member-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.found,
+.invite-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 12px;
+  background: var(--white);
+  flex-wrap: wrap;
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.subline {
+  color: var(--muted);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subline.inviter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: visible;
+}
+
+.role-pill {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.invite-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.invite-row .in {
+  flex: 1;
+}
+
+.invite-row .btn,
+.found .btn,
+.invite-card .btn {
+  margin-top: 0;
+  width: auto;
+  padding: 0 14px;
+}
+
+.invite-card .actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.btn.danger {
+  background: var(--white);
+  color: var(--error);
+  border: 1px solid var(--line);
+  width: auto;
+  padding: 0 14px;
+  margin-top: 24px;
+}
+
+.banner button {
+  margin-left: 8px;
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.banner.confirm {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.banner.confirm p {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.banner.confirm .actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.banner .btn {
+  margin: 0;
+  height: 36px;
+  width: auto;
+  padding: 0 14px;
+}
+
+.banner .btn.secondary {
+  background: var(--white);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.banner .btn.delete-team {
+  background: var(--error);
+  color: var(--white);
+  border: 0;
+}
+
+.doc-editor .mention,
+.mention {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.doc-editor .mention.former,
+.mention.former,
+.doc-editor .mention.unknown,
+.mention.unknown {
+  background: var(--sidebar-active);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.mention-list {
+  z-index: 40;
+  min-width: 180px;
+}
+
+.mention-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: auto;
+  min-height: 32px;
+}
+
+.mention-empty {
+  padding: 6px 8px;
 }
 
 .skel {
@@ -620,11 +868,41 @@ body {
   padding: 0 20px;
 }
 
-.nf h1 {
+.nf h1,
+.nf h2 {
   font-size: var(--title-size);
   font-weight: var(--title-weight);
   line-height: var(--title-line);
   margin: 0 0 6px;
+}
+
+.team-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.team-modal .scrim {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(28, 25, 23, 0.32);
+}
+
+.team-modal .card {
+  position: relative;
+  z-index: 41;
+  width: 380px;
+  max-width: calc(100% - 32px);
+  margin: 96px auto 0;
+}
+
+@media (max-width: 390px) {
+  .team-modal .card {
+    width: calc(100% - 32px);
+    margin-top: 16px;
+  }
 }
 
 .doc-editor {
@@ -694,7 +972,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 12px;
-  font-family: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace;
+  font-family: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
   font-size: 14px;
   margin-bottom: 12px;
   overflow-x: auto;
@@ -706,19 +984,19 @@ body {
   margin: 22px 0;
 }
 
-.doc-editor ul[data-type="taskList"] {
+.doc-editor ul[data-type='taskList'] {
   list-style: none;
   padding-left: 0;
 }
 
-.doc-editor ul[data-type="taskList"] li {
+.doc-editor ul[data-type='taskList'] li {
   display: flex;
   gap: 8px;
   align-items: flex-start;
 }
 
 .doc-editor code {
-  font-family: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace;
+  font-family: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
   font-size: 14px;
 }
 
