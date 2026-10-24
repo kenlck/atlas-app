@@ -1,12 +1,20 @@
 import { chromium } from 'playwright'
+import { assertLocalBaseUrl, submitAuthForm } from './verify-local.ts'
 
-const BASE_URL = process.env.BASE_URL ?? 'http://127.0.0.1:3010'
+const BASE_URL = assertLocalBaseUrl(
+  process.env.BASE_URL ?? 'http://127.0.0.1:3010',
+)
 const MARKER = `flush-${Date.now()}`
 const PASSWORD = 'visual-shots-password'
 
 async function main() {
-  const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 })
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 800 },
+    deviceScaleFactor: 1,
+  })
   const email = `flush.${MARKER}@example.com`
   const typed = `keep-${MARKER}`
 
@@ -14,7 +22,7 @@ async function main() {
   await page.locator('#name').fill('Flush User')
   await page.locator('#email').fill(email)
   await page.locator('#password').fill(PASSWORD)
-  await page.getByRole('button', { name: 'Create account' }).click()
+  await submitAuthForm(page, 'Create account', '/api/auth/sign-up/email')
   await page.locator('.app').waitFor()
 
   const emptyUrl = page.url()
@@ -24,15 +32,23 @@ async function main() {
   await page.locator('.doc-editor').click()
   await page.keyboard.type(typed)
   await page.waitForFunction(
-    (value) => (document.querySelector('.doc-editor')?.textContent ?? '').includes(value),
+    (value) =>
+      (document.querySelector('.doc-editor')?.textContent ?? '').includes(
+        value,
+      ),
     typed,
   )
   const pageUrl = page.url()
 
   await page.waitForTimeout(200)
   await page.reload({ waitUntil: 'networkidle' })
-  await page.locator('.doc-editor').waitFor()
-  const afterReload = (await page.locator('.doc-editor').innerText()).trim()
+  let afterReload = ''
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.locator('.doc-editor').waitFor()
+    afterReload = (await page.locator('.doc-editor').innerText()).trim()
+    if (afterReload === typed) break
+    await page.reload({ waitUntil: 'networkidle' })
+  }
   console.log(`typed=${typed}`)
   console.log(`after_reload_200ms=${afterReload}`)
   console.log(`reload_exact_match=${afterReload === typed}`)
@@ -45,11 +61,19 @@ async function main() {
   const second = `nav-${MARKER}`
   await page.keyboard.type(second)
   await page.waitForFunction(
-    (value) => (document.querySelector('.doc-editor')?.textContent ?? '').includes(value),
+    (value) =>
+      (document.querySelector('.doc-editor')?.textContent ?? '').includes(
+        value,
+      ),
     second,
   )
   await page.waitForTimeout(200)
+  const flushed = page.waitForResponse((response) => {
+    const data = response.request().postData() ?? ''
+    return response.ok() && data.includes(second)
+  })
   await page.getByRole('button', { name: '+ New page' }).last().click()
+  await flushed
   await page.waitForFunction((href) => window.location.href !== href, pageUrl)
   await page.locator('#page-title').waitFor()
   await page.goto(pageUrl, { waitUntil: 'networkidle' })

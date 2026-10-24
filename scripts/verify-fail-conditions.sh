@@ -1,80 +1,506 @@
 #!/usr/bin/env bash
-# Recipes for issue #1 fail conditions. Credentials and secrets come from env.
-# Never prints DATABASE_URL, ADMIN_API_SECRET, or passwords.
+# Live recipes for issue #1. Never prints a secret, a password, or a database URL.
 set -euo pipefail
 
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+cd "$ROOT"
+
 BASE_URL="${BASE_URL:?BASE_URL is required}"
-VERIFY_EMAIL="${VERIFY_EMAIL:-}"
-VERIFY_PASSWORD="${VERIFY_PASSWORD:-}"
 ADMIN_API_SECRET="${ADMIN_API_SECRET:-}"
+ATLAS_IMAGE="${ATLAS_IMAGE:-atlas-app}"
+ATLAS_CONTAINER="${ATLAS_CONTAINER:-}"
+SHA=$(git rev-parse HEAD)
 
-redact() {
-  sed -E \
-    -e 's/better-auth\.session_token=[^;]+/better-auth.session_token=[redacted]/g' \
-    -e 's/("temporaryPassword":")[^"]+"/\1[redacted]"/g' \
-    -e 's/(Authorization: Bearer )[^[:space:]]+/\1[redacted]/g' \
-    -e 's/(password=)[^&[:space:]]+/\1[redacted]/g'
-}
+python3 - "$BASE_URL" << 'PY'
+import sys
+from urllib.parse import urlparse
 
-status_of() {
-  curl -sS -o /tmp/atlas-verify-body -D /tmp/atlas-verify-headers -w '%{http_code}' "$@"
-}
+parsed = urlparse(sys.argv[1])
+host = (parsed.hostname or "").lower()
+if parsed.scheme != "http" or host not in {"localhost", "127.0.0.1", "::1"}:
+    sys.stderr.write("refusing non-local BASE_URL\n")
+    raise SystemExit(2)
+PY
+
+if [[ -n "${DATABASE_URL:-}" ]]; then
+  python3 - "$DATABASE_URL" << 'PY'
+import sys
+from urllib.parse import urlparse
+
+parsed = urlparse(sys.argv[1])
+host = (parsed.hostname or "").lower()
+if parsed.scheme not in {"postgres", "postgresql"} or host not in {"localhost", "127.0.0.1", "::1"}:
+    sys.stderr.write("refusing non-local DATABASE_URL\n")
+    raise SystemExit(2)
+PY
+fi
 
 echo "verify-fail-conditions BASE_URL set ADMIN_API_SECRET=$([[ -n "$ADMIN_API_SECRET" ]] && echo set || echo unset)"
 
-case "${1:-all}" in
-  1|fail1)
-    echo "== Fail 1: B cannot open, save, or list A's page (404) =="
-    echo "BASE_URL=\"\$BASE_URL\" pnpm exec tsx scripts/http-evidence.ts fail1"
-    pnpm exec tsx scripts/http-evidence.ts fail1
-    ;;
-  2|fail2)
-    echo "== Fail 2: signed-out page 307, page API and server function 401 =="
-    echo "BASE_URL=\"\$BASE_URL\" pnpm exec tsx scripts/http-evidence.ts fail2"
-    pnpm exec tsx scripts/http-evidence.ts fail2
-    ;;
-  3|fail3)
-    echo "== Fail 3: type, reload, exact match; save 500 keeps text; mid-debounce flush =="
-    echo "BASE_URL=\"\$BASE_URL\" pnpm exec tsx scripts/fail3-playwright.ts"
-    pnpm exec tsx scripts/fail3-playwright.ts
-    echo "BASE_URL=\"\$BASE_URL\" pnpm autosave-flush"
-    pnpm autosave-flush
-    ;;
-  4|fail4)
-    echo "== Fail 4: cycle move 400, archive hides children, concurrent inverse moves =="
-    echo "pnpm exec vitest run tests/pages.test.ts --reporter=verbose"
-    pnpm exec vitest run tests/pages.test.ts --reporter=verbose
-    ;;
-  5e)
-    echo "== Fail 5e: unset or short ADMIN_API_SECRET returns 404 =="
-    echo "curl -sS -D - -o /dev/null -X POST \$BASE_URL/api/admin/reset-password -H 'content-type: application/json' -d '{\"email\":\"nobody@example.com\"}'"
-    # This recipe is meant to run against a process started without ADMIN_API_SECRET.
-    code=$(status_of -X POST "$BASE_URL/api/admin/reset-password" -H 'content-type: application/json' -d '{"email":"nobody@example.com"}')
-    echo "status=$code"
-    redact < /tmp/atlas-verify-headers
-    ;;
-  5f|5g)
-    echo "== Fail 5f/5g: reset row diff, locked 403, update-user 403, change-password, sign-out =="
-    echo "BASE_URL=\"\$BASE_URL\" ADMIN_API_SECRET=\"\$ADMIN_API_SECRET\" pnpm exec tsx scripts/http-evidence.ts fail5"
-    pnpm exec tsx scripts/http-evidence.ts fail5
-    ;;
-  5h)
-    echo "== Fail 5h: rotating X-Forwarded-For still 429 =="
-    echo "BASE_URL=\"\$BASE_URL\" ADMIN_API_SECRET=\"\$ADMIN_API_SECRET\" pnpm exec tsx scripts/http-evidence.ts fail5h"
-    pnpm exec tsx scripts/http-evidence.ts fail5h
-    ;;
-  6|fail6)
-    echo "== Fail 6: documented migrate + docker run env-only + sign-up =="
-    echo "docker run --rm -e DATABASE_URL atlas-app node migrate.mjs"
-    echo "docker run --rm -p 3000:3000 -e DATABASE_URL -e BETTER_AUTH_SECRET -e BETTER_AUTH_URL -e ADMIN_API_SECRET atlas-app"
-    echo "(run those with env vars in the shell; this script does not print them)"
-    ;;
+run_recipe() {
+  echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
+  set +e
+  (
+    set -euo pipefail
+    "$@"
+  )
+  local code=$?
+  set -e
+  echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
+  return "$code"
+}
+
+wait_http() {
+  local url=$1
+  local ready=false
+  local _
+  for _ in $(seq 1 40); do
+    if curl -sf -o /dev/null "$url"; then
+      ready=true
+      break
+    fi
+    sleep 0.5
+  done
+  echo "listen=${ready} port_check=sign-in"
+  [[ "$ready" == true ]]
+}
+
+write_app_env() {
+  local dest=$1 port=$2 mode=$3
+  python3 - "$dest" "$port" "$mode" << 'PY'
+import os
+import secrets
+import sys
+from pathlib import Path
+
+dest, port, mode = sys.argv[1:]
+base = f"http://127.0.0.1:{port}"
+lines = [
+    f"DATABASE_URL={os.environ['DATABASE_URL']}",
+    f"BETTER_AUTH_SECRET={os.environ['BETTER_AUTH_SECRET']}",
+    f"BETTER_AUTH_URL={base}",
+    f"PORT={port}",
+    "HOST=127.0.0.1",
+]
+if mode == "empty":
+    lines.append("ADMIN_API_SECRET=")
+elif mode == "short":
+    lines.append("ADMIN_API_SECRET=short-secret")
+elif mode == "boundary":
+    lines.append("ADMIN_API_SECRET=" + ("b" * 31))
+elif mode == "configured":
+    lines.append(f"ADMIN_API_SECRET={secrets.token_urlsafe(32)}")
+elif mode == "inherit":
+    lines.append(f"ADMIN_API_SECRET={os.environ['ADMIN_API_SECRET']}")
+Path(dest).write_text("\n".join(lines) + "\n")
+os.chmod(dest, 0o600)
+PY
+}
+
+boot_app() {
+  local name=$1 port=$2 mode=$3
+  local env_file=$4
+  write_app_env "$env_file" "$port" "$mode"
+  docker rm -f "$name" >/dev/null 2>&1 || true
+  echo "CMD docker run -d --name $name --network host --env-file <unprinted> $ATLAS_IMAGE"
+  docker run -d --name "$name" --network host --env-file "$env_file" "$ATLAS_IMAGE" >/dev/null
+  wait_http "http://127.0.0.1:${port}/sign-in"
+}
+
+expect_empty_404() {
+  local port=$1 label=$2
+  local body
+  body=$(mktemp)
+  local code
+  code=$(curl -sS -o "$body" -w '%{http_code}' -X POST "http://127.0.0.1:${port}/api/admin/reset-password" \
+    -H 'content-type: application/json' -d '{"email":"nobody@example.com"}')
+  local bytes
+  bytes=$(wc -c < "$body" | tr -d ' ')
+  rm -f "$body"
+  echo "status_${label}=$code"
+  echo "body_bytes_${label}=$bytes"
+  [[ "$code" == "404" && "$bytes" == "0" ]]
+}
+
+recipe_1() {
+  pnpm exec tsx scripts/http-evidence.ts fail1
+}
+
+recipe_2() {
+  pnpm exec tsx scripts/http-evidence.ts fail2
+}
+
+recipe_3() {
+  pnpm exec tsx scripts/fail3-playwright.ts
+  pnpm exec tsx scripts/autosave-flush.ts
+}
+
+recipe_4() {
+  pnpm exec tsx scripts/fail4-live.ts
+}
+
+recipe_5a() {
+  local work
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  trap "docker rm -f atlas-5a-unset atlas-5a-empty >/dev/null 2>&1 || true; rm -rf '$work'" EXIT
+  boot_app atlas-5a-unset 3411 unset "$work/unset.env"
+  expect_empty_404 3411 unset
+  boot_app atlas-5a-empty 3412 empty "$work/empty.env"
+  expect_empty_404 3412 empty
+  docker rm -f atlas-5a-unset atlas-5a-empty >/dev/null 2>&1 || true
+  rm -rf "$work"
+  trap - EXIT
+}
+
+recipe_5e() {
+  local work
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  trap "docker rm -f atlas-5e-short atlas-5e-boundary >/dev/null 2>&1 || true; rm -rf '$work'" EXIT
+  boot_app atlas-5e-short 3413 short "$work/short.env"
+  expect_empty_404 3413 short
+  boot_app atlas-5e-boundary 3416 boundary "$work/boundary.env"
+  expect_empty_404 3416 boundary
+  docker rm -f atlas-5e-short atlas-5e-boundary >/dev/null 2>&1 || true
+  rm -rf "$work"
+  trap - EXIT
+}
+
+recipe_5b() {
+  local work
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  trap "docker rm -f atlas-5b >/dev/null 2>&1 || true; rm -rf '$work'" EXIT
+  boot_app atlas-5b 3414 configured "$work/app.env"
+  local missing short long
+  missing=$(curl -sS -o "$work/missing.body" -w '%{http_code}' -X POST "http://127.0.0.1:3414/api/admin/reset-password" \
+    -H 'content-type: application/json' -d '{"email":"nobody@example.com"}')
+  short=$(curl -sS -o "$work/short.body" -w '%{http_code}' -X POST "http://127.0.0.1:3414/api/admin/reset-password" \
+    -H 'content-type: application/json' -H 'authorization: Bearer short' -d '{"email":"nobody@example.com"}')
+  long=$(curl -sS -o "$work/long.body" -w '%{http_code}' -X POST "http://127.0.0.1:3414/api/admin/reset-password" \
+    -H 'content-type: application/json' \
+    -H 'authorization: Bearer aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+    -d '{"email":"nobody@example.com"}')
+  local match=false
+  if cmp -s "$work/missing.body" "$work/short.body" && cmp -s "$work/short.body" "$work/long.body"; then
+    match=true
+  fi
+  echo "missing_bearer_status=$missing"
+  echo "short_bearer_status=$short"
+  echo "long_bearer_status=$long"
+  echo "bearer_bodies_match=$match"
+  echo "missing_body=$(cat "$work/missing.body")"
+  echo "constant_time_unit_test=tests/admin-reset.test.ts admin reset rejects a wrong secret, returns a temp password once, locks the user, and audits"
+  echo "constant_time_live_timing=false"
+  [[ "$missing" == "401" && "$short" == "401" && "$long" == "401" && "$match" == true ]]
+  docker rm -f atlas-5b >/dev/null 2>&1 || true
+  rm -rf "$work"
+  trap - EXIT
+}
+
+grep_absent() {
+  local work=$1 haystack=$2 suffix=$3
+  local ok=0 pair label file
+  if [[ ! -s "$haystack" ]]; then
+    echo "${suffix}_present=false"
+    return 1
+  fi
+  echo "${suffix}_present=true"
+  for pair in \
+    "secret_not_in_${suffix}:admin_secret" \
+    "temp_not_in_${suffix}:temp_password" \
+    "new_not_in_${suffix}:new_password" \
+    "temp2_not_in_${suffix}:temp_password_2" \
+    "supplied_not_in_${suffix}:supplied_password"
+  do
+    label="${pair%%:*}"
+    file="$work/${pair#*:}"
+    if [[ ! -f "$file" ]]; then
+      case "$file" in
+        *temp_password_2|*supplied_password) continue ;;
+      esac
+      echo "${label}=false"
+      ok=1
+      continue
+    fi
+    if [[ ! -s "$file" ]]; then
+      echo "${label}=false"
+      ok=1
+      continue
+    fi
+    if grep -F -f "$file" -q "$haystack"; then
+      echo "${label}=false"
+      ok=1
+    else
+      echo "${label}=true"
+    fi
+  done
+  return "$ok"
+}
+
+prepare_trace() {
+  local work=$1
+  if [[ -z "$ADMIN_API_SECRET" ]]; then
+    echo "ADMIN_API_SECRET is required"
+    return 1
+  fi
+  printf '%s' "$ADMIN_API_SECRET" > "$work/admin_secret"
+  chmod 600 "$work/admin_secret"
+}
+
+recipe_5c() {
+  local work
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  trap "docker rm -f atlas-5c >/dev/null 2>&1 || true; rm -rf '$work'" EXIT
+  boot_app atlas-5c 3417 inherit "$work/app.env"
+  BASE_URL="http://127.0.0.1:3417" pnpm exec tsx scripts/http-evidence.ts fail5c
+  docker rm -f atlas-5c >/dev/null 2>&1 || true
+  rm -rf "$work"
+  trap - EXIT
+}
+
+recipe_5d() {
+  local work
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  trap "docker rm -f atlas-5d >/dev/null 2>&1 || true; rm -rf '$work'" EXIT
+  prepare_trace "$work"
+  boot_app atlas-5d 3418 inherit "$work/app.env"
+  VERIFY_TRACE_DIR="$work" BASE_URL="http://127.0.0.1:3418" pnpm exec tsx scripts/http-evidence.ts fail5d
+  echo "CMD docker logs atlas-5d"
+  docker logs atlas-5d > "$work/app.log" 2>&1
+  echo "log_lines=$(wc -l < "$work/app.log" | tr -d ' ')"
+  local logs_ok=0 audit_ok=0
+  set +e
+  grep_absent "$work" "$work/app.log" logs
+  logs_ok=$?
+  grep_absent "$work" "$work/audit_row" audit
+  audit_ok=$?
+  set -e
+  docker rm -f atlas-5d >/dev/null 2>&1 || true
+  rm -rf "$work"
+  trap - EXIT
+  [[ "$logs_ok" -eq 0 && "$audit_ok" -eq 0 ]]
+}
+
+recipe_5f() {
+  local work
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  trap "rm -rf '$work'" EXIT
+  prepare_trace "$work"
+  VERIFY_TRACE_DIR="$work" pnpm exec tsx scripts/http-evidence.ts fail5f
+  local audit_ok=0
+  set +e
+  grep_absent "$work" "$work/audit_row" audit
+  audit_ok=$?
+  set -e
+  rm -rf "$work"
+  trap - EXIT
+  return "$audit_ok"
+}
+
+recipe_5g() {
+  local work
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  trap "rm -rf '$work'" EXIT
+  prepare_trace "$work"
+  VERIFY_TRACE_DIR="$work" pnpm exec tsx scripts/http-evidence.ts fail5g
+  local audit_ok=0
+  set +e
+  grep_absent "$work" "$work/audit_row" audit
+  audit_ok=$?
+  set -e
+  rm -rf "$work"
+  trap - EXIT
+  return "$audit_ok"
+}
+
+recipe_forgot() {
+  pnpm exec tsx scripts/forgot-password-note.ts
+}
+
+recipe_design_lock() {
+  node scripts/lint-tokens.mjs
+  echo "tokens_script=scripts/lint-tokens.mjs"
+  echo "tokens_result=pass"
+  echo "baseline_count=12"
+  echo "baselines=sign-in-empty sign-in-error sign-up-empty sign-up-error forgot-password set-password-error space-empty space-loading page-default page-loading page-error page-retry"
+  echo "page_empty=dropped"
+  echo "sarah_visual=pending"
+}
+
+recipe_5h() {
+  local work
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  trap "docker rm -f atlas-5h >/dev/null 2>&1 || true; rm -rf '$work'" EXIT
+  boot_app atlas-5h 3415 inherit "$work/app.env"
+  BASE_URL="http://127.0.0.1:3415" pnpm exec tsx scripts/http-evidence.ts fail5h
+  docker rm -f atlas-5h >/dev/null 2>&1 || true
+  rm -rf "$work"
+  trap - EXIT
+}
+
+recipe_6() {
+  local work pg_port app_port
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  pg_port=35432
+  app_port=3420
+  trap "docker rm -f atlas-fail6-app atlas-fail6-pg >/dev/null 2>&1 || true; rm -rf '$work'" EXIT
+  python3 - "$work" "$pg_port" "$app_port" << 'PY'
+import json
+import os
+import secrets
+import sys
+from pathlib import Path
+
+work = Path(sys.argv[1])
+pg_port, app_port = sys.argv[2], sys.argv[3]
+alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+def token(n: int) -> str:
+    return "".join(secrets.choice(alphabet) for _ in range(n))
+
+pg_password = token(24)
+auth_secret = token(48)
+admin_secret = token(48)
+signup_password = token(24)
+email = f"fail6.{os.urandom(4).hex()}@example.com"
+base = f"http://127.0.0.1:{app_port}"
+(work / "pg.env").write_text(
+    "POSTGRES_USER=atlas\n"
+    f"POSTGRES_PASSWORD={pg_password}\n"
+    "POSTGRES_DB=atlas\n"
+)
+(work / "app.env").write_text(
+    f"DATABASE_URL=postgres://atlas:{pg_password}@127.0.0.1:{pg_port}/atlas?sslmode=disable\n"
+    "HOST=127.0.0.1\n"
+    f"PORT={app_port}\n"
+    f"BETTER_AUTH_SECRET={auth_secret}\n"
+    f"BETTER_AUTH_URL={base}\n"
+    f"ADMIN_API_SECRET={admin_secret}\n"
+)
+(work / "signup.json").write_text(json.dumps({"name": "Fail Six", "email": email, "password": signup_password}))
+(work / "signup.curlrc").write_text(
+    "silent\n"
+    "show-error\n"
+    'request = "POST"\n'
+    f'url = "{base}/api/auth/sign-up/email"\n'
+    'header = "content-type: application/json"\n'
+    f'header = "origin: {base}"\n'
+    f'data = "@{work / "signup.json"}"\n'
+    f'output = "{work / "signup.body"}"\n'
+    f'dump-header = "{work / "signup.headers"}"\n'
+)
+for path in (work / "pg.env", work / "app.env", work / "signup.json", work / "signup.curlrc"):
+    os.chmod(path, 0o600)
+PY
+  echo "CMD docker run -d --name atlas-fail6-pg --env-file <unprinted> -p 127.0.0.1:${pg_port}:5432 postgres:16"
+  docker run -d --name atlas-fail6-pg --env-file "$work/pg.env" -p "127.0.0.1:${pg_port}:5432" postgres:16 >/dev/null
+  # First boot logs "ready to accept connections" for the temporary init
+  # server, then again for the real postmaster. Migrating on the first
+  # ready hits ECONNRESET when that temporary server exits.
+  local ready=false
+  local _
+  for _ in $(seq 1 60); do
+    local ready_lines=0
+    ready_lines=$(docker logs atlas-fail6-pg 2>&1 | grep -c "database system is ready to accept connections" || true)
+    if [[ "${ready_lines}" -ge 2 ]] && docker exec atlas-fail6-pg pg_isready -q; then
+      if command -v pg_isready >/dev/null 2>&1; then
+        if pg_isready -q -h 127.0.0.1 -p "$pg_port"; then
+          ready=true
+          break
+        fi
+      else
+        ready=true
+        break
+      fi
+    fi
+    sleep 1
+  done
+  echo "postgres_ready=$ready"
+  echo "postgres_bind=127.0.0.1:${pg_port}"
+  [[ "$ready" == true ]]
+  echo "CMD docker run --rm --network host --env-file <unprinted> $ATLAS_IMAGE node migrate.mjs"
+  set +e
+  docker run --rm --network host --env-file "$work/app.env" "$ATLAS_IMAGE" node migrate.mjs >"$work/migrate.out" 2>&1
+  local migrate_exit=$?
+  set -e
+  python3 - "$work/migrate.out" "$migrate_exit" << 'PY'
+import re
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text(errors="replace")
+text = re.sub(r"postgres(?:ql)?://\S+", "[redacted-url]", text)
+print(text.rstrip())
+print(f"migrate_exit={sys.argv[2]}")
+if sys.argv[2] != "0" or "migrations applied" not in text:
+    raise SystemExit(1)
+print("migrate_result=migrations_applied")
+PY
+  echo "CMD docker run -d --name atlas-fail6-app --network host --env-file <unprinted> $ATLAS_IMAGE"
+  docker run -d --name atlas-fail6-app --network host --env-file "$work/app.env" "$ATLAS_IMAGE" >/dev/null
+  wait_http "http://127.0.0.1:${app_port}/sign-in"
+  echo "CMD curl --config <unprinted>"
+  curl --config "$work/signup.curlrc"
+  python3 - "$work/signup.headers" "$work/signup.body" << 'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+headers = Path(sys.argv[1]).read_text(errors="replace")
+raw = Path(sys.argv[2]).read_text(errors="replace")
+codes = [line.split()[1] for line in headers.splitlines() if line.startswith("HTTP/") and len(line.split()) >= 2]
+status = codes[-1] if codes else "none"
+print(f"signup_status={status}")
+shown = re.sub(r'("token"\s*:\s*")[^"]+"', r'\1[redacted]"', raw)
+shown = re.sub(r'("password"\s*:\s*")[^"]+"', r'\1[redacted]"', shown)
+shown = re.sub(r"better-auth\.session_token=[^;\s]+", "better-auth.session_token=[redacted]", shown)
+print(shown)
+body = json.loads(raw)
+user = body.get("user") or {}
+print(f"user_id_len={len(user.get('id') or '')}")
+print(f"mustChangePassword={user.get('mustChangePassword')}")
+if status != "200" or not user.get("id") or user.get("mustChangePassword") is not False:
+    raise SystemExit(1)
+PY
+  docker rm -f atlas-fail6-app atlas-fail6-pg >/dev/null 2>&1 || true
+  rm -rf "$work"
+  trap - EXIT
+}
+
+case "${1:-}" in
+  1|fail1) run_recipe recipe_1 ;;
+  2|fail2) run_recipe recipe_2 ;;
+  3|fail3) run_recipe recipe_3 ;;
+  4|fail4) run_recipe recipe_4 ;;
+  5a) run_recipe recipe_5a ;;
+  5e) run_recipe recipe_5e ;;
+  5b) run_recipe recipe_5b ;;
+  5c) run_recipe recipe_5c ;;
+  5d) run_recipe recipe_5d ;;
+  5f) run_recipe recipe_5f ;;
+  5g) run_recipe recipe_5g ;;
+  5h) run_recipe recipe_5h ;;
+  forgot-password) run_recipe recipe_forgot ;;
+  design-lock) run_recipe recipe_design_lock ;;
+  6|fail6) run_recipe recipe_6 ;;
   all)
+    echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
+    echo "all runs in-process checks and vitest, which drops the public schema"
     pnpm exec tsx scripts/verify-fail-conditions.ts all
     pnpm exec vitest run tests/pages.test.ts tests/admin-reset.test.ts tests/auth-lock.test.ts --reporter=verbose
+    echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [all|1|2|3|4|5e|5f|5g|5h|6]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|6|all]" >&2
     exit 2
     ;;
 esac

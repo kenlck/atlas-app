@@ -1,9 +1,19 @@
+import { execSync } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { chromium, type Page, type Request } from 'playwright'
+import {
+  assertLocalBaseUrl,
+  stamp as utcStamp,
+  submitAuthForm,
+  waitForClient,
+} from './verify-local.ts'
 
-const BASE_URL = process.env.BASE_URL ?? 'http://127.0.0.1:3010'
-const OUT = process.env.VISUAL_OUT ?? 'artifacts'
+const BASE_URL = assertLocalBaseUrl(
+  process.env.BASE_URL ?? 'http://127.0.0.1:3010',
+)
+const HEAD_SHA = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim()
+const OUT = join(process.env.VISUAL_OUT ?? 'artifacts', HEAD_SHA)
 const ADMIN_SECRET = process.env.ADMIN_API_SECRET ?? ''
 const LONG_URL =
   'https://example.com/docs/this-is-a-very-long-unbroken-path-segment-that-should-wrap-inside-the-page-column-without-causing-horizontal-scroll-on-narrow-viewports-abcdefghijklmnopqrstuvwxyz0123456789'
@@ -38,17 +48,21 @@ function classify(request: Request) {
   const blob = requestBlob(request)
   const method = request.method()
   if (hasKey(blob, 'body') && hasKey(blob, 'pageId')) return 'savePage'
-  if (hasKey(blob, 'pageId') && hasKey(blob, 'title') && !hasKey(blob, 'body')) return 'renamePage'
+  if (hasKey(blob, 'pageId') && hasKey(blob, 'title') && !hasKey(blob, 'body'))
+    return 'renamePage'
   if (hasKey(blob, 'pageId') && !hasKey(blob, 'title')) return 'fetchPage'
   if (hasKey(blob, 'spaceId') && hasKey(blob, 'parentId')) return 'createPage'
-  if (hasKey(blob, 'spaceId')) return method === 'GET' ? 'fetchPageTree' : 'createPage'
+  if (hasKey(blob, 'spaceId'))
+    return method === 'GET' ? 'fetchPageTree' : 'createPage'
   return 'other'
 }
 
 async function shot(page: Page, width: number, screen: string, state: string) {
   const size = page.viewportSize()
   if (!size || size.width !== width) {
-    throw new Error(`viewport width ${size?.width} !== ${width} for ${screen}-${state}`)
+    throw new Error(
+      `viewport width ${size?.width} !== ${width} for ${screen}-${state}`,
+    )
   }
   const meta = await page.evaluate(() => ({
     innerWidth: window.innerWidth,
@@ -59,14 +73,23 @@ async function shot(page: Page, width: number, screen: string, state: string) {
     throw new Error(`DPR ${meta.dpr} !== 1 for ${screen}-${state}`)
   }
   if (meta.innerWidth !== width) {
-    throw new Error(`innerWidth ${meta.innerWidth} !== ${width} for ${screen}-${state}`)
+    throw new Error(
+      `innerWidth ${meta.innerWidth} !== ${width} for ${screen}-${state}`,
+    )
   }
   const name = `${width}-${screen}-${state}.png`
   const path = join(OUT, name)
-  await page.screenshot({ path, fullPage: false, scale: 'css', animations: 'disabled' })
+  await page.screenshot({
+    path,
+    fullPage: false,
+    scale: 'css',
+    animations: 'disabled',
+  })
   const png = pngSize(await readFile(path))
   if (png.width !== width || png.height !== size.height) {
-    throw new Error(`${name} is ${png.width}x${png.height}, expected ${width}x${size.height}`)
+    throw new Error(
+      `${name} is ${png.width}x${png.height}, expected ${width}x${size.height}`,
+    )
   }
   console.log(`wrote ${name} ${png.width}x${png.height} dpr=${meta.dpr}`)
   return path
@@ -74,7 +97,10 @@ async function shot(page: Page, width: number, screen: string, state: string) {
 
 async function setViewport(page: Page, width: number, height: number) {
   await page.setViewportSize({ width, height })
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+  )
 }
 
 async function waitReady(page: Page) {
@@ -85,12 +111,17 @@ async function waitReady(page: Page) {
   await page.goto(`${BASE_URL}/sign-in`, { waitUntil: 'networkidle' })
 }
 
-async function signUp(page: Page, name: string, email: string, password: string) {
+async function signUp(
+  page: Page,
+  name: string,
+  email: string,
+  password: string,
+) {
   await page.goto(`${BASE_URL}/sign-up`, { waitUntil: 'networkidle' })
   await page.locator('#name').fill(name)
   await page.locator('#email').fill(email)
   await page.locator('#password').fill(password)
-  await page.getByRole('button', { name: 'Create account' }).click()
+  await submitAuthForm(page, 'Create account', '/api/auth/sign-up/email')
   const app = page.locator('.app')
   const banner = page.locator('.banner')
   await Promise.race([
@@ -98,7 +129,9 @@ async function signUp(page: Page, name: string, email: string, password: string)
     banner.waitFor({ state: 'visible' }),
   ])
   if (await banner.isVisible().catch(() => false)) {
-    throw new Error(`sign-up failed: ${((await banner.textContent()) ?? '').trim()}`)
+    throw new Error(
+      `sign-up failed: ${((await banner.textContent()) ?? '').trim()}`,
+    )
   }
   await app.waitFor()
 }
@@ -107,7 +140,7 @@ async function signIn(page: Page, email: string, password: string) {
   await page.goto(`${BASE_URL}/sign-in`, { waitUntil: 'networkidle' })
   await page.locator('#email').fill(email)
   await page.locator('#password').fill(password)
-  await page.getByRole('button', { name: 'Sign in' }).click()
+  await submitAuthForm(page, 'Sign in', '/api/auth/sign-in/email')
 }
 
 async function signOut(page: Page) {
@@ -118,14 +151,29 @@ async function signOut(page: Page) {
 async function renameCurrent(page: Page, title: string) {
   const input = page.locator('#page-title')
   await input.waitFor()
-  await page.locator('.col .skel').first().waitFor({ state: 'hidden' }).catch(() => undefined)
+  await page
+    .locator('.col .skel')
+    .first()
+    .waitFor({ state: 'hidden' })
+    .catch(() => undefined)
+  const saved = page.waitForResponse(
+    (response) => {
+      if (!response.ok() || response.request().method() !== 'POST') return false
+      if (!response.url().includes('_serverFn')) return false
+      return (response.request().postData() ?? '').includes(`"${title}"`)
+    },
+    { timeout: 15000 },
+  )
   await input.click()
   await input.fill(title)
   await page.waitForFunction((expected) => {
-    const field = document.getElementById('page-title') as HTMLInputElement | null
+    const field = document.getElementById(
+      'page-title',
+    ) as HTMLInputElement | null
     return field?.value === expected
   }, title)
   await input.blur()
+  await saved
   await page.locator('.tree a.it').filter({ hasText: title }).waitFor()
 }
 
@@ -140,11 +188,16 @@ async function createNamedPage(page: Page, title: string) {
 
 async function logTitleLabel(page: Page, width: number) {
   const info = await page.evaluate(() => {
-    const labels = Array.from(document.querySelectorAll('label')).map((el) => (el.textContent ?? '').trim())
+    const labels = Array.from(document.querySelectorAll('label')).map((el) =>
+      (el.textContent ?? '').trim(),
+    )
     return { labels, hasTitleWord: /\bTITLE\b/.test(document.body.innerText) }
   })
   console.log(`title_label_${width} ${JSON.stringify(info)}`)
-  if (info.hasTitleWord || info.labels.some((label) => label.toUpperCase() === 'TITLE')) {
+  if (
+    info.hasTitleWord ||
+    info.labels.some((label) => label.toUpperCase() === 'TITLE')
+  ) {
     throw new Error(`TITLE label is visible at ${width}`)
   }
 }
@@ -160,7 +213,9 @@ async function logDrawer(page: Page, width: number) {
   }, width)
   console.log(`drawer_${width} ${JSON.stringify(info)}`)
   if (info.actual == null || Math.abs(info.actual - info.expected) > 1) {
-    throw new Error(`drawer width at ${width} was ${info.actual}, expected ${info.expected}`)
+    throw new Error(
+      `drawer width at ${width} was ${info.actual}, expected ${info.expected}`,
+    )
   }
 }
 
@@ -173,13 +228,16 @@ async function printOverflow(page: Page, label: string) {
     `${label} document.documentElement.scrollWidth=${result.scrollWidth} innerWidth=${result.innerWidth} ok=${result.scrollWidth <= result.innerWidth}`,
   )
   if (result.scrollWidth > result.innerWidth) {
-    throw new Error(`${label}: scrollWidth ${result.scrollWidth} > innerWidth ${result.innerWidth}`)
+    throw new Error(
+      `${label}: scrollWidth ${result.scrollWidth} > innerWidth ${result.innerWidth}`,
+    )
   }
   const line = `${label} document.documentElement.scrollWidth=${result.scrollWidth} innerWidth=${result.innerWidth} ok=${result.scrollWidth <= result.innerWidth}\n`
   await writeFile(join(OUT, 'scrollwidth.log'), line)
 }
 
 async function main() {
+  console.log(`START ${utcStamp()} sha=${HEAD_SHA}`)
   await mkdir(OUT, { recursive: true })
   const stamp = Date.now()
   const email = `ada.west.${stamp}@example.com`
@@ -196,6 +254,7 @@ async function main() {
     colorScheme: 'light',
   })
   const page = await context.newPage()
+  await page.clock.install({ time: new Date('2026-01-15T12:00:00Z') })
   const held: Array<() => void> = []
   const releaseHeld = () => {
     const batch = held.splice(0)
@@ -209,7 +268,10 @@ async function main() {
     if (mode === 'hold-page' && kind === 'fetchPage') {
       await new Promise<void>((resolve) => {
         held.push(() => {
-          void route.continue().then(() => resolve(), () => resolve())
+          void route.continue().then(
+            () => resolve(),
+            () => resolve(),
+          )
         })
       })
       return
@@ -217,7 +279,10 @@ async function main() {
     if (mode === 'hold-tree' && kind === 'fetchPageTree') {
       await new Promise<void>((resolve) => {
         held.push(() => {
-          void route.continue().then(() => resolve(), () => resolve())
+          void route.continue().then(
+            () => resolve(),
+            () => resolve(),
+          )
         })
       })
       return
@@ -242,282 +307,345 @@ async function main() {
   })
 
   try {
-  await waitReady(page)
-  await setViewport(page, 1280, 800)
+    await waitReady(page)
+    await setViewport(page, 1280, 800)
 
-  await page.goto(`${BASE_URL}/sign-in`, { waitUntil: 'networkidle' })
-  await page.getByRole('heading', { name: 'Sign in' }).waitFor()
-  await shot(page, 1280, 'sign-in', 'empty')
+    await page.goto(`${BASE_URL}/sign-in`, { waitUntil: 'networkidle' })
+    await page.getByRole('heading', { name: 'Sign in' }).waitFor()
+    await shot(page, 1280, 'sign-in', 'empty')
 
-  await page.locator('#email').focus()
-  await shot(page, 1280, 'sign-in', 'focus-input')
+    await page.locator('#email').focus()
+    await shot(page, 1280, 'sign-in', 'focus-input')
 
-  await page.getByRole('button', { name: 'Sign in' }).focus()
-  await shot(page, 1280, 'sign-in', 'focus-button')
-  const buttonFocus = await page.getByRole('button', { name: 'Sign in' }).evaluate((el) => {
-    const style = getComputedStyle(el)
-    return { outline: style.outline, outlineOffset: style.outlineOffset, boxShadow: style.boxShadow }
-  })
-  console.log(`button_focus ${JSON.stringify(buttonFocus)}`)
+    await page.getByRole('button', { name: 'Sign in' }).focus()
+    await shot(page, 1280, 'sign-in', 'focus-button')
+    const buttonFocus = await page
+      .getByRole('button', { name: 'Sign in' })
+      .evaluate((el) => {
+        const style = getComputedStyle(el)
+        return {
+          outline: style.outline,
+          outlineOffset: style.outlineOffset,
+          boxShadow: style.boxShadow,
+        }
+      })
+    console.log(`button_focus ${JSON.stringify(buttonFocus)}`)
 
-  await page.locator('#email').fill(email)
-  await page.locator('#password').fill('wrong-password')
-  await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.locator('.banner').waitFor()
-  await shot(page, 1280, 'sign-in', 'wrong-credentials')
+    await page.locator('#email').fill(email)
+    await page.locator('#password').fill('wrong-password')
+    await waitForClient(page)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await page.locator('.banner').waitFor()
+    await shot(page, 1280, 'sign-in', 'wrong-credentials')
 
-  await page.goto(`${BASE_URL}/sign-up`, { waitUntil: 'networkidle' })
-  await page.getByRole('heading', { name: 'Create an account' }).waitFor()
-  await shot(page, 1280, 'sign-up', 'empty')
+    await page.goto(`${BASE_URL}/sign-up`, { waitUntil: 'networkidle' })
+    await page.getByRole('heading', { name: 'Create an account' }).waitFor()
+    await shot(page, 1280, 'sign-up', 'empty')
 
-  await page.locator('#name').fill('Ada')
-  await page.locator('#email').fill('ada')
-  await page.locator('#password').fill('short')
-  await page.getByRole('button', { name: 'Create account' }).click()
-  await page.locator('.err').first().waitFor()
-  await shot(page, 1280, 'sign-up', 'validation')
-  const signupHint = await page.locator('.hint').count()
-  const signupErrors = await page.locator('.err').allTextContents()
-  console.log(`signup_hint_count=${signupHint}`)
-  console.log(`signup_errors=${JSON.stringify(signupErrors.map((text) => text.trim()))}`)
-  if (signupHint !== 0) throw new Error('sign-up hint is still visible beside the error')
+    await page.locator('#name').fill('Ada')
+    await page.locator('#email').fill('ada')
+    await page.locator('#password').fill('short')
+    await waitForClient(page)
+    await page.getByRole('button', { name: 'Create account' }).click()
+    await page.locator('.err').first().waitFor()
+    await shot(page, 1280, 'sign-up', 'validation')
+    const signupHint = await page.locator('.hint').count()
+    const signupErrors = await page.locator('.err').allTextContents()
+    console.log(`signup_hint_count=${signupHint}`)
+    console.log(
+      `signup_errors=${JSON.stringify(signupErrors.map((text) => text.trim()))}`,
+    )
+    if (signupHint !== 0)
+      throw new Error('sign-up hint is still visible beside the error')
 
-  await page.goto(`${BASE_URL}/forgot-password`, { waitUntil: 'networkidle' })
-  await page.getByRole('heading', { name: 'Forgot your password?' }).waitFor()
-  await shot(page, 1280, 'forgot-password', 'note')
+    await page.goto(`${BASE_URL}/forgot-password`, { waitUntil: 'networkidle' })
+    await page.getByRole('heading', { name: 'Forgot your password?' }).waitFor()
+    await shot(page, 1280, 'forgot-password', 'note')
 
-  if (ADMIN_SECRET.length >= 32) {
-    await signUp(page, 'Reset User', resetEmail, password)
-    await signOut(page)
-    const resetRes = await fetch(`${BASE_URL}/api/admin/reset-password`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${ADMIN_SECRET}`,
-        'content-type': 'application/json',
-        'x-forwarded-for': `127.0.0.${(stamp % 200) + 1}`,
-      },
-      body: JSON.stringify({ email: resetEmail }),
-    })
-    if (!resetRes.ok) {
-      throw new Error(`admin reset failed: ${resetRes.status}`)
+    if (ADMIN_SECRET.length >= 32) {
+      await signUp(page, 'Reset User', resetEmail, password)
+      await signOut(page)
+      const resetRes = await fetch(`${BASE_URL}/api/admin/reset-password`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${ADMIN_SECRET}`,
+          'content-type': 'application/json',
+          'x-forwarded-for': `127.0.0.${(stamp % 200) + 1}`,
+        },
+        body: JSON.stringify({ email: resetEmail }),
+      })
+      if (!resetRes.ok) {
+        throw new Error(`admin reset failed: ${resetRes.status}`)
+      }
+      const resetBody = (await resetRes.json()) as {
+        temporaryPassword?: string
+      }
+      const temporaryPassword = resetBody.temporaryPassword
+      if (!temporaryPassword)
+        throw new Error('admin reset missing temporaryPassword')
+      await signIn(page, resetEmail, temporaryPassword)
+      await page.getByRole('heading', { name: 'Set a new password' }).waitFor()
+      await page.locator('#password').fill('new-password-ok')
+      await page.locator('#confirm').fill('different-password')
+      await page.getByRole('button', { name: 'Save password' }).click()
+      await page.getByText("Passwords don't match.").waitFor()
+      await shot(page, 1280, 'set-password', 'mismatch')
+      await page.getByRole('button', { name: 'Sign out' }).click()
+      await page.getByRole('heading', { name: 'Sign in' }).waitFor()
+    } else {
+      console.log(
+        'ADMIN_API_SECRET unset or short; skipping set-password mismatch shot',
+      )
     }
-    const resetBody = (await resetRes.json()) as { temporaryPassword?: string }
-    const temporaryPassword = resetBody.temporaryPassword
-    if (!temporaryPassword) throw new Error('admin reset missing temporaryPassword')
-    await signIn(page, resetEmail, temporaryPassword)
-    await page.getByRole('heading', { name: 'Set a new password' }).waitFor()
-    await page.locator('#password').fill('new-password-ok')
-    await page.locator('#confirm').fill('different-password')
-    await page.getByRole('button', { name: 'Save password' }).click()
-    await page.getByText("Passwords don't match.").waitFor()
-    await shot(page, 1280, 'set-password', 'mismatch')
+
+    await signUp(page, 'Ada West', email, password)
+    await page.getByRole('heading', { name: 'No pages yet' }).waitFor()
+    await page.locator('.me').waitFor()
+    await shot(page, 1280, 'space', 'empty')
+
+    const emptyUrl = page.url()
+    await page.getByRole('button', { name: '+ New page' }).last().click()
+    await page.waitForFunction(
+      (href) => window.location.href !== href,
+      emptyUrl,
+    )
+    await page.locator('#page-title').waitFor()
+    await page.locator('.doc-editor .is-editor-empty').waitFor()
+    await shot(page, 1280, 'page', 'empty-body')
+    await logTitleLabel(page, 1280)
+    await renameCurrent(page, 'One')
+
+    await createNamedPage(page, 'Two')
+    await page.locator('.doc-editor').click()
+    await page.keyboard.type('Hello Atlas')
+    await page.getByText('Saved').waitFor()
+
+    const oneHref = await page
+      .locator('.tree a.it')
+      .filter({ hasText: 'One' })
+      .getAttribute('href')
+    if (!oneHref) throw new Error('missing One href')
+    await page.goto(new URL(oneHref, BASE_URL).toString(), {
+      waitUntil: 'networkidle',
+    })
+    await page.locator('#page-title').waitFor()
+    await page.locator('.tree a.it').filter({ hasText: 'Two' }).waitFor()
+
+    mode = 'hold-page'
+    await page.locator('.tree a.it').filter({ hasText: 'Two' }).click()
+    await page.locator('.col .skel').first().waitFor()
+    await shot(page, 1280, 'page', 'loading')
+    mode = 'pass'
+    releaseHeld()
+    await page.locator('#page-title').waitFor()
+
     await page.getByRole('button', { name: 'Sign out' }).click()
     await page.getByRole('heading', { name: 'Sign in' }).waitFor()
-  } else {
-    console.log('ADMIN_API_SECRET unset or short; skipping set-password mismatch shot')
-  }
+    mode = 'hold-tree'
+    await signIn(page, email, password)
+    await page.locator('.tree .skel').first().waitFor()
+    await shot(page, 1280, 'space', 'loading')
+    mode = 'pass'
+    releaseHeld()
+    await page.locator('.tree a.it').first().waitFor()
 
-  await signUp(page, 'Ada West', email, password)
-  await page.getByRole('heading', { name: 'No pages yet' }).waitFor()
-  await page.locator('.me').waitFor()
-  await shot(page, 1280, 'space', 'empty')
+    await page.goto(new URL(oneHref, BASE_URL).toString(), {
+      waitUntil: 'networkidle',
+    })
+    await page.locator('#page-title').waitFor()
 
-  const emptyUrl = page.url()
-  await page.getByRole('button', { name: '+ New page' }).last().click()
-  await page.waitForFunction((href) => window.location.href !== href, emptyUrl)
-  await page.locator('#page-title').waitFor()
-  await page.locator('.doc-editor .is-editor-empty').waitFor()
-  await shot(page, 1280, 'page', 'empty-body')
-  await logTitleLabel(page, 1280)
-  await renameCurrent(page, 'One')
+    mode = 'fail-page'
+    await page.locator('.tree a.it').filter({ hasText: 'Two' }).click()
+    await page
+      .getByRole('heading', { name: "Couldn't load this page." })
+      .waitFor()
+    await page.getByRole('button', { name: 'Try again' }).waitFor()
+    const pageError = await page.evaluate(() => ({
+      topBar: Boolean(document.querySelector('.top')),
+      copy: document.querySelector('.nf .empty')?.textContent?.trim() ?? '',
+      tryAgain: Boolean(document.querySelector('.nf .btn.secondary')),
+    }))
+    console.log(`page_error ${JSON.stringify(pageError)}`)
+    await shot(page, 1280, 'page', 'error')
+    mode = 'pass'
+    await page.goto(new URL(oneHref, BASE_URL).toString(), {
+      waitUntil: 'networkidle',
+    })
+    await page.locator('#page-title').waitFor()
 
-  await createNamedPage(page, 'Two')
-  await page.locator('.doc-editor').click()
-  await page.keyboard.type('Hello Atlas')
-  await page.getByText('Saved').waitFor()
+    mode = 'fail-save'
+    await page.locator('.doc-editor').click()
+    await page.keyboard.type(' more text')
+    await page.getByText("Couldn't save.").waitFor()
+    await shot(page, 1280, 'page', 'autosave-retry')
+    mode = 'pass'
+    await page.getByRole('button', { name: 'Retry' }).click()
+    await page.getByText('Saved').waitFor()
 
-  const oneHref = await page.locator('.tree a.it').filter({ hasText: 'One' }).getAttribute('href')
-  if (!oneHref) throw new Error('missing One href')
-  await page.goto(new URL(oneHref, BASE_URL).toString(), { waitUntil: 'networkidle' })
-  await page.locator('#page-title').waitFor()
-  await page.locator('.tree a.it').filter({ hasText: 'Two' }).waitFor()
-
-  mode = 'hold-page'
-  await page.locator('.tree a.it').filter({ hasText: 'Two' }).click()
-  await page.locator('.col .skel').first().waitFor()
-  await shot(page, 1280, 'page', 'loading')
-  mode = 'pass'
-  releaseHeld()
-  await page.locator('#page-title').waitFor()
-
-  await page.getByRole('button', { name: 'Sign out' }).click()
-  await page.getByRole('heading', { name: 'Sign in' }).waitFor()
-  mode = 'hold-tree'
-  await signIn(page, email, password)
-  await page.locator('.tree .skel').first().waitFor()
-  await shot(page, 1280, 'space', 'loading')
-  mode = 'pass'
-  releaseHeld()
-  await page.locator('.tree a.it').first().waitFor()
-
-  await page.goto(new URL(oneHref, BASE_URL).toString(), { waitUntil: 'networkidle' })
-  await page.locator('#page-title').waitFor()
-
-  mode = 'fail-page'
-  await page.locator('.tree a.it').filter({ hasText: 'Two' }).click()
-  await page.getByRole('heading', { name: "Couldn't load this page." }).waitFor()
-  await page.getByRole('button', { name: 'Try again' }).waitFor()
-  const pageError = await page.evaluate(() => ({
-    topBar: Boolean(document.querySelector('.top')),
-    copy: document.querySelector('.nf .empty')?.textContent?.trim() ?? '',
-    tryAgain: Boolean(document.querySelector('.nf .btn.secondary')),
-  }))
-  console.log(`page_error ${JSON.stringify(pageError)}`)
-  await shot(page, 1280, 'page', 'error')
-  mode = 'pass'
-  await page.goto(new URL(oneHref, BASE_URL).toString(), { waitUntil: 'networkidle' })
-  await page.locator('#page-title').waitFor()
-
-  mode = 'fail-save'
-  await page.locator('.doc-editor').click()
-  await page.keyboard.type(' more text')
-  await page.getByText("Couldn't save.").waitFor()
-  await shot(page, 1280, 'page', 'autosave-retry')
-  mode = 'pass'
-  await page.getByRole('button', { name: 'Retry' }).click()
-  await page.getByText('Saved').waitFor()
-
-  await page.locator('.tree a.it').filter({ hasText: 'Two' }).click()
-  await page.locator('#page-title').waitFor()
-  await page.locator('.doc-editor').waitFor()
-  await page.locator('.doc-editor').click()
-  await page.keyboard.type('Bold me')
-  await page.keyboard.press('ControlOrMeta+A')
-  await page.locator('.tool button:has(b)').click()
-  await page.locator('.tool button.on:has(b)').waitFor()
-  await shot(page, 1280, 'editor', 'bold-active')
-  const selectionPaint = await page.evaluate(() => {
-    const root = document.querySelector('.ProseMirror') as HTMLElement | null
-    root?.focus()
-    document.execCommand('selectAll')
-    const el = document.querySelector('.doc-editor p') ?? document.querySelector('.doc-editor')
-    return {
-      bg: el ? getComputedStyle(el, '::selection').backgroundColor : '',
-      text: window.getSelection()?.toString() ?? '',
-      token: getComputedStyle(document.documentElement).getPropertyValue('--selection').trim(),
-      active: document.activeElement?.className ?? '',
+    await page.locator('.tree a.it').filter({ hasText: 'Two' }).click()
+    await page.locator('#page-title').waitFor()
+    await page.locator('.doc-editor').waitFor()
+    await page.locator('.doc-editor').click()
+    await page.keyboard.type('Bold me')
+    await page.keyboard.press('ControlOrMeta+A')
+    await page.locator('.tool button:has(b)').click()
+    await page.locator('.tool button.on:has(b)').waitFor()
+    await shot(page, 1280, 'editor', 'bold-active')
+    const selectionPaint = await page.evaluate(() => {
+      const root = document.querySelector('.ProseMirror') as HTMLElement | null
+      root?.focus()
+      document.execCommand('selectAll')
+      const el =
+        document.querySelector('.doc-editor p') ??
+        document.querySelector('.doc-editor')
+      return {
+        bg: el ? getComputedStyle(el, '::selection').backgroundColor : '',
+        text: window.getSelection()?.toString() ?? '',
+        token: getComputedStyle(document.documentElement)
+          .getPropertyValue('--selection')
+          .trim(),
+        active: document.activeElement?.className ?? '',
+      }
+    })
+    console.log(`selection_paint ${JSON.stringify(selectionPaint)}`)
+    const selectionExpected = await page.evaluate(() => {
+      const probe = document.createElement('span')
+      probe.style.background = 'var(--selection)'
+      document.body.appendChild(probe)
+      const color = getComputedStyle(probe).backgroundColor
+      probe.remove()
+      return color
+    })
+    if (
+      selectionPaint.text.length === 0 ||
+      selectionPaint.bg !== selectionExpected
+    ) {
+      throw new Error(`selection color ${selectionPaint.bg}`)
     }
-  })
-  console.log(`selection_paint ${JSON.stringify(selectionPaint)}`)
-  if (
-    selectionPaint.text.length === 0 ||
-    selectionPaint.bg !== 'rgb(205, 231, 226)' ||
-    selectionPaint.token !== '#cde7e2'
-  ) {
-    throw new Error(`selection color ${selectionPaint.bg} token ${selectionPaint.token}`)
-  }
-  await shot(page, 1280, 'editor', 'selection')
+    await shot(page, 1280, 'editor', 'selection')
 
-  await page.getByRole('button', { name: 'Text style' }).click()
-  await page.getByRole('listbox').waitFor()
-  await page.getByRole('option', { selected: true }).waitFor()
-  const styleCurrent = await page.getByRole('option', { selected: true }).evaluate((el) => {
-    const style = getComputedStyle(el)
-    return { text: (el.textContent ?? '').trim(), className: el.className, background: style.backgroundColor, color: style.color }
-  })
-  console.log(`style_menu_current ${JSON.stringify(styleCurrent)}`)
-  await shot(page, 1280, 'editor', 'style-menu')
-  await page.locator('#page-title').click()
-  await page.getByRole('listbox').waitFor({ state: 'hidden' })
+    await page.getByRole('button', { name: 'Text style' }).click()
+    await page.getByRole('listbox').waitFor()
+    await page.getByRole('option', { selected: true }).waitFor()
+    const styleCurrent = await page
+      .getByRole('option', { selected: true })
+      .evaluate((el) => {
+        const style = getComputedStyle(el)
+        return {
+          text: (el.textContent ?? '').trim(),
+          className: el.className,
+          background: style.backgroundColor,
+          color: style.color,
+        }
+      })
+    console.log(`style_menu_current ${JSON.stringify(styleCurrent)}`)
+    await shot(page, 1280, 'editor', 'style-menu')
+    await page.locator('#page-title').click()
+    await page.getByRole('listbox').waitFor({ state: 'hidden' })
 
-  await page.locator('.doc-editor').click()
-  await page.keyboard.press('End')
-  await page.keyboard.press('Enter')
-  await page.keyboard.type('Visit Atlas')
-  await page.getByText('Visit Atlas').click({ clickCount: 3 })
-  page.once('dialog', (dialog) => {
-    void dialog.accept('https://example.com/atlas')
-  })
-  await page.getByRole('button', { name: 'Link' }).click()
-  await page.locator('.doc-editor a').waitFor()
-  const linkDecoration = await page.locator('.doc-editor a').evaluate((el) => {
-    const style = getComputedStyle(el)
-    return {
-      textDecorationLine: style.textDecorationLine,
-      textDecorationThickness: style.textDecorationThickness,
-      textDecorationColor: style.textDecorationColor,
-      textUnderlineOffset: style.textUnderlineOffset,
-    }
-  })
-  console.log(`link_decoration ${JSON.stringify(linkDecoration)}`)
-  await page.locator('#page-title').click()
-  await shot(page, 1280, 'page', 'link')
+    await page.locator('.doc-editor').click()
+    await page.keyboard.press('End')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('Visit Atlas')
+    await page.getByText('Visit Atlas').click({ clickCount: 3 })
+    page.once('dialog', (dialog) => {
+      void dialog.accept('https://example.com/atlas')
+    })
+    await page.getByRole('button', { name: 'Link' }).click()
+    await page.locator('.doc-editor a').waitFor()
+    const linkDecoration = await page
+      .locator('.doc-editor a')
+      .evaluate((el) => {
+        const style = getComputedStyle(el)
+        return {
+          textDecorationLine: style.textDecorationLine,
+          textDecorationThickness: style.textDecorationThickness,
+          textDecorationColor: style.textDecorationColor,
+          textUnderlineOffset: style.textUnderlineOffset,
+        }
+      })
+    console.log(`link_decoration ${JSON.stringify(linkDecoration)}`)
+    await page.locator('#page-title').click()
+    await shot(page, 1280, 'page', 'link')
 
-  await setViewport(page, 390, 844)
-  await page.getByRole('button', { name: 'Open pages' }).waitFor()
-  await logTitleLabel(page, 390)
-  await shot(page, 390, 'page', 'title')
-  await shot(page, 390, 'page', 'drawer-closed')
+    await setViewport(page, 390, 844)
+    await page.getByRole('button', { name: 'Open pages' }).waitFor()
+    await logTitleLabel(page, 390)
+    await shot(page, 390, 'page', 'title')
+    await shot(page, 390, 'page', 'drawer-closed')
 
-  await page.getByRole('button', { name: 'Open pages' }).click()
-  await page.locator('.side.open').waitFor()
-  await page.locator('.scrim').waitFor()
-  await logDrawer(page, 390)
-  await shot(page, 390, 'page', 'drawer-open')
-  await page.locator('.scrim').click({ position: { x: 370, y: 24 }, force: true })
-  await page.locator('.side.open').waitFor({ state: 'hidden' })
-  console.log('drawer_390_scrim_tap_closed=true')
-  await page.getByRole('button', { name: 'Open pages' }).click()
-  await page.locator('.side.open').waitFor()
-  await page.keyboard.press('Escape')
-  await page.locator('.side.open').waitFor({ state: 'hidden' })
-  console.log('drawer_390_esc_closed=true')
+    await page.getByRole('button', { name: 'Open pages' }).click()
+    await page.locator('.side.open').waitFor()
+    await page.locator('.scrim').waitFor()
+    await logDrawer(page, 390)
+    await shot(page, 390, 'page', 'drawer-open')
+    await page
+      .locator('.scrim')
+      .click({ position: { x: 370, y: 24 }, force: true })
+    await page.locator('.side.open').waitFor({ state: 'hidden' })
+    console.log('drawer_390_scrim_tap_closed=true')
+    await page.getByRole('button', { name: 'Open pages' }).click()
+    await page.locator('.side.open').waitFor()
+    await page.keyboard.press('Escape')
+    await page.locator('.side.open').waitFor({ state: 'hidden' })
+    console.log('drawer_390_esc_closed=true')
 
-  await page.locator('.tool').evaluate((el) => {
-    el.scrollLeft = el.scrollWidth
-  })
-  await shot(page, 390, 'page', 'toolbar-scroll')
-  await page.locator('.tool').evaluate((el) => {
-    el.scrollLeft = 0
-  })
+    await page.locator('.tool').evaluate((el) => {
+      el.scrollLeft = el.scrollWidth
+    })
+    await shot(page, 390, 'page', 'toolbar-scroll')
+    await page.locator('.tool').evaluate((el) => {
+      el.scrollLeft = 0
+    })
 
-  await page.locator('.doc-editor').click()
-  await page.keyboard.press('Control+A')
-  await page.keyboard.press('Backspace')
-  await page.keyboard.type(LONG_URL)
-  await page.keyboard.press('Enter')
-  await page.getByText(LONG_URL).waitFor()
-  await printOverflow(page, '390-page-long-url')
-  await shot(page, 390, 'page', 'long-url')
+    await page.locator('.doc-editor').click()
+    await page.keyboard.press('Control+A')
+    await page.keyboard.press('Backspace')
+    await page.keyboard.type(LONG_URL)
+    await page.keyboard.press('Enter')
+    await page.getByText(LONG_URL).waitFor()
+    await printOverflow(page, '390-page-long-url')
+    await shot(page, 390, 'page', 'long-url')
 
-  await setViewport(page, 899, 800)
-  await page.getByRole('button', { name: 'Open pages' }).waitFor()
-  await shot(page, 899, 'page', 'drawer')
-  await page.getByRole('button', { name: 'Open pages' }).click()
-  await page.locator('.side.open').waitFor()
-  await page.locator('.scrim').waitFor()
-  await logDrawer(page, 899)
-  await shot(page, 899, 'page', 'drawer-open')
-  await page.locator('.scrim').click({ position: { x: 870, y: 24 }, force: true })
-  await page.locator('.side.open').waitFor({ state: 'hidden' })
-  console.log('drawer_899_scrim_tap_closed=true')
-  await page.getByRole('button', { name: 'Open pages' }).click()
-  await page.locator('.side.open').waitFor()
-  await page.keyboard.press('Escape')
-  await page.locator('.side.open').waitFor({ state: 'hidden' })
-  console.log('drawer_899_esc_closed=true')
+    await setViewport(page, 899, 800)
+    await page.getByRole('button', { name: 'Open pages' }).waitFor()
+    await shot(page, 899, 'page', 'drawer')
+    await page.getByRole('button', { name: 'Open pages' }).click()
+    await page.locator('.side.open').waitFor()
+    await page.locator('.scrim').waitFor()
+    await logDrawer(page, 899)
+    await shot(page, 899, 'page', 'drawer-open')
+    await page
+      .locator('.scrim')
+      .click({ position: { x: 870, y: 24 }, force: true })
+    await page.locator('.side.open').waitFor({ state: 'hidden' })
+    console.log('drawer_899_scrim_tap_closed=true')
+    await page.getByRole('button', { name: 'Open pages' }).click()
+    await page.locator('.side.open').waitFor()
+    await page.keyboard.press('Escape')
+    await page.locator('.side.open').waitFor({ state: 'hidden' })
+    console.log('drawer_899_esc_closed=true')
 
-  await setViewport(page, 900, 800)
-  await page.getByRole('button', { name: 'Open pages' }).waitFor({ state: 'hidden' })
-  await page.locator('.side').waitFor()
-  await shot(page, 900, 'page', 'sidebar-docked')
-  console.log('visual shots complete')
+    await setViewport(page, 900, 800)
+    await page
+      .getByRole('button', { name: 'Open pages' })
+      .waitFor({ state: 'hidden' })
+    await page.locator('.side').waitFor()
+    await shot(page, 900, 'page', 'sidebar-docked')
+    console.log('visual shots complete')
   } catch (error) {
-    const tree = await page.locator('.tree').innerText().catch(() => '')
+    const tree = await page
+      .locator('.tree')
+      .innerText()
+      .catch(() => '')
     console.log('debug url', page.url())
     console.log('debug tree', JSON.stringify(tree))
     await page
-      .screenshot({ path: join(OUT, 'debug-fail.png'), fullPage: false, scale: 'css' })
+      .screenshot({
+        path: join(OUT, 'debug-fail.png'),
+        fullPage: false,
+        scale: 'css',
+      })
       .catch(() => undefined)
     throw error
   } finally {
@@ -525,7 +653,14 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error)
-  process.exit(1)
-})
+main()
+  .then(() => {
+    console.log(`END ${utcStamp()} sha=${HEAD_SHA}`)
+  })
+  .catch((error) => {
+    console.error(
+      error instanceof Error ? error.message : 'visual shots failed',
+    )
+    console.log(`END ${utcStamp()} sha=${HEAD_SHA}`)
+    process.exit(1)
+  })
