@@ -350,7 +350,26 @@ async function pasteRecipe(page: Page) {
   if (sheetsCells[0][0] !== 'S11' || sheetsCells[4][2] !== 'S53' || sheetsCells[4][3] !== '') {
     throw new Error('sheets paste changed cell text')
   }
-  await page.keyboard.press('ControlOrMeta+End')
+  // End from inside the pasted table stays in the last cell, so the Excel
+  // paste never becomes a second table. Put the caret after the document.
+  await page.locator('.doc-editor').evaluate((el) => {
+    const host = el.parentElement
+    if (!host) throw new Error('editor host missing')
+    const key = Object.keys(host).find((name) => name.startsWith('__reactFiber'))
+    if (!key) throw new Error('editor fiber missing')
+    let fiber = (host as unknown as Record<string, any>)[key]
+    let editor = null
+    while (fiber) {
+      const props = fiber.memoizedProps
+      if (props && props.editor && typeof props.editor.chain === 'function') {
+        editor = props.editor
+        break
+      }
+      fiber = fiber.return
+    }
+    if (!editor) throw new Error('editor missing')
+    editor.chain().focus('end').run()
+  })
   await page.keyboard.press('Enter')
   await pasteHtml(page, excel.html, excel.plain)
   const excelCells = await countTable(page, 1)
