@@ -176,6 +176,7 @@ describe('api tokens', () => {
     }
     expect(tools.result.tools.map((tool) => tool.name)).toEqual([
       'list_spaces',
+      'search_pages',
       'get_page',
       'create_page',
       'update_page',
@@ -498,6 +499,52 @@ describe('api tokens', () => {
     expect(missing.headers.get('www-authenticate')).toBe(
       expired.headers.get('www-authenticate'),
     )
+  })
+
+  it('searches only pages the token can access', async () => {
+    const owner = await createUser('SearchOwner')
+    const other = await createUser('SearchOther')
+    const team = await createTeam(owner.user.id, 'Hidden search')
+    const hidden = await createPage(owner.user.id, {
+      spaceId: team.spaceId,
+      title: 'TeamOnlyMarker',
+    })
+    const mine = await createPage(other.user.id, {
+      spaceId: other.space.id,
+      title: 'MineMarker',
+    })
+    const reader = await createApiToken(other.user.id, {
+      name: 'reader',
+      scope: 'read',
+    })
+    const writer = await createApiToken(other.user.id, {
+      name: 'writer',
+      scope: 'read_write',
+    })
+    const hiddenRead = await call(reader.token, 'search_pages', {
+      query: 'TeamOnlyMarker',
+    })
+    const hiddenWrite = await call(writer.token, 'search_pages', {
+      query: 'TeamOnlyMarker',
+    })
+    const ownRead = await call(reader.token, 'search_pages', {
+      query: 'MineMarker',
+    })
+    const ownWrite = await call(writer.token, 'search_pages', {
+      query: 'MineMarker',
+    })
+    expect(hiddenRead.status).toBe(200)
+    expect(hiddenWrite.status).toBe(200)
+    expect(ownRead.status).toBe(200)
+    expect(ownWrite.status).toBe(200)
+    const ids = async (response: Response) => {
+      const payload = (await toolJson(response)) as { hits?: Array<{ id?: string }> }
+      return (payload.hits ?? []).map((hit) => hit.id)
+    }
+    expect(await ids(hiddenRead)).not.toContain(hidden.id)
+    expect(await ids(hiddenWrite)).not.toContain(hidden.id)
+    expect(await ids(ownRead)).toContain(mine.id)
+    expect(await ids(ownWrite)).toContain(mine.id)
   })
 
   it('rate limits a token and refuses a body over 1 MiB', async () => {

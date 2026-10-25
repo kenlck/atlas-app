@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
+import { createServer } from 'node:net'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import postgres from 'postgres'
@@ -219,8 +220,24 @@ async function cross(base: string) {
     params: { name: 'get_page', arguments: { page_id: page.id } },
   })
   console.log(`cross_user_status=${otherRead.status}`)
-  if (ownerRead.status !== 200 || otherRead.status !== 404)
+  const searched = await mcp(base, otherToken.token, {
+    jsonrpc: '2.0',
+    id: 5,
+    method: 'tools/call',
+    params: { name: 'search_pages', arguments: { query: 'Private' } },
+  })
+  const visible =
+    searched.status === 200 && searchHitIds(searched.text).includes(page.id)
+  console.log(`cross_search_status=${searched.status}`)
+  console.log(`cross_search_visible=${visible}`)
+  if (
+    ownerRead.status !== 200 ||
+    otherRead.status !== 404 ||
+    searched.status !== 200 ||
+    visible
+  ) {
     fail('cross_user_access')
+  }
 }
 
 function ident(name: string) {
@@ -353,6 +370,15 @@ async function bearer(base: string) {
   ) {
     fail('bearer_auth')
   }
+}
+
+function searchHitIds(text: string) {
+  const hits = toolPayload(text).data.hits
+  if (!Array.isArray(hits)) return []
+  return hits.flatMap((hit) => {
+    if (!hit || typeof hit !== 'object' || !('id' in hit)) return []
+    return typeof hit.id === 'string' ? [hit.id] : []
+  })
 }
 
 function toolPayload(text: string) {
@@ -511,9 +537,27 @@ async function teamRemoval(base: string) {
   }
 }
 
+function ephemeralPort() {
+  return new Promise<number>((resolve, reject) => {
+    const server = createServer()
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      server.close(() => {
+        if (!address || typeof address === 'string') {
+          reject(new Error('port'))
+          return
+        }
+        resolve(address.port)
+      })
+    })
+  })
+}
+
 async function resetThroughSameImage(email: string, secret: string) {
   const running = process.env.ATLAS_CONTAINER
   if (!running) fail('ATLAS_CONTAINER is required')
+  if (!process.env.DATABASE_URL) fail('DATABASE_URL is required')
   const inspected = spawnSync(
     'docker',
     ['inspect', '-f', '{{.Config.Image}}', running],
@@ -522,8 +566,16 @@ async function resetThroughSameImage(email: string, secret: string) {
   if (inspected.status !== 0) fail('image_inspect_failed')
   const image = (inspected.stdout ?? '').trim()
   if (!image.startsWith('atlas-app')) fail('image_unexpected')
-  const name = 'atlas-token-reset'
+  let port = 0
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    port = await ephemeralPort()
+    if (port !== 3000 && port !== 5432) break
+    port = 0
+  }
+  if (!port) fail('reset_port_unavailable')
+  const name = `atlas-token-reset-${process.pid}`
   spawnSync('docker', ['rm', '-f', name], { encoding: 'utf8' })
+  const origin = `http://127.0.0.1:${port}`
   const started = spawnSync(
     'docker',
     [
@@ -540,17 +592,16 @@ async function resetThroughSameImage(email: string, secret: string) {
       '-e',
       'ADMIN_API_SECRET',
       '-e',
-      'BETTER_AUTH_URL=http://127.0.0.1:3001',
+      `BETTER_AUTH_URL=${origin}`,
       '-e',
       'HOST=127.0.0.1',
       '-e',
-      'PORT=3001',
+      `PORT=${port}`,
       image,
     ],
     { encoding: 'utf8' },
   )
   if (started.status !== 0) fail('reset_container_failed')
-  const origin = 'http://127.0.0.1:3001'
   try {
     let ready = false
     for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -568,7 +619,7 @@ async function resetThroughSameImage(email: string, secret: string) {
     }
     if (!ready) fail('reset_container_down')
     console.log('reset_image=atlas-app')
-    console.log('reset_port=3001')
+    console.log(`reset_port=${port}`)
     return await fetch(`${origin}/api/admin/reset-password`, {
       method: 'POST',
       headers: {
@@ -749,6 +800,17 @@ async function roundTrip(base: string) {
     },
   })
   console.log(`update_status=${updated.status}`)
+  const searched = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 5,
+    method: 'tools/call',
+    params: { name: 'search_pages', arguments: { query: 'Published' } },
+  })
+  const searchVisible =
+    searched.status === 200 &&
+    searchHitIds(searched.text).includes(String(page.id))
+  console.log(`search_status=${searched.status}`)
+  console.log(`search_visible=${searchVisible}`)
   const tree = await callServerFn(base, user.cookie, 'fetchPageTree', {
     spaceId,
   })
@@ -776,6 +838,8 @@ async function roundTrip(base: string) {
   if (
     read.status !== 200 ||
     updated.status !== 200 ||
+    searched.status !== 200 ||
+    !searchVisible ||
     !titleMatches ||
     !lastUsed
   ) {
@@ -1103,17 +1167,41 @@ async function scopeRead(base: string) {
     params: { name: 'get_page', arguments: { page_id: page.id } },
   })
   const viewed = toolPayload(read.text).data
+  const searched = await mcp(base, reader.token, {
+    jsonrpc: '2.0',
+    id: 6,
+    method: 'tools/call',
+    params: { name: 'search_pages', arguments: { query: 'Kept' } },
+  })
+  const searchVisible =
+    searched.status === 200 &&
+    searchHitIds(searched.text).includes(String(page.id))
+  const writerSearch = await mcp(base, writer.token, {
+    jsonrpc: '2.0',
+    id: 7,
+    method: 'tools/call',
+    params: { name: 'search_pages', arguments: { query: 'Kept' } },
+  })
+  const writerVisible =
+    writerSearch.status === 200 &&
+    searchHitIds(writerSearch.text).includes(String(page.id))
   console.log(`read_create_status=${deniedCreate.status}`)
   console.log(`read_update_status=${deniedUpdate.status}`)
   console.log(`read_get_status=${read.status}`)
   console.log(`read_create_stored=${before === after ? 'false' : 'true'}`)
   console.log(`read_title_unchanged=${viewed.title === 'Kept'}`)
+  console.log(`read_search_status=${searched.status}`)
+  console.log(`read_search_visible=${searchVisible}`)
+  console.log(`write_search_status=${writerSearch.status}`)
+  console.log(`write_search_visible=${writerVisible}`)
   if (
     deniedCreate.status !== 403 ||
     deniedUpdate.status !== 403 ||
     read.status !== 200 ||
     before !== after ||
-    viewed.title !== 'Kept'
+    viewed.title !== 'Kept' ||
+    !searchVisible ||
+    !writerVisible
   ) {
     fail('scope')
   }
@@ -1211,6 +1299,71 @@ async function bodyCap(base: string) {
   if (response.status !== 413 || stored !== 0) fail('body_cap')
 }
 
+async function searchAccess(base: string) {
+  const owner = await signUp(base, 'SearchOwner')
+  const outsider = await signUp(base, 'SearchOut')
+  const team = await fetch(`${base}/api/atlas/teams`, {
+    method: 'POST',
+    headers: {
+      cookie: owner.cookie,
+      origin: base,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ name: 'Hidden search' }),
+  })
+  const teamText = await team.text()
+  if (team.status !== 201) fail('search_team_failed')
+  const createdTeam = JSON.parse(teamText) as { spaceId?: string }
+  if (!createdTeam.spaceId) fail('search_team=missing')
+  const ownerToken = await createToken(base, owner.cookie, 'owner')
+  const outsiderToken = await createToken(base, outsider.cookie, 'outsider', {
+    scope: 'read',
+  })
+  const marker = `TeamOnly${randomBytes(4).toString('hex')}`
+  const made = await mcp(base, ownerToken.token, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: {
+      name: 'create_page',
+      arguments: {
+        space_id: createdTeam.spaceId,
+        title: marker,
+        body: marker,
+      },
+    },
+  })
+  if (made.status !== 200) fail('search_page_failed')
+  const pageId = String(toolPayload(made.text).data.id ?? '')
+  if (!pageId) fail('search_page=missing')
+  const ownerSearch = await mcp(base, ownerToken.token, {
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/call',
+    params: { name: 'search_pages', arguments: { query: marker } },
+  })
+  const otherSearch = await mcp(base, outsiderToken.token, {
+    jsonrpc: '2.0',
+    id: 4,
+    method: 'tools/call',
+    params: { name: 'search_pages', arguments: { query: marker } },
+  })
+  const ownerVisible =
+    ownerSearch.status === 200 && searchHitIds(ownerSearch.text).includes(pageId)
+  const otherVisible = searchHitIds(otherSearch.text).includes(pageId)
+  console.log(`team_search_status=${otherSearch.status}`)
+  console.log(`owner_search_visible=${ownerVisible}`)
+  console.log(`cross_team_search_visible=${otherVisible}`)
+  if (
+    ownerSearch.status !== 200 ||
+    otherSearch.status !== 200 ||
+    !ownerVisible ||
+    otherVisible
+  ) {
+    fail('team_search')
+  }
+}
+
 async function image(base: string) {
   const container = process.env.ATLAS_CONTAINER
   if (!container) fail('ATLAS_CONTAINER is required')
@@ -1264,8 +1417,9 @@ else if (mode === 'scope') await scopeRead(base)
 else if (mode === 'expiry') await expiry(base)
 else if (mode === 'rate') await rate(base)
 else if (mode === 'body') await bodyCap(base)
+else if (mode === 'search') await searchAccess(base)
 else {
   fail(
-    'usage: token-fail.ts revoked|cross|secret|bearer|writes|team|reset|roundtrip|image|fidelity|conflict|scope|expiry|rate|body',
+    'usage: token-fail.ts revoked|cross|secret|bearer|writes|team|reset|roundtrip|image|fidelity|conflict|scope|expiry|rate|body|search',
   )
 }

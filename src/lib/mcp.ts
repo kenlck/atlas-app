@@ -9,12 +9,18 @@ import {
   allowMcpRequest,
 } from './mcp-limit'
 import { createPageForToken, getPageView, updatePageForToken } from './pages'
+import { searchVisiblePages } from './search'
 import { space } from './schema'
 import { listMySpaces } from './teams'
 import { authenticateBearer, recordTokenUse } from './api-tokens'
 import type { TokenScope } from './api-tokens'
 
-type ToolName = 'list_spaces' | 'get_page' | 'create_page' | 'update_page'
+type ToolName =
+  | 'list_spaces'
+  | 'search_pages'
+  | 'get_page'
+  | 'create_page'
+  | 'update_page'
 
 const PROTOCOL_VERSIONS = ['2024-11-05', '2025-03-26', '2025-06-18']
 const READ_TOOLS = new Set(['list_spaces', 'search_pages', 'get_page'])
@@ -27,6 +33,16 @@ const TOOLS: Array<{ name: ToolName; description: string; inputSchema: Json }> =
       inputSchema: {
         type: 'object',
         properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'search_pages',
+      description: 'Search page titles and content this token can access.',
+      inputSchema: {
+        type: 'object',
+        properties: { query: { type: 'string' } },
+        required: ['query'],
         additionalProperties: false,
       },
     },
@@ -191,6 +207,11 @@ async function callTool(
 ) {
   assertScope(scope, name)
   if (name === 'list_spaces') return listSpaces(userId)
+  if (name === 'search_pages') {
+    const query = stringArg(args, 'query')
+    if (query === undefined) throw new HttpError(400, 'Bad request')
+    return { hits: await searchVisiblePages(userId, query) }
+  }
   if (name === 'get_page') {
     const pageId = stringArg(args, 'page_id')
     if (!pageId) throw new HttpError(400, 'Bad request')
