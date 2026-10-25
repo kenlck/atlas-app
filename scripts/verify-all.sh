@@ -461,6 +461,8 @@ run_step fail4-6 ./scripts/verify-fail-conditions.sh 4-6
 require_step_log fail4-6 "table_label_visible=true" "mention_label_visible=true" "date_label_visible=true"
 run_step fail4-7 ./scripts/verify-fail-conditions.sh 4-7
 require_step_log fail4-7 "safe_amp=200" "safe_paren=200" "safe_prefix_syntax=200" "safe_quote=200" "safe_backslash=200" "safe_emoji=200" "safe_empty=200" "safe_one=200"
+run_step fail10-3 ./scripts/verify-fail-conditions.sh 10-3
+require_step_log fail10-3 "grandchild_status=400" "grandchild_error_clear=true" "parents_unchanged=true" "self_status=400" "self_error_clear=true" "self_unchanged=true" "valid_status=200" "valid_parent_updated=true" "cycle_walk_within_500ms=true" "statement_timeout=false"
 run_step screenshots pnpm visual-shots
 run_step baselines run_baselines
 run_step baseline-side-by-side run_side_by_side
