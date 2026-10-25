@@ -688,6 +688,48 @@ recipe_5_4() {
   pnpm exec tsx scripts/calendar-fail.ts 5-4
 }
 
+recipe_4_1() {
+  require_database_url
+  echo "CMD pnpm exec tsx scripts/search-fail.ts 4-1"
+  pnpm exec tsx scripts/search-fail.ts 4-1
+}
+
+recipe_4_2() {
+  require_database_url
+  echo "CMD pnpm exec tsx scripts/search-fail.ts 4-2"
+  pnpm exec tsx scripts/search-fail.ts 4-2
+}
+
+recipe_4_3() {
+  require_database_url
+  echo "CMD pnpm exec tsx scripts/search-fail.ts 4-3"
+  pnpm exec tsx scripts/search-fail.ts 4-3
+}
+
+recipe_4_4() {
+  require_database_url
+  echo "CMD pnpm exec tsx scripts/search-fail.ts 4-4"
+  pnpm exec tsx scripts/search-fail.ts 4-4
+}
+
+recipe_4_5() {
+  require_database_url
+  echo "CMD pnpm exec tsx scripts/search-fail.ts 4-5"
+  pnpm exec tsx scripts/search-fail.ts 4-5
+}
+
+recipe_4_6() {
+  require_database_url
+  echo "CMD pnpm exec tsx scripts/search-fail.ts 4-6"
+  pnpm exec tsx scripts/search-fail.ts 4-6
+}
+
+recipe_4_7() {
+  require_database_url
+  echo "CMD pnpm exec tsx scripts/search-fail.ts 4-7"
+  pnpm exec tsx scripts/search-fail.ts 4-7
+}
+
 case "${1:-}" in
   1|fail1) run_recipe recipe_1 ;;
   2|fail2) run_recipe recipe_2 ;;
@@ -719,6 +761,13 @@ case "${1:-}" in
   5-2) run_recipe recipe_5_2 ;;
   5-3) run_recipe recipe_5_3 ;;
   5-4) run_recipe recipe_5_4 ;;
+  4-1) run_recipe recipe_4_1 ;;
+  4-2) run_recipe recipe_4_2 ;;
+  4-3) run_recipe recipe_4_3 ;;
+  4-4) run_recipe recipe_4_4 ;;
+  4-5) run_recipe recipe_4_5 ;;
+  4-6) run_recipe recipe_4_6 ;;
+  4-7) run_recipe recipe_4_7 ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     echo "all runs in-process checks and vitest, which drops the public schema"
@@ -727,7 +776,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|all]" >&2
     exit 2
     ;;
 esac
