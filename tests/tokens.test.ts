@@ -112,13 +112,9 @@ const richDoc: Json = {
 }
 
 describe('api tokens', () => {
-  it('stores a hash, shows the token once, and rejects revoked, expired, and unknown bearers', async () => {
+  it('stores a hash, shows the token once, and rejects revoked and unknown bearers', async () => {
     const person = await createUser('Token Owner')
-    const created = await createApiToken(person.user.id, {
-      name: 'Laptop',
-      scope: 'read_write',
-      expiresIn: 'never',
-    })
+    const created = await createApiToken(person.user.id, { name: 'Laptop' })
     expect(created.token.startsWith('atl_')).toBe(true)
     expect(created.prefix).toBe(created.token.slice(0, 8))
     expect(created.token.length).toBeGreaterThan(created.prefix.length)
@@ -171,10 +167,12 @@ describe('api tokens', () => {
     }
     expect(tools.result.tools.map((tool) => tool.name)).toEqual([
       'list_spaces',
-      'get_page',
+      'read_page',
       'create_page',
       'update_page',
     ])
+    const used = await listApiTokens(person.user.id)
+    expect(used[0]?.lastUsedAt).toEqual(expect.any(String))
 
     await getDb()
       .update(apiToken)
@@ -187,22 +185,6 @@ describe('api tokens', () => {
     })
     expect(revoked.status).toBe(401)
     expect(await revoked.json()).toEqual({ error: 'Unauthorized' })
-
-    const fresh = await createApiToken(person.user.id, {
-      name: 'Short',
-      expiresIn: '30d',
-    })
-    await getDb()
-      .update(apiToken)
-      .set({ expiresAt: new Date(Date.now() - 1000) })
-      .where(eq(apiToken.id, fresh.id))
-    const expired = await mcp(fresh.token, {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'tools/list',
-    })
-    expect(expired.status).toBe(401)
-    expect(await expired.json()).toEqual({ error: 'Unauthorized' })
   })
 
   it('scopes bearer reads and writes to the token owner', async () => {
@@ -217,22 +199,10 @@ describe('api tokens', () => {
       title: 'Secret',
       body: richDoc,
     })
-    const ownerToken = await createApiToken(owner.user.id, {
-      name: 'owner',
-      scope: 'read_write',
-      expiresIn: 'never',
-    })
-    const otherToken = await createApiToken(other.user.id, {
-      name: 'other',
-      scope: 'read_write',
-      expiresIn: 'never',
-    })
-    const readToken = await createApiToken(owner.user.id, {
-      name: 'read',
-      scope: 'read',
-    })
+    const ownerToken = await createApiToken(owner.user.id, { name: 'owner' })
+    const otherToken = await createApiToken(other.user.id, { name: 'other' })
 
-    const denied = await call(otherToken.token, 'get_page', {
+    const denied = await call(otherToken.token, 'read_page', {
       page_id: note.id,
     })
     expect(denied.status).toBe(404)
@@ -242,34 +212,38 @@ describe('api tokens', () => {
       error: { message: 'Not found' },
     })
 
-    const read = await call(ownerToken.token, 'get_page', { page_id: note.id })
+    const read = await call(ownerToken.token, 'read_page', { page_id: note.id })
     expect(read.status).toBe(200)
     const payload = await toolJson(read)
     expect(payload.title).toBe('Secret')
     expect(payload.body).toBe(tiptapToMarkdown(richDoc))
 
-    const before = await getDb()
-      .select()
-      .from(page)
-      .where(eq(page.spaceId, owner.space.id))
-    const blocked = await call(readToken.token, 'create_page', {
+    const deniedWrite = await call(otherToken.token, 'create_page', {
       space_id: owner.space.id,
       title: 'Nope',
     })
-    expect(blocked.status).toBe(403)
-    const after = await getDb()
-      .select()
-      .from(page)
-      .where(eq(page.spaceId, owner.space.id))
-    expect(after).toHaveLength(before.length)
-
-    const blockedUpdate = await call(readToken.token, 'update_page', {
+    expect(deniedWrite.status).toBe(404)
+    const deniedUpdate = await call(otherToken.token, 'update_page', {
       page_id: note.id,
-      title: 'Changed',
+      title: 'Nope',
       updated_at: payload.updated_at,
     })
-    expect(blockedUpdate.status).toBe(403)
+    expect(deniedUpdate.status).toBe(404)
     expect((await getPageView(owner.user.id, note.id)).title).toBe('Secret')
+
+    const child = await call(ownerToken.token, 'create_page', {
+      space_id: owner.space.id,
+      parent_id: note.id,
+      title: 'Child',
+    })
+    expect(child.status).toBe(200)
+    const childPage = await toolJson(child)
+    const cycle = await call(ownerToken.token, 'update_page', {
+      page_id: note.id,
+      parent_id: childPage.id,
+    })
+    expect(cycle.status).toBe(400)
+    expect((await getPageView(owner.user.id, note.id)).parentId).toBeNull()
 
     const current = await getPageView(owner.user.id, note.id)
     const stale = await call(ownerToken.token, 'update_page', {
@@ -312,16 +286,13 @@ describe('api tokens', () => {
       spaceId: team.spaceId,
       title: 'Shared',
     })
-    const token = await createApiToken(member.user.id, {
-      name: 'member',
-      scope: 'read',
-    })
+    const token = await createApiToken(member.user.id, { name: 'member' })
     expect(
-      (await call(token.token, 'get_page', { page_id: note.id })).status,
+      (await call(token.token, 'read_page', { page_id: note.id })).status,
     ).toBe(200)
     await removeMember(owner.user.id, team.id, member.user.id)
     expect(
-      (await call(token.token, 'get_page', { page_id: note.id })).status,
+      (await call(token.token, 'read_page', { page_id: note.id })).status,
     ).toBe(404)
   })
 
@@ -329,10 +300,7 @@ describe('api tokens', () => {
     process.env.ADMIN_API_SECRET = SECRET
     resetAdminRateLimit()
     const person = await createUser('Reset')
-    const created = await createApiToken(person.user.id, {
-      name: 'agent',
-      expiresIn: 'never',
-    })
+    const created = await createApiToken(person.user.id, { name: 'agent' })
     const response = await handleResetPassword(
       new Request('http://127.0.0.1:3000/api/admin/reset-password', {
         method: 'POST',
@@ -359,10 +327,7 @@ describe('api tokens', () => {
     })
     expect(afterwards.status).toBe(401)
 
-    const pending = await createApiToken(person.user.id, {
-      name: 'later',
-      expiresIn: 'never',
-    })
+    const pending = await createApiToken(person.user.id, { name: 'later' })
     await getDb()
       .update(user)
       .set({ mustChangePassword: true })

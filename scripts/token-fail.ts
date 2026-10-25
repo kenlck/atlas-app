@@ -1,4 +1,7 @@
 import { spawnSync } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
+import { readdir, readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import postgres from 'postgres'
 import { postgresPoolOptions } from '../src/lib/postgres-options'
 import { assertLocalBaseUrl, assertLocalDatabaseUrl } from './verify-local.ts'
@@ -75,14 +78,12 @@ async function signUp(base: string, name: string) {
   if (response.status !== 200) fail(redact(text))
   const cookie = cookieHeader(response)
   if (!cookie) fail('signup_cookie=missing')
-  return { cookie }
+  const body = JSON.parse(text) as { user?: { id?: string } }
+  if (!body.user?.id) fail('signup_user=missing')
+  return { cookie, email, userId: body.user.id }
 }
 
-async function createToken(
-  base: string,
-  cookie: string,
-  input: { name: string; scope?: string; expiresIn?: string },
-) {
+async function createToken(base: string, cookie: string, name: string) {
   const response = await fetch(`${base}/api/atlas/tokens`, {
     method: 'POST',
     headers: {
@@ -90,7 +91,7 @@ async function createToken(
       origin: base,
       'content-type': 'application/json',
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ name }),
   })
   const text = await response.text()
   console.log(`create_status=${response.status}`)
@@ -123,11 +124,7 @@ function toolText(text: string, secret: string) {
 
 async function revoked(base: string) {
   const user = await signUp(base, 'Revoked')
-  const created = await createToken(base, user.cookie, {
-    name: 'revoked',
-    scope: 'read',
-    expiresIn: 'never',
-  })
+  const created = await createToken(base, user.cookie, 'revoked')
   const before = await mcp(base, created.token, {
     jsonrpc: '2.0',
     id: 1,
@@ -155,16 +152,8 @@ async function revoked(base: string) {
 async function cross(base: string) {
   const owner = await signUp(base, 'Owner')
   const other = await signUp(base, 'Other')
-  const ownerToken = await createToken(base, owner.cookie, {
-    name: 'owner',
-    scope: 'read_write',
-    expiresIn: 'never',
-  })
-  const otherToken = await createToken(base, other.cookie, {
-    name: 'other',
-    scope: 'read',
-    expiresIn: 'never',
-  })
+  const ownerToken = await createToken(base, owner.cookie, 'owner')
+  const otherToken = await createToken(base, other.cookie, 'other')
   const spaces = await mcp(base, ownerToken.token, {
     jsonrpc: '2.0',
     id: 1,
@@ -207,14 +196,14 @@ async function cross(base: string) {
     jsonrpc: '2.0',
     id: 3,
     method: 'tools/call',
-    params: { name: 'get_page', arguments: { page_id: page.id } },
+    params: { name: 'read_page', arguments: { page_id: page.id } },
   })
   console.log(`owner_status=${ownerRead.status}`)
   const otherRead = await mcp(base, otherToken.token, {
     jsonrpc: '2.0',
     id: 4,
     method: 'tools/call',
-    params: { name: 'get_page', arguments: { page_id: page.id } },
+    params: { name: 'read_page', arguments: { page_id: page.id } },
   })
   console.log(`cross_user_status=${otherRead.status}`)
   if (ownerRead.status !== 200 || otherRead.status !== 404)
@@ -268,11 +257,7 @@ function tokenInLogs(token: string) {
 async function secret(base: string) {
   const url = databaseUrl()
   const user = await signUp(base, 'Secret')
-  const created = await createToken(base, user.cookie, {
-    name: 'secret',
-    scope: 'read',
-    expiresIn: '90d',
-  })
+  const created = await createToken(base, user.cookie, 'secret')
   const used = await mcp(base, created.token, {
     jsonrpc: '2.0',
     id: 1,
@@ -288,6 +273,20 @@ async function secret(base: string) {
 }
 
 async function bearer(base: string) {
+  const user = await signUp(base, 'Bearer')
+  const created = await createToken(base, user.cookie, 'bearer')
+  const live = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/list',
+  })
+  if (live.status !== 200) fail('bearer_token_rejected')
+  const removed = await fetch(`${base}/api/atlas/tokens/${created.id}`, {
+    method: 'DELETE',
+    headers: { cookie: user.cookie, origin: base },
+  })
+  await removed.text().catch(() => '')
+  if (removed.status !== 200) fail('revoke_failed')
   const missing = await mcp(base, null, {
     jsonrpc: '2.0',
     id: 1,
@@ -298,15 +297,478 @@ async function bearer(base: string) {
     id: 1,
     method: 'tools/list',
   })
+  const revokedCall = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/list',
+  })
+  const unknown = `atl_${randomBytes(32).toString('base64url')}`
+  const unknownCall = await mcp(base, unknown, {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/list',
+  })
   console.log(`missing_bearer_status=${missing.status}`)
   console.log(`garbage_bearer_status=${garbage.status}`)
-  const same = missing.text === garbage.text
-  console.log(`bearer_bodies_match=${same}`)
+  console.log(`revoked_bearer_status=${revokedCall.status}`)
+  console.log(`unknown_bearer_status=${unknownCall.status}`)
+  const same =
+    missing.text === garbage.text &&
+    missing.text === revokedCall.text &&
+    missing.text === unknownCall.text
+  console.log(`bearer_bodies_match=${missing.text === garbage.text}`)
+  console.log(`bearer_bodies_identical=${same}`)
   const leaks = /exist|revok|expir|invalid token|not found/i.test(missing.text)
   console.log(`bearer_body_leaks_existence=${leaks}`)
-  if (missing.status !== 401 || garbage.status !== 401 || !same || leaks) {
+  if (
+    missing.status !== 401 ||
+    garbage.status !== 401 ||
+    revokedCall.status !== 401 ||
+    unknownCall.status !== 401 ||
+    !same ||
+    leaks
+  ) {
     fail('bearer_auth')
   }
+}
+
+function toolPayload(text: string) {
+  const listed = JSON.parse(text) as {
+    result?: { content?: Array<{ text?: string }> }
+    error?: { message?: string }
+  }
+  return {
+    error: listed.error?.message ?? '',
+    data: JSON.parse(listed.result?.content?.[0]?.text ?? '{}') as Record<
+      string,
+      unknown
+    >,
+  }
+}
+
+async function personalSpace(base: string, token: string) {
+  const spaces = await mcp(base, token, {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: { name: 'list_spaces', arguments: {} },
+  })
+  if (spaces.status !== 200) fail('list_spaces_failed')
+  const payload = toolPayload(spaces.text).data as {
+    spaces?: Array<{ id?: string; kind?: string }>
+  }
+  const personal = payload.spaces?.find((item) => item.kind === 'personal')
+  if (!personal?.id) fail('personal_space=missing')
+  return personal.id
+}
+
+async function writes(base: string) {
+  const owner = await signUp(base, 'Writer')
+  const other = await signUp(base, 'Stranger')
+  const ownerToken = await createToken(base, owner.cookie, 'writer')
+  const otherToken = await createToken(base, other.cookie, 'stranger')
+  const spaceId = await personalSpace(base, ownerToken.token)
+  const parent = await mcp(base, ownerToken.token, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: {
+      name: 'create_page',
+      arguments: { space_id: spaceId, title: 'Parent', body: 'Parent' },
+    },
+  })
+  if (parent.status !== 200) fail('parent_create_failed')
+  const parentPage = toolPayload(parent.text).data
+  const child = await mcp(base, ownerToken.token, {
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/call',
+    params: {
+      name: 'create_page',
+      arguments: {
+        space_id: spaceId,
+        parent_id: parentPage.id,
+        title: 'Child',
+        body: 'Child',
+      },
+    },
+  })
+  if (child.status !== 200) fail('child_create_failed')
+  const childPage = toolPayload(child.text).data
+  const deniedCreate = await mcp(base, otherToken.token, {
+    jsonrpc: '2.0',
+    id: 4,
+    method: 'tools/call',
+    params: {
+      name: 'create_page',
+      arguments: { space_id: spaceId, title: 'Nope' },
+    },
+  })
+  const deniedUpdate = await mcp(base, otherToken.token, {
+    jsonrpc: '2.0',
+    id: 5,
+    method: 'tools/call',
+    params: {
+      name: 'update_page',
+      arguments: {
+        page_id: parentPage.id,
+        title: 'Nope',
+        updated_at: parentPage.updated_at,
+      },
+    },
+  })
+  const cycle = await mcp(base, ownerToken.token, {
+    jsonrpc: '2.0',
+    id: 6,
+    method: 'tools/call',
+    params: {
+      name: 'update_page',
+      arguments: { page_id: parentPage.id, parent_id: childPage.id },
+    },
+  })
+  const after = await mcp(base, ownerToken.token, {
+    jsonrpc: '2.0',
+    id: 7,
+    method: 'tools/call',
+    params: { name: 'read_page', arguments: { page_id: parentPage.id } },
+  })
+  console.log(`create_denied_status=${deniedCreate.status}`)
+  console.log(`update_denied_status=${deniedUpdate.status}`)
+  console.log(`cycle_status=${cycle.status}`)
+  const parentAfter = toolPayload(after.text).data
+  const unchanged = after.status === 200 && parentAfter.parent_id == null
+  console.log(`cycle_parent_unchanged=${unchanged}`)
+  const cycleMessage = toolPayload(cycle.text).error
+  console.log(
+    `cycle_refused=${cycleMessage.includes('descendant') ? 'true' : 'false'}`,
+  )
+  if (
+    deniedCreate.status !== 404 ||
+    deniedUpdate.status !== 404 ||
+    cycle.status !== 400 ||
+    !unchanged ||
+    !cycleMessage.includes('descendant')
+  ) {
+    fail('writes')
+  }
+}
+
+async function teamRemoval(base: string) {
+  const lead = await signUp(base, 'Lead')
+  const member = await signUp(base, 'Member')
+  const team = await fetch(`${base}/api/atlas/teams`, {
+    method: 'POST',
+    headers: {
+      cookie: lead.cookie,
+      origin: base,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ name: 'North' }),
+  })
+  const teamText = await team.text()
+  console.log(`team_status=${team.status}`)
+  if (team.status !== 201) fail(redact(teamText))
+  const createdTeam = JSON.parse(teamText) as { id?: string; spaceId?: string }
+  if (!createdTeam.id || !createdTeam.spaceId) fail('team=missing')
+  const invite = await fetch(`${base}/api/atlas/teams/${createdTeam.id}/invites`, {
+    method: 'POST',
+    headers: {
+      cookie: lead.cookie,
+      origin: base,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ userId: member.userId }),
+  })
+  const inviteText = await invite.text()
+  console.log(`invite_status=${invite.status}`)
+  if (invite.status !== 201) fail(redact(inviteText))
+  const createdInvite = JSON.parse(inviteText) as { id?: string }
+  if (!createdInvite.id) fail('invite=missing')
+  const accepted = await fetch(
+    `${base}/api/atlas/invites/${createdInvite.id}/accept`,
+    {
+      method: 'POST',
+      headers: { cookie: member.cookie, origin: base },
+    },
+  )
+  console.log(`accept_status=${accepted.status}`)
+  await accepted.text().catch(() => '')
+  if (accepted.status !== 200) fail('accept_failed')
+  const memberToken = await createToken(base, member.cookie, 'member')
+  const page = await mcp(base, memberToken.token, {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: {
+      name: 'create_page',
+      arguments: {
+        space_id: createdTeam.spaceId,
+        title: 'Shared',
+        body: 'Shared',
+      },
+    },
+  })
+  if (page.status !== 200) fail('team_page_failed')
+  const pageId = toolPayload(page.text).data.id
+  const before = await mcp(base, memberToken.token, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: { name: 'read_page', arguments: { page_id: pageId } },
+  })
+  console.log(`before_removal_status=${before.status}`)
+  const removed = await fetch(
+    `${base}/api/atlas/teams/${createdTeam.id}/members/${member.userId}`,
+    { method: 'DELETE', headers: { cookie: lead.cookie, origin: base } },
+  )
+  console.log(`remove_status=${removed.status}`)
+  await removed.text().catch(() => '')
+  const after = await mcp(base, memberToken.token, {
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/call',
+    params: { name: 'read_page', arguments: { page_id: pageId } },
+  })
+  console.log(`after_removal_status=${after.status}`)
+  if (before.status !== 200 || removed.status !== 200 || after.status !== 404) {
+    fail('team_removal')
+  }
+}
+
+async function reset(base: string) {
+  const secret = process.env.ADMIN_API_SECRET
+  if (!secret) fail('ADMIN_API_SECRET is required')
+  const user = await signUp(base, 'Reset')
+  const created = await createToken(base, user.cookie, 'reset')
+  const before = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/list',
+  })
+  console.log(`before_reset_status=${before.status}`)
+  const response = await fetch(`${base}/api/admin/reset-password`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${secret}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ email: user.email }),
+  })
+  const resetText = await response.text()
+  console.log(`reset_status=${response.status}`)
+  if (response.status !== 200) fail('reset_failed')
+  const temporary = (JSON.parse(resetText) as { temporaryPassword?: string })
+    .temporaryPassword
+  if (!temporary) fail('temporary_password=missing')
+  const pending = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/list',
+  })
+  console.log(`pending_status=${pending.status}`)
+  const signedIn = await fetch(`${base}/api/auth/sign-in/email`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: base },
+    body: JSON.stringify({ email: user.email, password: temporary }),
+  })
+  await signedIn.text()
+  console.log(`signin_status=${signedIn.status}`)
+  if (signedIn.status !== 200) fail('signin_after_reset')
+  const cookie = cookieHeader(signedIn)
+  if (!cookie) fail('signin_cookie=missing')
+  const next = `pw-${crypto.randomUUID()}`
+  const changed = await callServerFn(base, cookie, 'changePasswordFn', {
+    password: next,
+  })
+  console.log(`password_status=${changed.status}`)
+  if (changed.status !== 200) fail('password_change_failed')
+  const after = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/list',
+  })
+  console.log(`after_password_status=${after.status}`)
+  if (before.status !== 200 || pending.status !== 401 || after.status !== 401) {
+    fail('reset_tokens')
+  }
+}
+
+function serverFnPayload(data: unknown) {
+  let next = 0
+  const node = (value: unknown): unknown => {
+    if (value === null) return { t: 2, s: 0 }
+    if (typeof value === 'string') return { t: 1, s: value }
+    if (typeof value === 'boolean') return { t: value ? 4 : 3, s: 0 }
+    if (Array.isArray(value)) {
+      const id = next
+      next += 1
+      return { t: 9, i: id, a: value.map((item) => node(item)), o: 0 }
+    }
+    if (typeof value === 'object') {
+      const id = next
+      next += 1
+      const record = value as Record<string, unknown>
+      const keys = Object.keys(record)
+      return {
+        t: 10,
+        i: id,
+        p: { k: keys, v: keys.map((key) => node(record[key])) },
+        o: 0,
+      }
+    }
+    throw new Error('unsupported server function value')
+  }
+  return { t: node(data), f: 127, m: [] as unknown[] }
+}
+
+async function serverFnId(name: string) {
+  const dir = '.output/server/_ssr'
+  const files = (await readdir(dir)).filter(
+    (file) => file.startsWith('fns-') && file.endsWith('.mjs'),
+  )
+  const pattern = new RegExp(
+    `var ${name} = createServerFn\\(\\{ method: "(GET|POST)" \\}\\)[\\s\\S]*?createSsrRpc\\("([a-f0-9]{64})"\\)`,
+  )
+  for (const file of files) {
+    const text = await readFile(join(dir, file), 'utf8')
+    const match = pattern.exec(text)
+    if (match?.[1] && match[2]) {
+      return { id: match[2], method: match[1] as 'GET' | 'POST' }
+    }
+  }
+  fail(`server_fn=${name}`)
+}
+
+async function callServerFn(
+  base: string,
+  cookie: string,
+  name: string,
+  data: Record<string, unknown>,
+) {
+  const fn = await serverFnId(name)
+  const payload = JSON.stringify(serverFnPayload({ data }))
+  const headers: Record<string, string> = {
+    cookie,
+    origin: base,
+    'x-tsr-serverFn': 'true',
+  }
+  if (fn.method === 'GET') {
+    const response = await fetch(
+      `${base}/_serverFn/${fn.id}?payload=${encodeURIComponent(payload)}`,
+      { headers },
+    )
+    const text = await response.text()
+    return { status: response.status, text }
+  }
+  headers['content-type'] = 'application/json'
+  const response = await fetch(`${base}/_serverFn/${fn.id}`, {
+    method: 'POST',
+    headers,
+    body: payload,
+  })
+  const text = await response.text()
+  return { status: response.status, text }
+}
+
+async function roundTrip(base: string) {
+  const user = await signUp(base, 'Round')
+  const created = await createToken(base, user.cookie, 'round')
+  const spaceId = await personalSpace(base, created.token)
+  const made = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: {
+      name: 'create_page',
+      arguments: { space_id: spaceId, title: 'Draft', body: 'First' },
+    },
+  })
+  console.log(`create_status=${made.status}`)
+  if (made.status !== 200) fail('round_create_failed')
+  const page = toolPayload(made.text).data
+  const read = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/call',
+    params: { name: 'read_page', arguments: { page_id: page.id } },
+  })
+  console.log(`read_status=${read.status}`)
+  const updated = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 4,
+    method: 'tools/call',
+    params: {
+      name: 'update_page',
+      arguments: {
+        page_id: page.id,
+        title: 'Published',
+        body: 'Second',
+        updated_at: page.updated_at,
+      },
+    },
+  })
+  console.log(`update_status=${updated.status}`)
+  const tree = await callServerFn(base, user.cookie, 'fetchPageTree', {
+    spaceId,
+  })
+  console.log(`list_status=${tree.status}`)
+  const viewed = await callServerFn(base, user.cookie, 'fetchPage', {
+    pageId: page.id,
+  })
+  console.log(`app_status=${viewed.status}`)
+  const titleMatches =
+    viewed.status === 200 &&
+    viewed.text.includes('"Published"') &&
+    tree.status === 200 &&
+    tree.text.includes('"Published"')
+  console.log(`app_title_matches=${titleMatches}`)
+  const listed = await fetch(`${base}/api/atlas/tokens`, {
+    headers: { cookie: user.cookie, origin: base },
+  })
+  const listedText = await listed.text()
+  console.log(`tokens_status=${listed.status}`)
+  const tokens = JSON.parse(listedText) as {
+    tokens?: Array<{ lastUsedAt?: string | null }>
+  }
+  const lastUsed = Boolean(tokens.tokens?.some((item) => item.lastUsedAt))
+  console.log(`last_used_set=${lastUsed}`)
+  if (
+    read.status !== 200 ||
+    updated.status !== 200 ||
+    !titleMatches ||
+    !lastUsed
+  ) {
+    fail('round_trip')
+  }
+}
+
+async function image(base: string) {
+  const container = process.env.ATLAS_CONTAINER
+  if (!container) fail('ATLAS_CONTAINER is required')
+  const result = spawnSync(
+    'docker',
+    ['ps', '--format', '{{.Names}}\t{{.Image}}'],
+    { encoding: 'utf8' },
+  )
+  if (result.status !== 0) fail('docker_ps_failed')
+  const lines = (result.stdout ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const apps = lines.filter((line) => line.includes('\tatlas-app'))
+  const row = lines.find((line) => line.startsWith(`${container}\t`))
+  const same = Boolean(row?.includes('\tatlas-app'))
+  console.log(`app_containers=${apps.length}`)
+  console.log(`mcp_container=${container}`)
+  console.log(`same_image=${same}`)
+  const probe = await mcp(base, null, {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/list',
+  })
+  console.log(`mcp_status=${probe.status}`)
+  console.log(`extra_service=${apps.length === 1 ? 'false' : 'true'}`)
+  if (apps.length !== 1 || !same || probe.status !== 401) fail('mcp_image')
 }
 
 const mode = process.argv[2]
@@ -317,4 +779,13 @@ if (mode === 'revoked') await revoked(base)
 else if (mode === 'cross') await cross(base)
 else if (mode === 'secret') await secret(base)
 else if (mode === 'bearer') await bearer(base)
-else fail('usage: token-fail.ts revoked|cross|secret|bearer')
+else if (mode === 'writes') await writes(base)
+else if (mode === 'team') await teamRemoval(base)
+else if (mode === 'reset') await reset(base)
+else if (mode === 'roundtrip') await roundTrip(base)
+else if (mode === 'image') await image(base)
+else {
+  fail(
+    'usage: token-fail.ts revoked|cross|secret|bearer|writes|team|reset|roundtrip|image',
+  )
+}

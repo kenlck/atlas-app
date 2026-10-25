@@ -375,7 +375,17 @@ require_step_log token-cross "owner_status=200" "cross_user_status=404"
 run_step token-secret ./scripts/verify-fail-conditions.sh token-secret
 require_step_log token-secret "token_in_db=false" "token_in_logs=false"
 run_step token-bearer ./scripts/verify-fail-conditions.sh token-bearer
-require_step_log token-bearer "missing_bearer_status=401" "garbage_bearer_status=401" "bearer_bodies_match=true"
+require_step_log token-bearer "missing_bearer_status=401" "garbage_bearer_status=401" "bearer_bodies_match=true" "revoked_bearer_status=401" "unknown_bearer_status=401" "bearer_bodies_identical=true"
+run_step token-writes ./scripts/verify-fail-conditions.sh token-writes
+require_step_log token-writes "create_denied_status=404" "update_denied_status=404" "cycle_status=400" "cycle_parent_unchanged=true" "cycle_refused=true"
+run_step token-team ./scripts/verify-fail-conditions.sh token-team
+require_step_log token-team "before_removal_status=200" "remove_status=200" "after_removal_status=404"
+run_step token-reset ./scripts/verify-fail-conditions.sh token-reset
+require_step_log token-reset "before_reset_status=200" "reset_status=200" "pending_status=401" "password_status=200" "after_password_status=401"
+run_step token-roundtrip ./scripts/verify-fail-conditions.sh token-roundtrip
+require_step_log token-roundtrip "create_status=200" "read_status=200" "update_status=200" "list_status=200" "app_status=200" "app_title_matches=true" "last_used_set=true"
+run_step token-image ./scripts/verify-fail-conditions.sh token-image
+require_step_log token-image "app_containers=1" "same_image=true" "mcp_status=401" "extra_service=false"
 run_step fail1 ./scripts/verify-fail-conditions.sh 1
 run_step fail2 ./scripts/verify-fail-conditions.sh 2
 run_step fail3 ./scripts/verify-fail-conditions.sh 3

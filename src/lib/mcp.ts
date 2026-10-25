@@ -1,15 +1,20 @@
-import { inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import type { Json } from './body-text'
 import { emptyDoc } from './body-text'
 import { getDb } from './db'
 import { HttpError } from './http'
 import { markdownToTiptap, tiptapToMarkdown } from './markdown-body'
-import { createPageForToken, getPageView, updatePageForToken } from './pages'
-import { space } from './schema'
+import {
+  createPageForToken,
+  getPageView,
+  movePage,
+  updatePageForToken,
+} from './pages'
+import { page, space } from './schema'
 import { listMySpaces } from './teams'
-import { authenticateBearer, type TokenScope } from './api-tokens'
+import { authenticateBearer } from './api-tokens'
 
-type ToolName = 'list_spaces' | 'get_page' | 'create_page' | 'update_page'
+type ToolName = 'list_spaces' | 'read_page' | 'create_page' | 'update_page'
 
 const TOOLS: Array<{ name: ToolName; description: string; inputSchema: Json }> =
   [
@@ -23,7 +28,7 @@ const TOOLS: Array<{ name: ToolName; description: string; inputSchema: Json }> =
       },
     },
     {
-      name: 'get_page',
+      name: 'read_page',
       description: 'Read one page as Markdown.',
       inputSchema: {
         type: 'object',
@@ -34,7 +39,7 @@ const TOOLS: Array<{ name: ToolName; description: string; inputSchema: Json }> =
     },
     {
       name: 'create_page',
-      description: 'Create a page in a space. Requires a read and write token.',
+      description: 'Create a page in a space, optionally under a parent page.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -50,11 +55,12 @@ const TOOLS: Array<{ name: ToolName; description: string; inputSchema: Json }> =
     {
       name: 'update_page',
       description:
-        'Update a page title or Markdown body. Pass the updated_at from the last read. Requires a read and write token.',
+        'Update a page title or Markdown body. Pass the updated_at from the last read.',
       inputSchema: {
         type: 'object',
         properties: {
           page_id: { type: 'string' },
+          parent_id: { type: ['string', 'null'] },
           title: { type: 'string' },
           body: { type: 'string' },
           updated_at: { type: 'string' },
@@ -104,10 +110,6 @@ function stringArg(args: Record<string, unknown>, key: string) {
   return typeof value === 'string' ? value : undefined
 }
 
-function assertWrite(scope: TokenScope) {
-  if (scope !== 'read_write') throw new HttpError(403, 'Forbidden')
-}
-
 async function pagePayload(userId: string, pageId: string) {
   const view = await getPageView(userId, pageId)
   return {
@@ -145,18 +147,16 @@ async function listSpaces(userId: string) {
 async function callTool(
   userId: string,
   tokenId: string,
-  scope: TokenScope,
   name: string,
   args: Record<string, unknown>,
 ) {
   if (name === 'list_spaces') return listSpaces(userId)
-  if (name === 'get_page') {
+  if (name === 'read_page') {
     const pageId = stringArg(args, 'page_id')
     if (!pageId) throw new HttpError(400, 'Bad request')
     return pagePayload(userId, pageId)
   }
   if (name === 'create_page') {
-    assertWrite(scope)
     const spaceId = stringArg(args, 'space_id')
     if (!spaceId) throw new HttpError(400, 'Bad request')
     const parent = args.parent_id
@@ -177,27 +177,44 @@ async function callTool(
     return pagePayload(userId, created.id)
   }
   if (name === 'update_page') {
-    assertWrite(scope)
     const pageId = stringArg(args, 'page_id')
     if (!pageId) throw new HttpError(400, 'Bad request')
-    if (typeof args.updated_at !== 'string' || !args.updated_at) {
-      throw new HttpError(409, 'Conflict')
-    }
-    if (args.title !== undefined && typeof args.title !== 'string') {
+    const hasParent = Object.prototype.hasOwnProperty.call(args, 'parent_id')
+    const parent = args.parent_id
+    if (hasParent && parent !== null && typeof parent !== 'string') {
       throw new HttpError(400, 'Bad request')
     }
-    if (args.body !== undefined && typeof args.body !== 'string') {
+    const hasTitle = args.title !== undefined
+    const hasBody = args.body !== undefined
+    if (hasTitle && typeof args.title !== 'string') {
       throw new HttpError(400, 'Bad request')
     }
-    if (args.title === undefined && args.body === undefined) {
+    if (hasBody && typeof args.body !== 'string') {
       throw new HttpError(400, 'Bad request')
     }
+    if (!hasParent && !hasTitle && !hasBody) {
+      throw new HttpError(400, 'Bad request')
+    }
+    let updatedAt = typeof args.updated_at === 'string' ? args.updated_at : ''
+    if (hasParent) {
+      const moved = await movePage(userId, {
+        pageId,
+        parentId: typeof parent === 'string' ? parent : null,
+      })
+      updatedAt = moved.updatedAt
+      await getDb()
+        .update(page)
+        .set({ updatedViaTokenId: tokenId })
+        .where(eq(page.id, pageId))
+    }
+    if (!hasTitle && !hasBody) return pagePayload(userId, pageId)
+    if (!updatedAt) throw new HttpError(409, 'Conflict')
     const updated = await updatePageForToken(userId, tokenId, {
       pageId,
       title: stringArg(args, 'title'),
       body:
         typeof args.body === 'string' ? markdownToTiptap(args.body) : undefined,
-      updatedAt: args.updated_at,
+      updatedAt,
     })
     return pagePayload(userId, updated.id)
   }
@@ -261,7 +278,6 @@ export async function handleMcp(request: Request) {
       const result = await callTool(
         auth.userId,
         auth.tokenId,
-        auth.scope,
         name,
         argsOf(params),
       )

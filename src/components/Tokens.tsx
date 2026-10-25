@@ -5,28 +5,15 @@ export type TokenRow = {
   id: string
   name: string
   prefix: string
-  scope: 'read' | 'read_write'
-  expiresAt: string | null
   lastUsedAt: string | null
   createdAt: string
 }
 
 type Created = TokenRow & { token: string }
 
-function scopeLabel(scope: TokenRow['scope']) {
-  return scope === 'read_write' ? 'Read and write' : 'Read'
-}
-
-function expiryLabel(value: string | null) {
-  if (!value) return 'No expiry'
-  return `Expires ${value.slice(0, 10)}`
-}
-
 export function Tokens({ tokens }: { tokens: TokenRow[] }) {
   const [rows, setRows] = useState(tokens)
   const [name, setName] = useState('')
-  const [scope, setScope] = useState<TokenRow['scope']>('read')
-  const [expiresIn, setExpiresIn] = useState('90d')
   const [fresh, setFresh] = useState<Created | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
@@ -43,7 +30,7 @@ export function Tokens({ tokens }: { tokens: TokenRow[] }) {
       const response = await fetch('/api/atlas/tokens', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: trimmed, scope, expiresIn }),
+        body: JSON.stringify({ name: trimmed }),
       })
       if (!response.ok) {
         setError("Couldn't create the token.")
@@ -92,30 +79,6 @@ export function Tokens({ tokens }: { tokens: TokenRow[] }) {
           maxLength={80}
           onChange={(event) => setName(event.target.value)}
         />
-        <label htmlFor="token-scope">Access</label>
-        <select
-          id="token-scope"
-          className="in"
-          value={scope}
-          onChange={(event) =>
-            setScope(event.target.value as TokenRow['scope'])
-          }
-        >
-          <option value="read">Read</option>
-          <option value="read_write">Read and write</option>
-        </select>
-        <label htmlFor="token-expiry">Expires</label>
-        <select
-          id="token-expiry"
-          className="in"
-          value={expiresIn}
-          onChange={(event) => setExpiresIn(event.target.value)}
-        >
-          <option value="30d">30 days</option>
-          <option value="90d">90 days</option>
-          <option value="365d">1 year</option>
-          <option value="never">Never</option>
-        </select>
         <button
           className="btn"
           type="button"
@@ -144,8 +107,7 @@ export function Tokens({ tokens }: { tokens: TokenRow[] }) {
           <div className="grow">
             <div style={{ fontWeight: 600 }}>{token.name}</div>
             <div className="subline">
-              {token.prefix}… · {scopeLabel(token.scope)} ·{' '}
-              {expiryLabel(token.expiresAt)} ·{' '}
+              {token.prefix}… ·{' '}
               {token.lastUsedAt
                 ? `Used ${relativeTime(token.lastUsedAt)}`
                 : 'Not used yet'}

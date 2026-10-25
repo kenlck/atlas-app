@@ -72,8 +72,6 @@ export const inviteStatus = pgEnum('invite_status', [
   'accepted',
   'declined',
 ])
-export const apiTokenScope = pgEnum('api_token_scope', ['read', 'read_write'])
-
 export const team = pgTable('team', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -163,8 +161,6 @@ export const apiToken = pgTable(
     name: text('name').notNull(),
     tokenHash: text('token_hash').notNull(),
     prefix: text('prefix').notNull(),
-    scope: apiTokenScope('scope').notNull(),
-    expiresAt: timestamp('expires_at'),
     lastUsedAt: timestamp('last_used_at'),
     revokedAt: timestamp('revoked_at'),
     createdAt: timestamp('created_at').notNull(),

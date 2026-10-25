@@ -5,15 +5,10 @@ import { forbidden, HttpError, unauthorized } from './http'
 import { newId } from './ids'
 import { apiToken, user } from './schema'
 
-export type TokenScope = 'read' | 'read_write'
-export type TokenExpiry = '30d' | '90d' | '365d' | 'never'
-
 export type TokenPublic = {
   id: string
   name: string
   prefix: string
-  scope: TokenScope
-  expiresAt: string | null
   lastUsedAt: string | null
   createdAt: string
 }
@@ -23,14 +18,6 @@ export type TokenCreated = TokenPublic & { token: string }
 export type BearerAuth = {
   userId: string
   tokenId: string
-  scope: TokenScope
-}
-
-const DAY_MS = 24 * 60 * 60 * 1000
-const EXPIRY_DAYS: Record<Exclude<TokenExpiry, 'never'>, number> = {
-  '30d': 30,
-  '90d': 90,
-  '365d': 365,
 }
 
 function hashToken(token: string) {
@@ -43,27 +30,10 @@ function readBearer(header: string | null) {
   return match?.[1] ?? ''
 }
 
-function isExpiry(value: string): value is TokenExpiry {
-  return (
-    value === '30d' || value === '90d' || value === '365d' || value === 'never'
-  )
-}
-
-function isScope(value: string): value is TokenScope {
-  return value === 'read' || value === 'read_write'
-}
-
-function expiresAtFor(choice: TokenExpiry, now: Date) {
-  if (choice === 'never') return null
-  return new Date(now.getTime() + EXPIRY_DAYS[choice] * DAY_MS)
-}
-
 function toPublic(row: {
   id: string
   name: string
   prefix: string
-  scope: TokenScope
-  expiresAt: Date | null
   lastUsedAt: Date | null
   createdAt: Date
 }): TokenPublic {
@@ -71,8 +41,6 @@ function toPublic(row: {
     id: row.id,
     name: row.name,
     prefix: row.prefix,
-    scope: row.scope,
-    expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
     lastUsedAt: row.lastUsedAt ? row.lastUsedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
   }
@@ -80,19 +48,11 @@ function toPublic(row: {
 
 export async function createApiToken(
   userId: string,
-  input: { name?: unknown; scope?: unknown; expiresIn?: unknown },
+  input: { name?: unknown },
 ): Promise<TokenCreated> {
   const name = typeof input.name === 'string' ? input.name.trim() : ''
   if (!name) throw new HttpError(400, 'Name is required')
   if (name.length > 80) throw new HttpError(400, 'Name is too long')
-  const scope = input.scope === undefined ? 'read' : input.scope
-  if (typeof scope !== 'string' || !isScope(scope)) {
-    throw new HttpError(400, 'Bad request')
-  }
-  const expiresIn = input.expiresIn === undefined ? '90d' : input.expiresIn
-  if (typeof expiresIn !== 'string' || !isExpiry(expiresIn)) {
-    throw new HttpError(400, 'Bad request')
-  }
 
   const token = `atl_${randomBytes(32).toString('base64url')}`
   const now = new Date()
@@ -102,8 +62,6 @@ export async function createApiToken(
     name,
     tokenHash: hashToken(token),
     prefix: token.slice(0, 8),
-    scope,
-    expiresAt: expiresAtFor(expiresIn, now),
     lastUsedAt: null,
     revokedAt: null,
     createdAt: now,
@@ -118,8 +76,6 @@ export async function listApiTokens(userId: string): Promise<TokenPublic[]> {
       id: apiToken.id,
       name: apiToken.name,
       prefix: apiToken.prefix,
-      scope: apiToken.scope,
-      expiresAt: apiToken.expiresAt,
       lastUsedAt: apiToken.lastUsedAt,
       createdAt: apiToken.createdAt,
     })
@@ -145,10 +101,6 @@ export async function revokeApiToken(userId: string, tokenId: string) {
   return { ok: true as const }
 }
 
-function expired(expiresAt: Date | null) {
-  return Boolean(expiresAt && expiresAt.getTime() <= Date.now())
-}
-
 export async function authenticateBearer(
   authorization: string | null,
 ): Promise<BearerAuth> {
@@ -159,15 +111,13 @@ export async function authenticateBearer(
     .select({
       id: apiToken.id,
       userId: apiToken.userId,
-      scope: apiToken.scope,
-      expiresAt: apiToken.expiresAt,
       revokedAt: apiToken.revokedAt,
     })
     .from(apiToken)
     .where(eq(apiToken.tokenHash, hashToken(token)))
     .limit(1)
   const row = rows[0]
-  if (!row || row.revokedAt || expired(row.expiresAt)) unauthorized()
+  if (!row || row.revokedAt) unauthorized()
   const owners = await db
     .select({ mustChangePassword: user.mustChangePassword })
     .from(user)
@@ -179,5 +129,5 @@ export async function authenticateBearer(
     .update(apiToken)
     .set({ lastUsedAt: new Date() })
     .where(eq(apiToken.id, row.id))
-  return { userId: row.userId, tokenId: row.id, scope: row.scope }
+  return { userId: row.userId, tokenId: row.id }
 }

@@ -754,6 +754,36 @@ recipe_token_bearer() {
   pnpm exec tsx scripts/token-fail.ts bearer
 }
 
+recipe_token_writes() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts writes"
+  pnpm exec tsx scripts/token-fail.ts writes
+}
+
+recipe_token_team() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts team"
+  pnpm exec tsx scripts/token-fail.ts team
+}
+
+recipe_token_reset() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts reset"
+  pnpm exec tsx scripts/token-fail.ts reset
+}
+
+recipe_token_roundtrip() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts roundtrip"
+  pnpm exec tsx scripts/token-fail.ts roundtrip
+}
+
+recipe_token_image() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts image"
+  pnpm exec tsx scripts/token-fail.ts image
+}
+
 case "${1:-}" in
   1|fail1) run_recipe recipe_1 ;;
   2|fail2) run_recipe recipe_2 ;;
@@ -796,6 +826,11 @@ case "${1:-}" in
   token-cross) run_recipe recipe_token_cross ;;
   token-secret) run_recipe recipe_token_secret ;;
   token-bearer) run_recipe recipe_token_bearer ;;
+  token-writes) run_recipe recipe_token_writes ;;
+  token-team) run_recipe recipe_token_team ;;
+  token-reset) run_recipe recipe_token_reset ;;
+  token-roundtrip) run_recipe recipe_token_roundtrip ;;
+  token-image) run_recipe recipe_token_image ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     echo "all runs in-process checks and vitest, which drops the public schema"
@@ -804,7 +839,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|token-revoked|token-cross|token-secret|token-bearer|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|all]" >&2
     exit 2
     ;;
 esac
