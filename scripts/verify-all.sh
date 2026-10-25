@@ -3,7 +3,6 @@
 # Writes artifacts/<head sha>/ and exits non-zero on the first failure.
 # Throwaway secrets stay in the process environment. They are not printed.
 set -u
-set -m
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
@@ -24,16 +23,35 @@ umask 077
 REDACTOR=$(mktemp)
 PG_ENV=
 SERVER_PID=
+PG_CONTAINER=
+STARTED_CONTAINERS=
 PLAYWRIGHT_IMAGE="mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea"
 
+# Job control is off. set -m puts each command in its own process group and
+# takes the terminal; with stdout piped or no tty that stops ensure_psql with
+# SIGTTOU (exit 150). The dev server is started under setsid so this run can
+# still signal that process group. The trap removes only containers recorded
+# for this process, and exits with the status it was entered with.
+track_container() {
+  STARTED_CONTAINERS="${STARTED_CONTAINERS:+$STARTED_CONTAINERS }$1"
+}
+
 cleanup() {
+  local status=$?
+  local name
   if [[ -n "${SERVER_PID:-}" ]]; then
     kill -- "-${SERVER_PID}" >/dev/null 2>&1 || kill "${SERVER_PID}" >/dev/null 2>&1 || true
     SERVER_PID=
   fi
+  for name in ${STARTED_CONTAINERS:-}; do
+    docker rm -f "$name" >/dev/null 2>&1 || true
+  done
   rm -f "${REDACTOR:-}" "${PG_ENV:-}"
+  exit "$status"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 cat > "$REDACTOR" << 'PY'
 import os
@@ -120,9 +138,11 @@ require_step_log() {
 }
 
 pick_port() {
-  local port
-  for port in 5432 55432 55433 55434; do
-    if ! ss -ltn | awk '{print $4}' | grep -Eq ":${port}$"; then
+  # Kernel ephemeral port. Never probes 5432.
+  local port attempt
+  for attempt in 1 2 3 4 5; do
+    port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()') || return 1
+    if [[ "$port" != "5432" ]]; then
       echo "$port"
       return 0
     fi
@@ -155,14 +175,15 @@ Path(path).write_text(
 os_chmod = Path(path)
 os_chmod.chmod(0o600)
 PY
-  docker rm -f atlas-verify-all-pg >/dev/null 2>&1 || true
-  echo "CMD docker run -d --name atlas-verify-all-pg --env-file <unprinted> -p 127.0.0.1:${port}:5432 postgres:16"
-  docker run -d --name atlas-verify-all-pg --env-file "$PG_ENV" -p "127.0.0.1:${port}:5432" postgres:16 || return 1
+  PG_CONTAINER="atlas-verify-all-pg-$$"
+  track_container "$PG_CONTAINER"
+  echo "CMD docker run -d --name ${PG_CONTAINER} --env-file <unprinted> -p 127.0.0.1:${port}:5432 postgres:16"
+  docker run -d --name "$PG_CONTAINER" --env-file "$PG_ENV" -p "127.0.0.1:${port}:5432" postgres:16 || return 1
   rm -f "$PG_ENV"
   PG_ENV=
   for i in $(seq 1 90); do
-    lines=$(docker logs atlas-verify-all-pg 2>&1 | grep -c "database system is ready to accept connections" || true)
-    if [[ "$lines" -ge 2 ]] && docker exec atlas-verify-all-pg pg_isready -q -h 127.0.0.1; then
+    lines=$(docker logs "$PG_CONTAINER" 2>&1 | grep -c "database system is ready to accept connections" || true)
+    if [[ "$lines" -ge 2 ]] && docker exec "$PG_CONTAINER" pg_isready -q -h 127.0.0.1 -U atlas; then
       ready="true"
       break
     fi
@@ -221,7 +242,7 @@ start_server() {
   stop_server || return 1
   docker rm -f atlas-verify >/dev/null 2>&1 || true
   echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=${SHA}" > "${LOG}/server.log"
-  bash -c 'pnpm start 2>&1 | python3 -u "$1"' _ "$REDACTOR" >> "${LOG}/server.log" &
+  setsid bash -c 'pnpm start 2>&1 | python3 -u "$1"' _ "$REDACTOR" >> "${LOG}/server.log" < /dev/null &
   SERVER_PID=$!
 }
 
@@ -260,6 +281,7 @@ migrate_image() {
 start_image() {
   stop_server || return 1
   docker rm -f atlas-verify >/dev/null 2>&1 || true
+  track_container atlas-verify
   echo "CMD docker run -d --name atlas-verify --network host -e DATABASE_URL -e BETTER_AUTH_SECRET -e BETTER_AUTH_URL -e ADMIN_API_SECRET ${ATLAS_IMAGE}"
   docker run -d --name atlas-verify --network host \
     -e DATABASE_URL -e BETTER_AUTH_SECRET -e BETTER_AUTH_URL -e ADMIN_API_SECRET \
