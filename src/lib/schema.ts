@@ -2,6 +2,8 @@ import { sql } from 'drizzle-orm'
 import {
   boolean,
   check,
+  date,
+  index,
   integer,
   jsonb,
   pgEnum,
@@ -171,6 +173,57 @@ export const page = pgTable('page', {
   archivedAt: timestamp('archived_at'),
 })
 
+export const calendarEvent = pgTable(
+  'calendar_event',
+  {
+    id: text('id').primaryKey(),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => team.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    allDay: boolean('all_day').notNull(),
+    startAt: timestamp('start_at', { withTimezone: true, mode: 'date' }),
+    endAt: timestamp('end_at', { withTimezone: true, mode: 'date' }),
+    startDate: date('start_date', { mode: 'string' }),
+    endDate: date('end_date', { mode: 'string' }),
+    note: text('note'),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => user.id),
+    updatedBy: text('updated_by')
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
+  },
+  (t) => [
+    check(
+      'calendar_event_shape',
+      sql`(
+        (
+          all_day = true
+          AND start_date IS NOT NULL
+          AND end_date IS NOT NULL
+          AND start_at IS NULL
+          AND end_at IS NULL
+          AND end_date >= start_date
+        )
+        OR
+        (
+          all_day = false
+          AND start_at IS NOT NULL
+          AND end_at IS NOT NULL
+          AND start_date IS NULL
+          AND end_date IS NULL
+          AND end_at >= start_at
+        )
+      )`,
+    ),
+    index('calendar_event_team_start_at_idx').on(t.teamId, t.startAt),
+    index('calendar_event_team_start_date_idx').on(t.teamId, t.startDate),
+  ],
+)
+
 export const adminAudit = pgTable('admin_audit', {
   id: text('id').primaryKey(),
   action: text('action').notNull(),
@@ -188,3 +241,4 @@ export type AdminAudit = typeof adminAudit.$inferSelect
 export type Team = typeof team.$inferSelect
 export type TeamMember = typeof teamMember.$inferSelect
 export type TeamInvite = typeof teamInvite.$inferSelect
+export type CalendarEvent = typeof calendarEvent.$inferSelect

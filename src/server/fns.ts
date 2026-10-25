@@ -5,6 +5,7 @@ import { getDb } from '#/lib/db'
 import { HttpError } from '#/lib/http'
 import { user } from '#/lib/schema'
 import { eq } from 'drizzle-orm'
+import { openCalendar } from '#/lib/calendar'
 import { listMentionCandidates } from '#/lib/mentions'
 import {
   archivePage,
@@ -106,6 +107,17 @@ export const fetchPageTree = createServerFn({ method: 'GET' })
         countPendingInvites(context.userId),
       ])
       return { ...listed, spaces, pendingInvites }
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const fetchCalendar = createServerFn({ method: 'GET' })
+  .middleware([unlocked])
+  .validator((data: { spaceId: string }) => data)
+  .handler(async ({ data, context }) => {
+    try {
+      return await openCalendar(context.userId, data.spaceId)
     } catch (error) {
       rethrow(error)
     }

@@ -659,6 +659,35 @@ recipe_9a() {
     pnpm exec tsx scripts/verify-fail-conditions.ts fail9a
 }
 
+require_database_url() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  : "${BASE_URL:?BASE_URL is required}"
+}
+
+recipe_5_1() {
+  require_database_url
+  echo "CMD pnpm exec tsx scripts/calendar-fail.ts 5-1"
+  pnpm exec tsx scripts/calendar-fail.ts 5-1
+}
+
+recipe_5_2() {
+  require_database_url
+  echo "CMD pnpm exec tsx scripts/calendar-fail.ts 5-2"
+  pnpm exec tsx scripts/calendar-fail.ts 5-2
+}
+
+recipe_5_3() {
+  require_database_url
+  echo "CMD pnpm exec tsx scripts/calendar-fail.ts 5-3"
+  pnpm exec tsx scripts/calendar-fail.ts 5-3
+}
+
+recipe_5_4() {
+  require_database_url
+  echo "CMD pnpm exec tsx scripts/calendar-fail.ts 5-4"
+  pnpm exec tsx scripts/calendar-fail.ts 5-4
+}
+
 case "${1:-}" in
   1|fail1) run_recipe recipe_1 ;;
   2|fail2) run_recipe recipe_2 ;;
@@ -686,6 +715,10 @@ case "${1:-}" in
   8) run_recipe recipe_8 ;;
   9) run_recipe recipe_9 ;;
   9a) run_recipe recipe_9a ;;
+  5-1) run_recipe recipe_5_1 ;;
+  5-2) run_recipe recipe_5_2 ;;
+  5-3) run_recipe recipe_5_3 ;;
+  5-4) run_recipe recipe_5_4 ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     echo "all runs in-process checks and vitest, which drops the public schema"
@@ -694,7 +727,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|all]" >&2
     exit 2
     ;;
 esac

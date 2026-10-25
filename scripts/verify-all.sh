@@ -338,6 +338,8 @@ run_step playwright-install pnpm exec playwright install --with-deps chromium
 start_server || exit 1
 run_step server-ready wait_for_sign_in
 run_step visual-shots pnpm visual-shots
+run_step calendar-view pnpm calendar-view
+require_step_log calendar-view "month_grid=visible" "agenda_at_1280=hidden" "month_crossing_bar=true" "agenda_at_390=visible" "calendar_view=pass"
 run_step autosave-flush pnpm autosave-flush
 run_step tokens node scripts/lint-tokens.mjs
 run_step docker-build build_image
@@ -375,6 +377,14 @@ run_step fail9 ./scripts/verify-fail-conditions.sh 9
 require_step_log fail9 "cross_origin_status=403"
 run_step fail9a ./scripts/verify-fail-conditions.sh 9a
 require_step_log fail9a "malformed_status=400"
+run_step fail5-1 ./scripts/verify-fail-conditions.sh 5-1
+require_step_log fail5-1 "non_member_calendar_status=404" "non_member_create_status=404" "non_member_update_status=404" "non_member_delete_status=404" "other_team_event_visible=false"
+run_step fail5-2 ./scripts/verify-fail-conditions.sh 5-2
+require_step_log fail5-2 "invalid_range_status=400" "wrote_invalid=false"
+run_step fail5-3 ./scripts/verify-fail-conditions.sh 5-3
+require_step_log fail5-3 "stored_start=2026-06-16T01:00:00.000Z" "kiritimati=2026-06-16 15:00" "midway=2026-06-15 14:00" "same_instant=true" "all_day_shifted=false"
+run_step fail5-4 ./scripts/verify-fail-conditions.sh 5-4
+require_step_log fail5-4 "january_contains=true" "february_contains=true"
 run_step screenshots pnpm visual-shots
 run_step baselines run_baselines
 run_step baseline-side-by-side run_side_by_side
