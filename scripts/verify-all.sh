@@ -375,9 +375,9 @@ require_step_log token-cross "owner_status=200" "cross_user_status=404"
 run_step token-secret ./scripts/verify-fail-conditions.sh token-secret
 require_step_log token-secret "token_in_db=false" "token_in_logs=false"
 run_step token-bearer ./scripts/verify-fail-conditions.sh token-bearer
-require_step_log token-bearer "missing_bearer_status=401" "garbage_bearer_status=401" "bearer_bodies_match=true" "revoked_bearer_status=401" "unknown_bearer_status=401" "bearer_bodies_identical=true"
+require_step_log token-bearer "missing_bearer_status=401" "garbage_bearer_status=401" "bearer_bodies_match=true" "revoked_bearer_status=401" "unknown_bearer_status=401" "expired_bearer_status=401" "bearer_bodies_identical=true"
 run_step token-writes ./scripts/verify-fail-conditions.sh token-writes
-require_step_log token-writes "create_denied_status=404" "update_denied_status=404" "cycle_status=400" "cycle_parent_unchanged=true" "cycle_refused=true"
+require_step_log token-writes "create_denied_status=404" "update_denied_status=404"
 run_step token-team ./scripts/verify-fail-conditions.sh token-team
 require_step_log token-team "before_removal_status=200" "remove_status=200" "after_removal_status=404"
 run_step token-reset ./scripts/verify-fail-conditions.sh token-reset
@@ -385,7 +385,19 @@ require_step_log token-reset "before_reset_status=200" "reset_status=200" "reset
 run_step token-roundtrip ./scripts/verify-fail-conditions.sh token-roundtrip
 require_step_log token-roundtrip "create_status=200" "read_status=200" "update_status=200" "list_status=200" "app_status=200" "app_title_matches=true" "last_used_set=true"
 run_step token-image ./scripts/verify-fail-conditions.sh token-image
-require_step_log token-image "app_containers=1" "same_image=true" "mcp_status=401" "extra_service=false"
+require_step_log token-image "app_containers=1" "same_image=true" "mcp_status=401" "mcp_get_status=405" "extra_service=false"
+run_step token-fidelity ./scripts/verify-fail-conditions.sh token-fidelity
+require_step_log token-fidelity "get_status=200" "update_status=200" "mention_link=true" "date_link=true" "table_markup=true" "stored_body_identical=true"
+run_step token-conflict ./scripts/verify-fail-conditions.sh token-conflict
+require_step_log token-conflict "missing_status=409" "missing_unchanged=true" "stale_status=409" "stale_unchanged=true" "parent_status=400" "reparent_status=400" "parent_unchanged=true"
+run_step token-scope ./scripts/verify-fail-conditions.sh token-scope
+require_step_log token-scope "read_create_status=403" "read_update_status=403" "read_get_status=200" "read_create_stored=false" "read_title_unchanged=true"
+run_step token-expiry ./scripts/verify-fail-conditions.sh token-expiry
+require_step_log token-expiry "before_expiry_status=200" "expired_status=401" "expired_body_matches=true"
+run_step token-rate ./scripts/verify-fail-conditions.sh token-rate
+require_step_log token-rate "under_limit_status=200" "rate_status=429" "rate_limit=60"
+run_step token-body ./scripts/verify-fail-conditions.sh token-body
+require_step_log token-body "body_status=413" "body_limit_bytes=1048576" "stored_pages=0"
 run_step fail1 ./scripts/verify-fail-conditions.sh 1
 run_step fail2 ./scripts/verify-fail-conditions.sh 2
 run_step fail3 ./scripts/verify-fail-conditions.sh 3

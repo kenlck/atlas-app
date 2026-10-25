@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import postgres from 'postgres'
+import { MCP_MAX_BODY_BYTES, MCP_RATE_MAX } from '../src/lib/mcp-limit'
 import { postgresPoolOptions } from '../src/lib/postgres-options'
 import { assertLocalBaseUrl, assertLocalDatabaseUrl } from './verify-local.ts'
 
@@ -83,7 +84,15 @@ async function signUp(base: string, name: string) {
   return { cookie, email, userId: body.user.id }
 }
 
-async function createToken(base: string, cookie: string, name: string) {
+async function createToken(
+  base: string,
+  cookie: string,
+  name: string,
+  options?: {
+    scope?: 'read' | 'read_write'
+    expiry?: '30d' | '90d' | '1y' | 'never'
+  },
+) {
   const response = await fetch(`${base}/api/atlas/tokens`, {
     method: 'POST',
     headers: {
@@ -91,7 +100,11 @@ async function createToken(base: string, cookie: string, name: string) {
       origin: base,
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({
+      name,
+      scope: options?.scope ?? 'read_write',
+      expiry: options?.expiry ?? '90d',
+    }),
   })
   const text = await response.text()
   console.log(`create_status=${response.status}`)
@@ -196,14 +209,14 @@ async function cross(base: string) {
     jsonrpc: '2.0',
     id: 3,
     method: 'tools/call',
-    params: { name: 'read_page', arguments: { page_id: page.id } },
+    params: { name: 'get_page', arguments: { page_id: page.id } },
   })
   console.log(`owner_status=${ownerRead.status}`)
   const otherRead = await mcp(base, otherToken.token, {
     jsonrpc: '2.0',
     id: 4,
     method: 'tools/call',
-    params: { name: 'read_page', arguments: { page_id: page.id } },
+    params: { name: 'get_page', arguments: { page_id: page.id } },
   })
   console.log(`cross_user_status=${otherRead.status}`)
   if (ownerRead.status !== 200 || otherRead.status !== 404)
@@ -308,14 +321,23 @@ async function bearer(base: string) {
     id: 1,
     method: 'tools/list',
   })
+  const expiring = await createToken(base, user.cookie, 'expired')
+  await expireToken(expiring.id)
+  const expiredCall = await mcp(base, expiring.token, {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/list',
+  })
   console.log(`missing_bearer_status=${missing.status}`)
   console.log(`garbage_bearer_status=${garbage.status}`)
   console.log(`revoked_bearer_status=${revokedCall.status}`)
   console.log(`unknown_bearer_status=${unknownCall.status}`)
+  console.log(`expired_bearer_status=${expiredCall.status}`)
   const same =
     missing.text === garbage.text &&
     missing.text === revokedCall.text &&
-    missing.text === unknownCall.text
+    missing.text === unknownCall.text &&
+    missing.text === expiredCall.text
   console.log(`bearer_bodies_match=${missing.text === garbage.text}`)
   console.log(`bearer_bodies_identical=${same}`)
   const leaks = /exist|revok|expir|invalid token|not found/i.test(missing.text)
@@ -325,6 +347,7 @@ async function bearer(base: string) {
     garbage.status !== 401 ||
     revokedCall.status !== 401 ||
     unknownCall.status !== 401 ||
+    expiredCall.status !== 401 ||
     !same ||
     leaks
   ) {
@@ -379,22 +402,6 @@ async function writes(base: string) {
   })
   if (parent.status !== 200) fail('parent_create_failed')
   const parentPage = toolPayload(parent.text).data
-  const child = await mcp(base, ownerToken.token, {
-    jsonrpc: '2.0',
-    id: 3,
-    method: 'tools/call',
-    params: {
-      name: 'create_page',
-      arguments: {
-        space_id: spaceId,
-        parent_id: parentPage.id,
-        title: 'Child',
-        body: 'Child',
-      },
-    },
-  })
-  if (child.status !== 200) fail('child_create_failed')
-  const childPage = toolPayload(child.text).data
   const deniedCreate = await mcp(base, otherToken.token, {
     jsonrpc: '2.0',
     id: 4,
@@ -417,40 +424,9 @@ async function writes(base: string) {
       },
     },
   })
-  const cycle = await mcp(base, ownerToken.token, {
-    jsonrpc: '2.0',
-    id: 6,
-    method: 'tools/call',
-    params: {
-      name: 'update_page',
-      arguments: { page_id: parentPage.id, parent_id: childPage.id },
-    },
-  })
-  const after = await mcp(base, ownerToken.token, {
-    jsonrpc: '2.0',
-    id: 7,
-    method: 'tools/call',
-    params: { name: 'read_page', arguments: { page_id: parentPage.id } },
-  })
   console.log(`create_denied_status=${deniedCreate.status}`)
   console.log(`update_denied_status=${deniedUpdate.status}`)
-  console.log(`cycle_status=${cycle.status}`)
-  const parentAfter = toolPayload(after.text).data
-  const unchanged = after.status === 200 && parentAfter.parent_id == null
-  console.log(`cycle_parent_unchanged=${unchanged}`)
-  const cycleMessage = toolPayload(cycle.text).error
-  console.log(
-    `cycle_refused=${cycleMessage.includes('descendant') ? 'true' : 'false'}`,
-  )
-  if (
-    deniedCreate.status !== 404 ||
-    deniedUpdate.status !== 404 ||
-    cycle.status !== 400 ||
-    !unchanged ||
-    !cycleMessage.includes('descendant')
-  ) {
-    fail('writes')
-  }
+  if (deniedCreate.status !== 404 || deniedUpdate.status !== 404) fail('writes')
 }
 
 async function teamRemoval(base: string) {
@@ -514,7 +490,7 @@ async function teamRemoval(base: string) {
     jsonrpc: '2.0',
     id: 2,
     method: 'tools/call',
-    params: { name: 'read_page', arguments: { page_id: pageId } },
+    params: { name: 'get_page', arguments: { page_id: pageId } },
   })
   console.log(`before_removal_status=${before.status}`)
   const removed = await fetch(
@@ -527,7 +503,7 @@ async function teamRemoval(base: string) {
     jsonrpc: '2.0',
     id: 3,
     method: 'tools/call',
-    params: { name: 'read_page', arguments: { page_id: pageId } },
+    params: { name: 'get_page', arguments: { page_id: pageId } },
   })
   console.log(`after_removal_status=${after.status}`)
   if (before.status !== 200 || removed.status !== 200 || after.status !== 404) {
@@ -755,7 +731,7 @@ async function roundTrip(base: string) {
     jsonrpc: '2.0',
     id: 3,
     method: 'tools/call',
-    params: { name: 'read_page', arguments: { page_id: page.id } },
+    params: { name: 'get_page', arguments: { page_id: page.id } },
   })
   console.log(`read_status=${read.status}`)
   const updated = await mcp(base, created.token, {
@@ -807,6 +783,434 @@ async function roundTrip(base: string) {
   }
 }
 
+async function expireToken(id: string) {
+  const sql = postgres(databaseUrl(), postgresPoolOptions(databaseUrl()))
+  try {
+    await sql`update api_token set expires_at = '2000-01-01T00:00:00.000Z' where id = ${id}`
+  } finally {
+    await sql.end({ timeout: 5 })
+  }
+}
+
+const richDoc = {
+  type: 'doc',
+  content: [
+    {
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'Meet ' },
+        { type: 'mention', attrs: { id: 'user-1', label: 'Ada' } },
+        { type: 'text', text: ' on ' },
+        { type: 'dateChip', attrs: { date: '2026-10-23' } },
+      ],
+    },
+    {
+      type: 'table',
+      content: [
+        {
+          type: 'tableRow',
+          content: [
+            {
+              type: 'tableHeader',
+              attrs: { colspan: 1, rowspan: 1, colwidth: null, align: null },
+              content: [
+                { type: 'paragraph', content: [{ type: 'text', text: 'Who' }] },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'tableRow',
+          content: [
+            {
+              type: 'tableCell',
+              attrs: { colspan: 1, rowspan: 1, colwidth: [80], align: null },
+              content: [
+                {
+                  type: 'paragraph',
+                  content: [
+                    { type: 'mention', attrs: { id: 'user-1', label: 'Ada' } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+}
+
+async function pageCount(spaceId: string, title: string) {
+  const sql = postgres(databaseUrl(), postgresPoolOptions(databaseUrl()))
+  try {
+    const rows = await sql<{ n: number }[]>`
+      select count(*)::int as n from page where space_id = ${spaceId} and title = ${title}
+    `
+    return rows[0].n
+  } finally {
+    await sql.end({ timeout: 5 })
+  }
+}
+
+async function fidelity(base: string) {
+  const user = await signUp(base, 'Fidelity')
+  const created = await createToken(base, user.cookie, 'fidelity')
+  const spaceId = await personalSpace(base, created.token)
+  const made = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: {
+      name: 'create_page',
+      arguments: { space_id: spaceId, title: 'Rich', body: 'placeholder' },
+    },
+  })
+  if (made.status !== 200) fail('fidelity_create_failed')
+  const page = toolPayload(made.text).data
+  const sql = postgres(databaseUrl(), postgresPoolOptions(databaseUrl()))
+  try {
+    await sql.unsafe(`update page set body = $1::jsonb where id = $2`, [
+      JSON.stringify(richDoc),
+      String(page.id),
+    ])
+    const before = await sql<{ body: string }[]>`
+      select body::text as body from page where id = ${page.id as string}
+    `
+    const read = await mcp(base, created.token, {
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'get_page', arguments: { page_id: page.id } },
+    })
+    const payload = toolPayload(read.text).data
+    const markdown = String(payload.body ?? '')
+    const mention = markdown.includes('[@Ada](atlas://user/user-1)')
+    const date = markdown.includes('[Oct 23, 2026](atlas://date/2026-10-23)')
+    const table = markdown.includes('<table>')
+    console.log(`get_status=${read.status}`)
+    console.log(`mention_link=${mention}`)
+    console.log(`date_link=${date}`)
+    console.log(`table_markup=${table}`)
+    const updated = await mcp(base, created.token, {
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'tools/call',
+      params: {
+        name: 'update_page',
+        arguments: {
+          page_id: page.id,
+          body: markdown,
+          updated_at: payload.updated_at,
+        },
+      },
+    })
+    console.log(`update_status=${updated.status}`)
+    const after = await sql<{ body: string }[]>`
+      select body::text as body from page where id = ${page.id as string}
+    `
+    const identical = before[0].body === after[0].body && before[0].body.length > 0
+    console.log(`stored_body_identical=${identical}`)
+    if (
+      read.status !== 200 ||
+      updated.status !== 200 ||
+      !mention ||
+      !date ||
+      !table ||
+      !identical
+    ) {
+      fail('fidelity')
+    }
+  } finally {
+    await sql.end({ timeout: 5 })
+  }
+}
+
+async function conflict(base: string) {
+  const user = await signUp(base, 'Conflict')
+  const created = await createToken(base, user.cookie, 'conflict')
+  const spaceId = await personalSpace(base, created.token)
+  const made = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: {
+      name: 'create_page',
+      arguments: { space_id: spaceId, title: 'Original', body: 'Original' },
+    },
+  })
+  if (made.status !== 200) fail('conflict_create_failed')
+  const page = toolPayload(made.text).data
+  const missing = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/call',
+    params: {
+      name: 'update_page',
+      arguments: { page_id: page.id, body: 'agent clobber' },
+    },
+  })
+  const afterMissing = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 4,
+    method: 'tools/call',
+    params: { name: 'get_page', arguments: { page_id: page.id } },
+  })
+  const missingPage = toolPayload(afterMissing.text).data
+  const missingUnchanged =
+    afterMissing.status === 200 && missingPage.body === 'Original'
+  console.log(`missing_status=${missing.status}`)
+  console.log(`missing_unchanged=${missingUnchanged}`)
+  const stale = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 5,
+    method: 'tools/call',
+    params: {
+      name: 'update_page',
+      arguments: {
+        page_id: page.id,
+        title: 'Agent title',
+        body: 'agent clobber 2',
+        updated_at: '2000-01-01T00:00:00.000Z',
+      },
+    },
+  })
+  const afterStale = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 6,
+    method: 'tools/call',
+    params: { name: 'get_page', arguments: { page_id: page.id } },
+  })
+  const stalePage = toolPayload(afterStale.text).data
+  const staleUnchanged =
+    afterStale.status === 200 &&
+    stalePage.title === 'Original' &&
+    stalePage.body === 'Original'
+  console.log(`stale_status=${stale.status}`)
+  console.log(`stale_unchanged=${staleUnchanged}`)
+  const other = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 7,
+    method: 'tools/call',
+    params: {
+      name: 'create_page',
+      arguments: { space_id: spaceId, title: 'Other', body: 'Other' },
+    },
+  })
+  if (other.status !== 200) fail('conflict_other_failed')
+  const otherPage = toolPayload(other.text).data
+  const parent = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 8,
+    method: 'tools/call',
+    params: {
+      name: 'update_page',
+      arguments: {
+        page_id: page.id,
+        parent_id: null,
+        title: 'Moved',
+        body: 'agent clobber',
+        updated_at: page.updated_at,
+      },
+    },
+  })
+  const reparent = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 9,
+    method: 'tools/call',
+    params: {
+      name: 'update_page',
+      arguments: {
+        page_id: page.id,
+        parent_id: otherPage.id,
+        title: 'Moved',
+        updated_at: page.updated_at,
+      },
+    },
+  })
+  const after = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 10,
+    method: 'tools/call',
+    params: { name: 'get_page', arguments: { page_id: page.id } },
+  })
+  const finalPage = toolPayload(after.text).data
+  const unchanged =
+    after.status === 200 &&
+    finalPage.title === 'Original' &&
+    finalPage.body === 'Original' &&
+    finalPage.parent_id == null
+  console.log(`parent_status=${parent.status}`)
+  console.log(`reparent_status=${reparent.status}`)
+  console.log(`parent_unchanged=${unchanged}`)
+  if (
+    missing.status !== 409 ||
+    !missingUnchanged ||
+    stale.status !== 409 ||
+    !staleUnchanged ||
+    parent.status !== 400 ||
+    reparent.status !== 400 ||
+    !unchanged
+  ) {
+    fail('conflict')
+  }
+}
+
+async function scopeRead(base: string) {
+  const user = await signUp(base, 'Reader')
+  const reader = await createToken(base, user.cookie, 'reader', { scope: 'read' })
+  const spaceId = await personalSpace(base, reader.token)
+  const before = await pageCount(spaceId, 'Nope')
+  const deniedCreate = await mcp(base, reader.token, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: {
+      name: 'create_page',
+      arguments: { space_id: spaceId, title: 'Nope', body: 'Nope' },
+    },
+  })
+  const after = await pageCount(spaceId, 'Nope')
+  const writer = await createToken(base, user.cookie, 'writer')
+  const made = await mcp(base, writer.token, {
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/call',
+    params: {
+      name: 'create_page',
+      arguments: { space_id: spaceId, title: 'Kept', body: 'Kept' },
+    },
+  })
+  if (made.status !== 200) fail('scope_create_failed')
+  const page = toolPayload(made.text).data
+  const deniedUpdate = await mcp(base, reader.token, {
+    jsonrpc: '2.0',
+    id: 4,
+    method: 'tools/call',
+    params: {
+      name: 'update_page',
+      arguments: {
+        page_id: page.id,
+        title: 'Hacked',
+        updated_at: page.updated_at,
+      },
+    },
+  })
+  const read = await mcp(base, reader.token, {
+    jsonrpc: '2.0',
+    id: 5,
+    method: 'tools/call',
+    params: { name: 'get_page', arguments: { page_id: page.id } },
+  })
+  const viewed = toolPayload(read.text).data
+  console.log(`read_create_status=${deniedCreate.status}`)
+  console.log(`read_update_status=${deniedUpdate.status}`)
+  console.log(`read_get_status=${read.status}`)
+  console.log(`read_create_stored=${before === after ? 'false' : 'true'}`)
+  console.log(`read_title_unchanged=${viewed.title === 'Kept'}`)
+  if (
+    deniedCreate.status !== 403 ||
+    deniedUpdate.status !== 403 ||
+    read.status !== 200 ||
+    before !== after ||
+    viewed.title !== 'Kept'
+  ) {
+    fail('scope')
+  }
+}
+
+async function expiry(base: string) {
+  const user = await signUp(base, 'Expiry')
+  const created = await createToken(base, user.cookie, 'expiry', { expiry: '30d' })
+  const live = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/list',
+  })
+  console.log(`before_expiry_status=${live.status}`)
+  await expireToken(created.id)
+  const expired = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/list',
+  })
+  const missing = await mcp(base, null, {
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/list',
+  })
+  console.log(`expired_status=${expired.status}`)
+  console.log(`expired_body_matches=${expired.text === missing.text}`)
+  if (
+    live.status !== 200 ||
+    expired.status !== 401 ||
+    missing.status !== 401 ||
+    expired.text !== missing.text
+  ) {
+    fail('expiry')
+  }
+}
+
+async function rate(base: string) {
+  const user = await signUp(base, 'Rate')
+  const created = await createToken(base, user.cookie, 'rate')
+  let under = 0
+  for (let i = 0; i < MCP_RATE_MAX; i += 1) {
+    const response = await mcp(base, created.token, {
+      jsonrpc: '2.0',
+      id: i,
+      method: 'ping',
+    })
+    under = response.status
+    if (response.status !== 200) fail('rate_under_limit')
+  }
+  const blocked = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: MCP_RATE_MAX,
+    method: 'ping',
+  })
+  console.log(`under_limit_status=${under}`)
+  console.log(`rate_status=${blocked.status}`)
+  console.log(`rate_limit=${MCP_RATE_MAX}`)
+  if (blocked.status !== 429) fail('rate')
+}
+
+async function bodyCap(base: string) {
+  const user = await signUp(base, 'Body')
+  const created = await createToken(base, user.cookie, 'body')
+  const spaceId = await personalSpace(base, created.token)
+  const marker = `cap-${crypto.randomUUID()}`
+  const payload = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: {
+      name: 'create_page',
+      arguments: {
+        space_id: spaceId,
+        title: marker,
+        body: 'x'.repeat(20 * 1024 * 1024),
+      },
+    },
+  })
+  const response = await fetch(`${base}/mcp`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+      authorization: `Bearer ${created.token}`,
+    },
+    body: payload,
+  })
+  await response.text().catch(() => '')
+  const stored = await pageCount(spaceId, marker)
+  console.log(`body_status=${response.status}`)
+  console.log(`body_limit_bytes=${MCP_MAX_BODY_BYTES}`)
+  console.log(`request_bytes=${Buffer.byteLength(payload)}`)
+  console.log(`stored_pages=${stored}`)
+  if (response.status !== 413 || stored !== 0) fail('body_cap')
+}
+
 async function image(base: string) {
   const container = process.env.ATLAS_CONTAINER
   if (!container) fail('ATLAS_CONTAINER is required')
@@ -832,8 +1236,13 @@ async function image(base: string) {
     method: 'tools/list',
   })
   console.log(`mcp_status=${probe.status}`)
+  const got = await fetch(`${base}/mcp`)
+  console.log(`mcp_get_status=${got.status}`)
+  await got.text().catch(() => '')
   console.log(`extra_service=${apps.length === 1 ? 'false' : 'true'}`)
-  if (apps.length !== 1 || !same || probe.status !== 401) fail('mcp_image')
+  if (apps.length !== 1 || !same || probe.status !== 401 || got.status !== 405) {
+    fail('mcp_image')
+  }
 }
 
 const mode = process.argv[2]
@@ -849,8 +1258,14 @@ else if (mode === 'team') await teamRemoval(base)
 else if (mode === 'reset') await reset(base)
 else if (mode === 'roundtrip') await roundTrip(base)
 else if (mode === 'image') await image(base)
+else if (mode === 'fidelity') await fidelity(base)
+else if (mode === 'conflict') await conflict(base)
+else if (mode === 'scope') await scopeRead(base)
+else if (mode === 'expiry') await expiry(base)
+else if (mode === 'rate') await rate(base)
+else if (mode === 'body') await bodyCap(base)
 else {
   fail(
-    'usage: token-fail.ts revoked|cross|secret|bearer|writes|team|reset|roundtrip|image',
+    'usage: token-fail.ts revoked|cross|secret|bearer|writes|team|reset|roundtrip|image|fidelity|conflict|scope|expiry|rate|body',
   )
 }

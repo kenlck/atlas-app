@@ -784,6 +784,42 @@ recipe_token_image() {
   pnpm exec tsx scripts/token-fail.ts image
 }
 
+recipe_token_fidelity() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts fidelity"
+  pnpm exec tsx scripts/token-fail.ts fidelity
+}
+
+recipe_token_conflict() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts conflict"
+  pnpm exec tsx scripts/token-fail.ts conflict
+}
+
+recipe_token_scope() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts scope"
+  pnpm exec tsx scripts/token-fail.ts scope
+}
+
+recipe_token_expiry() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts expiry"
+  pnpm exec tsx scripts/token-fail.ts expiry
+}
+
+recipe_token_rate() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts rate"
+  pnpm exec tsx scripts/token-fail.ts rate
+}
+
+recipe_token_body() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts body"
+  pnpm exec tsx scripts/token-fail.ts body
+}
+
 case "${1:-}" in
   1|fail1) run_recipe recipe_1 ;;
   2|fail2) run_recipe recipe_2 ;;
@@ -831,6 +867,12 @@ case "${1:-}" in
   token-reset) run_recipe recipe_token_reset ;;
   token-roundtrip) run_recipe recipe_token_roundtrip ;;
   token-image) run_recipe recipe_token_image ;;
+  token-fidelity) run_recipe recipe_token_fidelity ;;
+  token-conflict) run_recipe recipe_token_conflict ;;
+  token-scope) run_recipe recipe_token_scope ;;
+  token-expiry) run_recipe recipe_token_expiry ;;
+  token-rate) run_recipe recipe_token_rate ;;
+  token-body) run_recipe recipe_token_body ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     echo "all runs in-process checks and vitest, which drops the public schema"
@@ -839,7 +881,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|all]" >&2
     exit 2
     ;;
 esac
