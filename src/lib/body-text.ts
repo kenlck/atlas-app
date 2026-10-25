@@ -1,3 +1,5 @@
+import { formatDateLabel } from '#/lib/date-label'
+
 export type Json =
   | string
   | number
@@ -7,7 +9,9 @@ export type Json =
   | { [key: string]: Json }
 
 type TipNode = {
+  type?: string
   text?: string
+  attrs?: { date?: string }
   content?: Array<TipNode>
 }
 
@@ -16,6 +20,9 @@ export function tiptapToText(node: Json): string {
     return ''
   }
   const n = node as TipNode
+  if (n.type === 'dateChip' && typeof n.attrs?.date === 'string') {
+    return formatDateLabel(n.attrs.date)
+  }
   if (typeof n.text === 'string') {
     return n.text
   }

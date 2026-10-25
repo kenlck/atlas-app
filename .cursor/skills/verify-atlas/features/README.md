@@ -12,6 +12,7 @@ This directory is the maintained source for verifying Atlas. Read it before driv
 
 ## Driving conventions
 
+- Run the full check with `./scripts/verify-all.sh`. It writes `artifacts/<head sha>/`.
 - Start every recipe from a fresh sign-up unless its preconditions say otherwise.
 - Prefer roles and accessible names over coordinates.
 - Run issue 1 checks through `./scripts/verify-fail-conditions.sh`.
@@ -34,3 +35,4 @@ Each feature file has an H1, one paragraph, then these H2 sections in order: `Su
 - [Personal space and nested pages](./personal-space.md) covers the private space, creating a page, and nesting it.
 - [Admin reset](./admin-reset.md) covers the reset route, the lock, and the log grep.
 - [Failed save](./failed-save.md) covers reload and the Retry banner.
+- [Tables and dates](./tables-and-dates.md) covers editor tables, date chips, and paste from Sheets or Excel.

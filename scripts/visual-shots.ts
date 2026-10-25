@@ -1,7 +1,8 @@
 import { execSync } from 'node:child_process'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { chromium, type Page, type Request } from 'playwright'
+import { captureTableDateStates } from './table-date-states.ts'
 import {
   assertLocalBaseUrl,
   stamp as utcStamp,
@@ -25,7 +26,7 @@ const VIEWPORTS = {
   docked: { width: 900, height: 800 },
 } as const
 
-type Mode = 'pass' | 'hold-page' | 'hold-tree' | 'fail-page' | 'fail-save'
+type Mode = 'pass' | 'hold-page' | 'hold-tree' | 'fail-page' | 'fail-tree' | 'fail-save'
 
 function pngSize(buf: Buffer) {
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
@@ -57,7 +58,13 @@ function classify(request: Request) {
   return 'other'
 }
 
-async function shot(page: Page, width: number, screen: string, state: string) {
+async function shot(
+  page: Page,
+  width: number,
+  screen: string,
+  state: string,
+  png?: Buffer,
+) {
   const size = page.viewportSize()
   if (!size || size.width !== width) {
     throw new Error(
@@ -79,19 +86,22 @@ async function shot(page: Page, width: number, screen: string, state: string) {
   }
   const name = `${width}-${screen}-${state}.png`
   const path = join(OUT, name)
-  await page.screenshot({
-    path,
-    fullPage: false,
-    scale: 'css',
-    animations: 'disabled',
-  })
-  const png = pngSize(await readFile(path))
-  if (png.width !== width || png.height !== size.height) {
+  const buffer =
+    png ??
+    (await page.screenshot({
+      fullPage: false,
+      scale: 'css',
+      animations: 'disabled',
+      caret: 'hide',
+    }))
+  await writeFile(path, buffer)
+  const image = pngSize(buffer)
+  if (image.width !== width || image.height !== size.height) {
     throw new Error(
-      `${name} is ${png.width}x${png.height}, expected ${width}x${size.height}`,
+      `${name} is ${image.width}x${image.height}, expected ${width}x${size.height}`,
     )
   }
-  console.log(`wrote ${name} ${png.width}x${png.height} dpr=${meta.dpr}`)
+  console.log(`wrote ${name} ${image.width}x${image.height} dpr=${meta.dpr}`)
   return path
 }
 
@@ -179,9 +189,28 @@ async function renameCurrent(page: Page, title: string) {
 
 async function createNamedPage(page: Page, title: string) {
   const previous = page.url()
+  const previousTitle = await page.locator('#page-title').inputValue()
   await page.getByRole('button', { name: '+ New page' }).last().click()
-  await page.waitForFunction((href) => window.location.href !== href, previous)
-  await page.locator('#page-title').waitFor()
+  // Navigation updates the address, and the new page's loader can finish,
+  // before the previous PageEditor unmounts. That input still shows the
+  // previous title, and renameCurrent would save onto that page. A created
+  // page mounts its own editor with the title Untitled.
+  await page.waitForFunction(
+    ({ href, priorTitle }) => {
+      const priorId = new URL(href).pathname.split('/').pop()
+      const nextId = window.location.pathname.split('/').pop()
+      if (!nextId || nextId === priorId) return false
+      const field = document.getElementById(
+        'page-title',
+      ) as HTMLInputElement | null
+      return (
+        field !== null &&
+        field.value === 'Untitled' &&
+        field.value !== priorTitle
+      )
+    },
+    { href: previous, priorTitle: previousTitle },
+  )
   await page.locator('.doc-editor').waitFor()
   await renameCurrent(page, title)
 }
@@ -284,6 +313,14 @@ async function main() {
             () => resolve(),
           )
         })
+      })
+      return
+    }
+    if (mode === 'fail-tree' && kind === 'fetchPageTree') {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'Internal Server Error' }),
       })
       return
     }
@@ -419,6 +456,7 @@ async function main() {
     await page.locator('.doc-editor').click()
     await page.keyboard.type('Hello Atlas')
     await page.getByText('Saved').waitFor()
+    await shot(page, 1280, 'page', 'default')
 
     const oneHref = await page
       .locator('.tree a.it')
@@ -448,6 +486,15 @@ async function main() {
     mode = 'pass'
     releaseHeld()
     await page.locator('.tree a.it').first().waitFor()
+
+    mode = 'fail-tree'
+    await signOut(page)
+    await signIn(page, email, password)
+    await page.getByRole('heading', { name: "Couldn't load this space." }).waitFor()
+    await page.getByRole('button', { name: 'Try again' }).waitFor()
+    await page.locator('.tree .banner').waitFor()
+    await shot(page, 1280, 'space', 'error')
+    mode = 'pass'
 
     await page.goto(new URL(oneHref, BASE_URL).toString(), {
       waitUntil: 'networkidle',
@@ -568,6 +615,19 @@ async function main() {
     await page.locator('#page-title').click()
     await shot(page, 1280, 'page', 'link')
 
+    await captureTableDateStates(page, async (name, png) => {
+      const width = name.startsWith('390-') ? 390 : 1280
+      const rest = name.slice(String(width).length + 1)
+      const dash = rest.indexOf('-')
+      const screen = rest.slice(0, dash)
+      const state = rest.slice(dash + 1)
+      if (page.viewportSize()?.width !== width) {
+        await setViewport(page, width, width === 390 ? 844 : 800)
+      }
+      await shot(page, width, screen, state, png)
+    })
+    await setViewport(page, 1280, 800)
+
     await setViewport(page, 390, 844)
     await page.getByRole('button', { name: 'Open pages' }).waitFor()
     await logTitleLabel(page, 390)
@@ -590,11 +650,30 @@ async function main() {
     await page.locator('.side.open').waitFor({ state: 'hidden' })
     console.log('drawer_390_esc_closed=true')
 
-    await page.locator('.tool').evaluate((el) => {
+    const toolbar = page.locator('.tool')
+    const beforeScroll = await toolbar.evaluate((el) => ({
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+      scrollLeft: el.scrollLeft,
+    }))
+    console.log(
+      `toolbar_390 scrollWidth=${beforeScroll.scrollWidth} clientWidth=${beforeScroll.clientWidth} scrollLeft=${beforeScroll.scrollLeft}`,
+    )
+    if (beforeScroll.scrollWidth <= beforeScroll.clientWidth) {
+      throw new Error(
+        `toolbar does not overflow: scrollWidth ${beforeScroll.scrollWidth} <= clientWidth ${beforeScroll.clientWidth}`,
+      )
+    }
+    await toolbar.evaluate((el) => {
       el.scrollLeft = el.scrollWidth
     })
+    const afterScroll = await toolbar.evaluate((el) => el.scrollLeft)
+    console.log(`toolbar_390 scrolled scrollLeft=${afterScroll}`)
+    if (afterScroll <= beforeScroll.scrollLeft) {
+      throw new Error('toolbar did not scroll')
+    }
     await shot(page, 390, 'page', 'toolbar-scroll')
-    await page.locator('.tool').evaluate((el) => {
+    await toolbar.evaluate((el) => {
       el.scrollLeft = 0
     })
 

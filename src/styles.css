@@ -352,6 +352,7 @@ body {
 }
 
 .col {
+  width: 100%;
   max-width: var(--page-column-max);
   margin: 0 auto;
   font-family: 'Geist Variable', Geist, sans-serif;
@@ -909,6 +910,7 @@ body {
   line-height: var(--body-line);
   outline: none;
   min-width: 0;
+  max-width: 100%;
   overflow-wrap: anywhere;
 }
 
@@ -998,6 +1000,285 @@ body {
   font-size: 14px;
 }
 
+.table-tools {
+  height: 36px;
+  background: var(--white);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+.table-tools .ghost {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 13px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.table-tools .ghost:disabled {
+  color: var(--placeholder);
+  cursor: not-allowed;
+}
+
+.table-tools .ghost.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.table-tools .ghost.danger {
+  margin-left: auto;
+  color: var(--error);
+}
+
+.table-tools .sep {
+  width: 1px;
+  min-width: 1px;
+  height: 18px;
+  background: var(--line);
+  padding: 0;
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+.doc-editor .tableWrapper {
+  display: block;
+  overflow-x: auto;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+.doc-editor .tableWrapper::-webkit-scrollbar {
+  height: 8px;
+}
+
+.doc-editor .tableWrapper::-webkit-scrollbar-thumb {
+  background: var(--line);
+}
+
+.doc-editor table {
+  border-collapse: collapse;
+  /* `hidden` wins the collapsed outer edge, including on a rowspan or
+     colspan cell. first/last-child cannot see that cell. The wrapper
+     border is the only outer line, so the corners stay continuous. */
+  border-style: hidden;
+}
+
+.doc-editor td,
+.doc-editor th {
+  position: relative;
+  border: 1px solid var(--line);
+  padding: 8px 12px;
+  vertical-align: top;
+  min-width: 80px;
+  text-align: left;
+  font-size: var(--body-size);
+  line-height: var(--body-line);
+  color: var(--ink);
+  font-weight: 400;
+  background: var(--white);
+}
+
+.doc-editor th {
+  background: var(--sidebar);
+  font-weight: 600;
+}
+
+.doc-editor tr:first-child > * {
+  border-top-width: 0;
+}
+
+.doc-editor tr:last-child > * {
+  border-bottom-width: 0;
+}
+
+.doc-editor tr > *:first-child {
+  border-left-width: 0;
+}
+
+.doc-editor tr > *:last-child {
+  border-right-width: 0;
+}
+
+.doc-editor .selectedCell {
+  background: var(--selection);
+}
+
+.doc-editor .cell-cursor {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.doc-editor.resize-cursor {
+  cursor: col-resize;
+}
+
+.doc-editor .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: -1px;
+  bottom: -1px;
+  width: 4px;
+  z-index: 2;
+  pointer-events: none;
+  background: transparent;
+}
+
+.doc-editor .column-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 1px;
+  width: 2px;
+  background: var(--accent);
+}
+
+.date-chip {
+  display: inline-block;
+  vertical-align: baseline;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.date-chip:hover {
+  background: var(--selection);
+}
+
+.date-chip:focus-visible,
+.date-chip.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.date-picker.menu {
+  position: fixed;
+  width: 252px;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.date-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.date-picker-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.date-picker-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.date-picker-nav .ghost,
+.date-picker-foot .ghost {
+  width: auto;
+  height: 28px;
+  padding: 0 10px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.date-picker-nav .ghost {
+  width: 28px;
+  padding: 0;
+}
+
+.date-weekdays,
+.date-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 32px);
+  justify-content: center;
+}
+
+.date-weekdays span {
+  height: 24px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.date-picker.menu button.date-day {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-family: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.date-picker.menu button.date-day.outside {
+  color: var(--placeholder);
+}
+
+.date-picker.menu button.date-day:hover {
+  background: var(--sidebar-active);
+}
+
+.date-picker.menu button.date-day.today {
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.date-picker.menu button.date-day.selected,
+.date-picker.menu button.date-day.selected:hover {
+  background: var(--accent);
+  color: var(--white);
+}
+
+.date-picker-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.date-picker .date-remove {
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--error);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  width: auto;
+  padding: 0 8px;
+}
+
 @media (--atlas-drawer) {
   .menu-btn {
     display: grid;
@@ -1039,5 +1320,9 @@ body {
   .doc,
   .col {
     overflow-x: hidden;
+  }
+
+  .date-picker.menu {
+    width: min(252px, calc(100vw - 32px));
   }
 }

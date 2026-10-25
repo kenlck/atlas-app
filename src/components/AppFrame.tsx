@@ -95,6 +95,14 @@ export function AppFrame({
     refresh()
   }
 
+  const blocked = Boolean(error)
+  const guard =
+    <Args extends unknown[]>(action: (...args: Args) => void) =>
+    (...args: Args) => {
+      if (blocked) return
+      action(...args)
+    }
+
   return (
     <div className="app">
       {drawer ? (
@@ -110,10 +118,16 @@ export function AppFrame({
         loading={loading}
         error={error}
         onRetry={onRetry}
-        onCreate={(parentId) => void create(parentId)}
-        onRename={(pageId, title) => void rename(pageId, title)}
-        onMove={setMoving}
-        onArchive={(pageId) => void archive(pageId)}
+        onCreate={guard((parentId) => {
+          void create(parentId)
+        })}
+        onRename={guard((pageId, title) => {
+          void rename(pageId, title)
+        })}
+        onMove={guard((pageId) => setMoving(pageId))}
+        onArchive={guard((pageId) => {
+          void archive(pageId)
+        })}
         spaces={spaces}
         role={role}
         pendingInvites={pendingInvites}
@@ -140,7 +154,24 @@ export function AppFrame({
         >
           ☰
         </button>
-        <Outlet />
+        {error ? (
+          <>
+            <div className="top">
+              <b>Pages</b>
+            </div>
+            <div className="nf">
+              <h1>Couldn't load this space.</h1>
+              <p className="empty">Something went wrong.</p>
+              {onRetry ? (
+                <button type="button" className="btn secondary" onClick={onRetry}>
+                  Try again
+                </button>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <Outlet />
+        )}
       </div>
       {moving ? (
         <MoveDialog

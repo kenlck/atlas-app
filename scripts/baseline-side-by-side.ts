@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
 
@@ -20,33 +20,37 @@ function gitShow(path: string) {
   }
 }
 
+function pngSize(buf: Buffer) {
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
+}
+
 async function panel(
   browser: Awaited<ReturnType<typeof chromium.launch>>,
   left: Buffer | null,
   right: Buffer,
   name: string,
 ) {
+  const size = pngSize(right)
   const page = await browser.newPage({
-    viewport: { width: 1280 * 2 + 48, height: 860 },
+    viewport: { width: size.width * 2 + 48, height: size.height + 60 },
     deviceScaleFactor: 1,
   })
   const leftSrc = left ? `data:image/png;base64,${left.toString('base64')}` : ''
   const rightSrc = `data:image/png;base64,${right.toString('base64')}`
+  const oldBlock = left
+    ? `<img alt="old ${name}" width="${size.width}" height="${size.height}" src="${leftSrc}">`
+    : `<div style="width:${size.width}px;height:${size.height}px;background:rgb(247, 247, 246);display:flex;align-items:center;justify-content:center">added in this PR</div>`
   await page.setContent(`<!doctype html>
 <html>
 <body style="margin:0;background:white;font:16px sans-serif;color:rgb(28, 25, 23)">
   <div style="display:flex;gap:16px;padding:16px">
     <figure style="margin:0">
       <figcaption>old</figcaption>
-      ${
-        left
-          ? `<img alt="old ${name}" width="1280" height="800" src="${leftSrc}">`
-          : '<div style="width:1280px;height:800px;background:rgb(247, 247, 246);display:flex;align-items:center;justify-content:center">added in this PR</div>'
-      }
+      ${oldBlock}
     </figure>
     <figure style="margin:0">
       <figcaption>new</figcaption>
-      <img alt="new ${name}" width="1280" height="800" src="${rightSrc}">
+      <img alt="new ${name}" width="${size.width}" height="${size.height}" src="${rightSrc}">
     </figure>
   </div>
 </body>
@@ -65,20 +69,9 @@ async function main() {
   const browser = await chromium.launch({
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   })
-  const names = [
-    'sign-in-empty.png',
-    'sign-in-error.png',
-    'sign-up-empty.png',
-    'sign-up-error.png',
-    'forgot-password.png',
-    'set-password-error.png',
-    'space-empty.png',
-    'space-loading.png',
-    'page-default.png',
-    'page-loading.png',
-    'page-error.png',
-    'page-retry.png',
-  ]
+  const names = (await readdir(join(process.cwd(), 'tests/visual/baselines')))
+    .filter((name) => name.endsWith('.png'))
+    .sort()
   let changes = 0
   for (const name of names) {
     const rel = `tests/visual/baselines/${name}`
