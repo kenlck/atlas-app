@@ -15,20 +15,26 @@ export function resetAdminRateLimit() {
   hits.clear()
 }
 
-function allowRequest(ip: string) {
+function pruneFailures(ip: string) {
   const now = Date.now()
   const current = hits.get(ip) ?? { times: [] }
   current.times = current.times.filter((time) => now - time < RATE_WINDOW_MS)
   if (current.times.length === 0) {
     hits.delete(ip)
+    return { times: [] as number[] }
   }
-  if (current.times.length >= RATE_MAX) {
-    hits.set(ip, current)
-    return false
-  }
-  current.times.push(now)
   hits.set(ip, current)
-  return true
+  return current
+}
+
+function overFailureLimit(ip: string) {
+  return pruneFailures(ip).times.length >= RATE_MAX
+}
+
+function recordFailure(ip: string) {
+  const current = pruneFailures(ip)
+  current.times.push(Date.now())
+  hits.set(ip, current)
 }
 
 export function adminCallerIp(request: Request, socketIp?: string | null) {
@@ -68,14 +74,15 @@ export async function handleResetPassword(
   }
 
   const ip = adminCallerIp(request, fallbackIp)
-  if (!allowRequest(ip)) {
-    return json({ error: 'Too many requests' }, 429)
-  }
-
   const token = bearerToken(request)
+  // Compare the bearer before touching the limiter. A bad token from another
+  // address cannot fill this IP's bucket, and a success does not count.
   if (!constantTimeEqual(token, secret)) {
+    if (overFailureLimit(ip)) return json({ error: 'Too many requests' }, 429)
+    recordFailure(ip)
     return json({ error: 'Unauthorized' }, 401)
   }
+  if (overFailureLimit(ip)) return json({ error: 'Too many requests' }, 429)
 
   let email = ''
   try {
@@ -84,9 +91,11 @@ export async function handleResetPassword(
       email = body.email.trim().toLowerCase()
     }
   } catch {
+    recordFailure(ip)
     return json({ error: 'Bad request' }, 400)
   }
   if (!email) {
+    recordFailure(ip)
     return json({ error: 'Bad request' }, 400)
   }
 
@@ -94,6 +103,7 @@ export async function handleResetPassword(
   const users = await db.select().from(user).where(eq(user.email, email)).limit(1)
   const target = users[0]
   if (!target) {
+    recordFailure(ip)
     return json({ error: 'Not found' }, 404)
   }
 
