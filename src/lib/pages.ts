@@ -329,11 +329,12 @@ export async function createPageForToken(
 export async function updatePageForToken(
   userId: string,
   tokenId: string,
-  input: { pageId: string; title?: string; body?: Json; updatedAt: string },
+  input: { pageId: string; title?: string; body?: Json; updatedAt: unknown },
 ) {
   const { page: row } = await assertAccess(userId, { pageId: input.pageId })
   if (!row) notFound()
-  const expected = Date.parse(input.updatedAt)
+  const expected =
+    typeof input.updatedAt === 'string' ? Date.parse(input.updatedAt) : Number.NaN
   if (!Number.isFinite(expected) || row.updatedAt.getTime() !== expected) {
     throw new HttpError(409, 'Conflict')
   }

@@ -1,9 +1,13 @@
+CREATE TYPE "api_token_scope" AS ENUM ('read', 'read_write');
+--> statement-breakpoint
 CREATE TABLE "api_token" (
   "id" text PRIMARY KEY NOT NULL,
   "user_id" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
   "name" text NOT NULL,
   "token_hash" text NOT NULL,
   "prefix" text NOT NULL,
+  "scope" "api_token_scope" NOT NULL,
+  "expires_at" timestamp,
   "last_used_at" timestamp,
   "revoked_at" timestamp,
   "created_at" timestamp NOT NULL

@@ -65,6 +65,7 @@ export const verification = pgTable('verification', {
   updatedAt: timestamp('updated_at'),
 })
 
+export const apiTokenScope = pgEnum('api_token_scope', ['read', 'read_write'])
 export const spaceKind = pgEnum('space_kind', ['personal', 'team'])
 export const teamRole = pgEnum('team_role', ['owner', 'member'])
 export const inviteStatus = pgEnum('invite_status', [
@@ -161,6 +162,8 @@ export const apiToken = pgTable(
     name: text('name').notNull(),
     tokenHash: text('token_hash').notNull(),
     prefix: text('prefix').notNull(),
+    scope: apiTokenScope('scope').notNull(),
+    expiresAt: timestamp('expires_at'),
     lastUsedAt: timestamp('last_used_at'),
     revokedAt: timestamp('revoked_at'),
     createdAt: timestamp('created_at').notNull(),

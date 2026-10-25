@@ -15,6 +15,11 @@ import { getDb } from '../src/lib/db'
 import { HttpError } from '../src/lib/http'
 import { tiptapToMarkdown } from '../src/lib/markdown-body'
 import { handleMcp } from '../src/lib/mcp'
+import {
+  MCP_MAX_BODY_BYTES,
+  MCP_RATE_MAX,
+  resetMcpRateLimit,
+} from '../src/lib/mcp-limit'
 import { setNewPassword } from '../src/lib/password'
 import { createPage, getPageView, savePage } from '../src/lib/pages'
 import { apiToken, page, user } from '../src/lib/schema'
@@ -116,6 +121,10 @@ describe('api tokens', () => {
     const person = await createUser('Token Owner')
     const created = await createApiToken(person.user.id, { name: 'Laptop' })
     expect(created.token.startsWith('atl_')).toBe(true)
+    expect(created.scope).toBe('read')
+    const expiresIn = Date.parse(created.expiresAt ?? '') - Date.now()
+    expect(expiresIn).toBeGreaterThan(89 * 24 * 60 * 60 * 1000)
+    expect(expiresIn).toBeLessThan(91 * 24 * 60 * 60 * 1000)
     expect(created.prefix).toBe(created.token.slice(0, 8))
     expect(created.token.length).toBeGreaterThan(created.prefix.length)
 
@@ -167,7 +176,7 @@ describe('api tokens', () => {
     }
     expect(tools.result.tools.map((tool) => tool.name)).toEqual([
       'list_spaces',
-      'read_page',
+      'get_page',
       'create_page',
       'update_page',
     ])
@@ -199,10 +208,16 @@ describe('api tokens', () => {
       title: 'Secret',
       body: richDoc,
     })
-    const ownerToken = await createApiToken(owner.user.id, { name: 'owner' })
-    const otherToken = await createApiToken(other.user.id, { name: 'other' })
+    const ownerToken = await createApiToken(owner.user.id, {
+      name: 'owner',
+      scope: 'read_write',
+    })
+    const otherToken = await createApiToken(other.user.id, {
+      name: 'other',
+      scope: 'read_write',
+    })
 
-    const denied = await call(otherToken.token, 'read_page', {
+    const denied = await call(otherToken.token, 'get_page', {
       page_id: note.id,
     })
     expect(denied.status).toBe(404)
@@ -212,7 +227,7 @@ describe('api tokens', () => {
       error: { message: 'Not found' },
     })
 
-    const read = await call(ownerToken.token, 'read_page', { page_id: note.id })
+    const read = await call(ownerToken.token, 'get_page', { page_id: note.id })
     expect(read.status).toBe(200)
     const payload = await toolJson(read)
     expect(payload.title).toBe('Secret')
@@ -238,12 +253,23 @@ describe('api tokens', () => {
     })
     expect(child.status).toBe(200)
     const childPage = await toolJson(child)
-    const cycle = await call(ownerToken.token, 'update_page', {
+    const childRow = await getDb()
+      .select()
+      .from(page)
+      .where(eq(page.id, String(childPage.id)))
+    expect(childRow[0]?.updatedViaTokenId).toBe(ownerToken.id)
+    const beforeMove = await getPageView(owner.user.id, note.id)
+    const rejectedParent = await call(ownerToken.token, 'update_page', {
       page_id: note.id,
       parent_id: childPage.id,
+      title: 'Moved',
+      updated_at: beforeMove.updatedAt,
     })
-    expect(cycle.status).toBe(400)
-    expect((await getPageView(owner.user.id, note.id)).parentId).toBeNull()
+    expect(rejectedParent.status).toBe(400)
+    const afterReject = await getPageView(owner.user.id, note.id)
+    expect(afterReject.parentId).toBeNull()
+    expect(afterReject.title).toBe('Secret')
+    expect(afterReject.updatedAt).toBe(beforeMove.updatedAt)
 
     const current = await getPageView(owner.user.id, note.id)
     const stale = await call(ownerToken.token, 'update_page', {
@@ -288,11 +314,11 @@ describe('api tokens', () => {
     })
     const token = await createApiToken(member.user.id, { name: 'member' })
     expect(
-      (await call(token.token, 'read_page', { page_id: note.id })).status,
+      (await call(token.token, 'get_page', { page_id: note.id })).status,
     ).toBe(200)
     await removeMember(owner.user.id, team.id, member.user.id)
     expect(
-      (await call(token.token, 'read_page', { page_id: note.id })).status,
+      (await call(token.token, 'get_page', { page_id: note.id })).status,
     ).toBe(404)
   })
 
@@ -338,5 +364,228 @@ describe('api tokens', () => {
       status: 403,
       message: 'Password change required',
     } satisfies Partial<HttpError>)
+  })
+
+  it('rejects parent_id and a missing or stale updated_at before any write', async () => {
+    const owner = await createUser('Revo')
+    const note = await createPage(owner.user.id, {
+      spaceId: owner.space.id,
+      title: 'Note',
+    })
+    await savePage(owner.user.id, {
+      pageId: note.id,
+      title: 'Note',
+      body: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'human edit v2' }] },
+        ],
+      },
+    })
+    const token = await createApiToken(owner.user.id, {
+      name: 'agent',
+      scope: 'read_write',
+    })
+    const other = await createPage(owner.user.id, {
+      spaceId: owner.space.id,
+      title: 'Other',
+    })
+    const before = await getPageView(owner.user.id, note.id)
+
+    const missing = await call(token.token, 'update_page', {
+      page_id: note.id,
+      body: 'agent clobber',
+    })
+    expect(missing.status).toBe(409)
+    expect((await getPageView(owner.user.id, note.id)).body).toEqual(before.body)
+    expect((await getPageView(owner.user.id, note.id)).updatedAt).toBe(
+      before.updatedAt,
+    )
+
+    const bypass = await call(token.token, 'update_page', {
+      page_id: note.id,
+      parent_id: null,
+      body: 'agent clobber',
+    })
+    expect(bypass.status).toBe(400)
+    expect((await getPageView(owner.user.id, note.id)).updatedAt).toBe(
+      before.updatedAt,
+    )
+
+    await savePage(owner.user.id, {
+      pageId: note.id,
+      title: 'Note',
+      body: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'human edit v3' }] },
+        ],
+      },
+    })
+    const saved = await getPageView(owner.user.id, note.id)
+    const stale = await call(token.token, 'update_page', {
+      page_id: note.id,
+      parent_id: null,
+      title: 'Agent title',
+      body: 'agent clobber 2',
+      updated_at: '2000-01-01T00:00:00.000Z',
+    })
+    expect(stale.status).toBe(400)
+    const afterStale = await getPageView(owner.user.id, note.id)
+    expect(afterStale.title).toBe('Note')
+    expect(afterStale.body).toEqual(saved.body)
+    expect(afterStale.updatedAt).toBe(saved.updatedAt)
+
+    const moved = await call(token.token, 'update_page', {
+      page_id: note.id,
+      parent_id: other.id,
+      updated_at: saved.updatedAt,
+    })
+    expect(moved.status).toBe(400)
+    expect((await getPageView(owner.user.id, note.id)).parentId).toBeNull()
+  })
+
+  it('refuses writes from a read token and 401s an expired token', async () => {
+    const owner = await createUser('Scoped')
+    const note = await createPage(owner.user.id, {
+      spaceId: owner.space.id,
+      title: 'Kept',
+    })
+    const reader = await createApiToken(owner.user.id, {
+      name: 'reader',
+      scope: 'read',
+      expiry: '30d',
+    })
+    const writer = await createApiToken(owner.user.id, {
+      name: 'writer',
+      scope: 'read_write',
+      expiry: 'never',
+    })
+    expect(writer.expiresAt).toBeNull()
+    const deniedCreate = await call(reader.token, 'create_page', {
+      space_id: owner.space.id,
+      title: 'Nope',
+    })
+    expect(deniedCreate.status).toBe(403)
+    const read = await call(reader.token, 'get_page', { page_id: note.id })
+    expect(read.status).toBe(200)
+    const payload = await toolJson(read)
+    const deniedUpdate = await call(reader.token, 'update_page', {
+      page_id: note.id,
+      title: 'Nope',
+      updated_at: payload.updated_at,
+    })
+    expect(deniedUpdate.status).toBe(403)
+    expect((await getPageView(owner.user.id, note.id)).title).toBe('Kept')
+
+    await getDb()
+      .update(apiToken)
+      .set({ expiresAt: new Date('2000-01-01T00:00:00.000Z') })
+      .where(eq(apiToken.id, reader.id))
+    const expired = await mcp(reader.token, {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+    })
+    const missing = await mcp(null, {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+    })
+    expect(expired.status).toBe(401)
+    expect(await expired.json()).toEqual(await missing.json())
+    expect(expired.headers.get('www-authenticate')).toBe('Bearer realm="mcp"')
+    expect(missing.headers.get('www-authenticate')).toBe(
+      expired.headers.get('www-authenticate'),
+    )
+  })
+
+  it('rate limits a token and refuses a body over 1 MiB', async () => {
+    resetMcpRateLimit()
+    const owner = await createUser('Limited')
+    const token = await createApiToken(owner.user.id, {
+      name: 'limited',
+      scope: 'read_write',
+    })
+    for (let i = 0; i < MCP_RATE_MAX; i += 1) {
+      const ok = await mcp(token.token, { jsonrpc: '2.0', id: i, method: 'ping' })
+      expect(ok.status).toBe(200)
+    }
+    const blocked = await mcp(token.token, {
+      jsonrpc: '2.0',
+      id: 99,
+      method: 'ping',
+    })
+    expect(blocked.status).toBe(429)
+    expect(await blocked.json()).toEqual({ error: 'Too many requests' })
+
+    const huge = 'x'.repeat(MCP_MAX_BODY_BYTES)
+    const oversized = await handleMcp(
+      new Request('http://127.0.0.1:3000/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token.token}`,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: {
+            name: 'create_page',
+            arguments: {
+              space_id: owner.space.id,
+              title: 'Huge page',
+              body: huge,
+            },
+          },
+        }),
+      }),
+    )
+    expect(oversized.status).toBe(413)
+    expect(await oversized.json()).toEqual({ error: 'Payload too large' })
+    const stored = await getDb()
+      .select()
+      .from(page)
+      .where(eq(page.title, 'Huge page'))
+    expect(stored).toHaveLength(0)
+  })
+
+  it('answers streamable HTTP GET with 405 and SSE when that is the only accept type', async () => {
+    const owner = await createUser('Stream')
+    const token = await createApiToken(owner.user.id, { name: 'stream' })
+    const get = await handleMcp(
+      new Request('http://127.0.0.1:3000/mcp', { method: 'GET' }),
+    )
+    expect(get.status).toBe(405)
+    expect(get.headers.get('allow')).toBe('POST')
+
+    const sse = await handleMcp(
+      new Request('http://127.0.0.1:3000/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'text/event-stream',
+          authorization: `Bearer ${token.token}`,
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }),
+      }),
+    )
+    expect(sse.status).toBe(200)
+    expect(sse.headers.get('content-type')).toBe('text/event-stream')
+    expect(await sse.text()).toContain('"result":{}')
+
+    const rejected = await handleMcp(
+      new Request('http://127.0.0.1:3000/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'text/html',
+          authorization: `Bearer ${token.token}`,
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }),
+      }),
+    )
+    expect(rejected.status).toBe(406)
   })
 })

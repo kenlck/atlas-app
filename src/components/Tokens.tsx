@@ -1,10 +1,15 @@
 import { useState } from 'react'
 import { relativeTime } from '#/lib/relative-time'
 
+export type TokenScope = 'read' | 'read_write'
+export type TokenExpiry = '30d' | '90d' | '1y' | 'never'
+
 export type TokenRow = {
   id: string
   name: string
   prefix: string
+  scope: TokenScope
+  expiresAt: string | null
   lastUsedAt: string | null
   createdAt: string
 }
@@ -14,6 +19,8 @@ type Created = TokenRow & { token: string }
 export function Tokens({ tokens }: { tokens: TokenRow[] }) {
   const [rows, setRows] = useState(tokens)
   const [name, setName] = useState('')
+  const [scope, setScope] = useState<TokenScope>('read')
+  const [expiry, setExpiry] = useState<TokenExpiry>('90d')
   const [fresh, setFresh] = useState<Created | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
@@ -30,7 +37,7 @@ export function Tokens({ tokens }: { tokens: TokenRow[] }) {
       const response = await fetch('/api/atlas/tokens', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify({ name: trimmed, scope, expiry }),
       })
       if (!response.ok) {
         setError("Couldn't create the token.")
@@ -79,6 +86,28 @@ export function Tokens({ tokens }: { tokens: TokenRow[] }) {
           maxLength={80}
           onChange={(event) => setName(event.target.value)}
         />
+        <label htmlFor="token-scope">Scope</label>
+        <select
+          id="token-scope"
+          className="in"
+          value={scope}
+          onChange={(event) => setScope(event.target.value as TokenScope)}
+        >
+          <option value="read">Read</option>
+          <option value="read_write">Read and write</option>
+        </select>
+        <label htmlFor="token-expiry">Expiry</label>
+        <select
+          id="token-expiry"
+          className="in"
+          value={expiry}
+          onChange={(event) => setExpiry(event.target.value as TokenExpiry)}
+        >
+          <option value="30d">30 days</option>
+          <option value="90d">90 days</option>
+          <option value="1y">1 year</option>
+          <option value="never">Never</option>
+        </select>
         <button
           className="btn"
           type="button"
@@ -108,6 +137,11 @@ export function Tokens({ tokens }: { tokens: TokenRow[] }) {
             <div style={{ fontWeight: 600 }}>{token.name}</div>
             <div className="subline">
               {token.prefix}… ·{' '}
+              {token.scope === 'read_write' ? 'Read and write' : 'Read'} ·{' '}
+              {token.expiresAt
+                ? `Expires ${token.expiresAt.slice(0, 10)}`
+                : 'No expiry'}{' '}
+              ·{' '}
               {token.lastUsedAt
                 ? `Used ${relativeTime(token.lastUsedAt)}`
                 : 'Not used yet'}
