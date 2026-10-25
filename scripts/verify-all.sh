@@ -400,6 +400,8 @@ run_step token-body ./scripts/verify-fail-conditions.sh token-body
 require_step_log token-body "body_status=413" "body_limit_bytes=1048576" "stored_pages=0"
 run_step token-search ./scripts/verify-fail-conditions.sh token-search
 require_step_log token-search "team_search_status=200" "owner_search_visible=true" "cross_team_search_visible=false"
+run_step token-mention ./scripts/verify-fail-conditions.sh token-mention
+require_step_log token-mention "mention_create_real_visible=true" "mention_create_fake_visible=false" "mention_update_real_visible=true" "mention_update_fake_visible=false" "mention_update_decoy_visible=false"
 run_step fail1 ./scripts/verify-fail-conditions.sh 1
 run_step fail2 ./scripts/verify-fail-conditions.sh 2
 run_step fail3 ./scripts/verify-fail-conditions.sh 3

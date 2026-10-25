@@ -6,7 +6,7 @@ import { HttpError, notFound } from './http'
 import { newId } from './ids'
 import { mentionChipText, peopleForBody } from './mentions'
 import type { MentionPerson } from './mentions'
-import { page, space, user, type Page } from './schema'
+import { page, space, user, type Page, type Space } from './schema'
 
 export type TreeNode = {
   id: string
@@ -196,20 +196,21 @@ export async function renamePage(
   return getPageView(userId, input.pageId)
 }
 
+async function indexedBodyText(spaceRow: Space, body: Json) {
+  const people = await peopleForBody(spaceRow, body)
+  const labels = new Map(
+    people.map((person) => [person.id, mentionChipText(person)]),
+  )
+  return tiptapToText(body, (id) => labels.get(id) ?? 'Unknown person')
+}
+
 export async function savePage(
   userId: string,
   input: { pageId: string; title: string; body: Json },
 ) {
   const access = await assertAccess(userId, { pageId: input.pageId })
   const title = input.title.trim() || 'Untitled'
-  const people = await peopleForBody(access.space, input.body)
-  const labels = new Map(
-    people.map((person) => [person.id, mentionChipText(person)]),
-  )
-  const bodyText = tiptapToText(
-    input.body,
-    (id) => labels.get(id) ?? 'Unknown person',
-  )
+  const bodyText = await indexedBodyText(access.space, input.body)
   const db = getDb()
   await db
     .update(page)
@@ -312,12 +313,15 @@ export async function createPageForToken(
     parentId: input.parentId,
     title: input.title,
   })
+  const { space: spaceRow } = await assertAccess(userId, {
+    spaceId: input.spaceId,
+  })
   const db = getDb()
   await db
     .update(page)
     .set({
       body: input.body,
-      bodyText: tiptapToText(input.body),
+      bodyText: await indexedBodyText(spaceRow, input.body),
       updatedBy: userId,
       updatedAt: new Date(),
       updatedViaTokenId: tokenId,
@@ -331,7 +335,8 @@ export async function updatePageForToken(
   tokenId: string,
   input: { pageId: string; title?: string; body?: Json; updatedAt: unknown },
 ) {
-  const { page: row } = await assertAccess(userId, { pageId: input.pageId })
+  const access = await assertAccess(userId, { pageId: input.pageId })
+  const row = access.page
   if (!row) notFound()
   const expected =
     typeof input.updatedAt === 'string' ? Date.parse(input.updatedAt) : Number.NaN
@@ -341,13 +346,14 @@ export async function updatePageForToken(
   const title =
     input.title === undefined ? row.title : input.title.trim() || 'Untitled'
   const body = input.body === undefined ? (row.body as Json) : input.body
+  const bodyText = await indexedBodyText(access.space, body)
   const db = getDb()
   const written = await db
     .update(page)
     .set({
       title,
       body,
-      bodyText: tiptapToText(body),
+      bodyText,
       updatedBy: userId,
       updatedAt: new Date(),
       updatedViaTokenId: tokenId,

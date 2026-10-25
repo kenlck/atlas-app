@@ -21,7 +21,14 @@ import {
   resetMcpRateLimit,
 } from '../src/lib/mcp-limit'
 import { setNewPassword } from '../src/lib/password'
-import { createPage, getPageView, savePage } from '../src/lib/pages'
+import {
+  createPage,
+  createPageForToken,
+  getPageView,
+  savePage,
+  updatePageForToken,
+} from '../src/lib/pages'
+import { searchVisiblePages } from '../src/lib/search'
 import { apiToken, page, user } from '../src/lib/schema'
 import {
   acceptInvite,
@@ -545,6 +552,53 @@ describe('api tokens', () => {
     expect(await ids(hiddenWrite)).not.toContain(hidden.id)
     expect(await ids(ownRead)).toContain(mine.id)
     expect(await ids(ownWrite)).toContain(mine.id)
+  })
+
+  it('indexes the real member name when a token sends a fake mention label', async () => {
+    const owner = await createUser('Realpersonqa')
+    const token = await createApiToken(owner.user.id, {
+      name: 'mentions',
+      scope: 'read_write',
+    })
+    const fake = 'Fakepersonqb'
+    const decoy = 'Decoypersonqc'
+    const mention = (label: string): Json => ({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'mention', attrs: { id: owner.user.id, label } }],
+        },
+      ],
+    })
+    const created = await createPageForToken(owner.user.id, token.id, {
+      spaceId: owner.space.id,
+      title: 'Token mention',
+      body: mention(fake),
+    })
+    const ids = async (query: string) =>
+      (await searchVisiblePages(owner.user.id, query)).map((hit) => hit.id)
+    expect(await ids('Realpersonqa')).toContain(created.id)
+    expect(await ids(fake)).not.toContain(created.id)
+
+    const note = await createPage(owner.user.id, {
+      spaceId: owner.space.id,
+      title: 'App mention',
+    })
+    await savePage(owner.user.id, {
+      pageId: note.id,
+      title: 'App mention',
+      body: mention(decoy),
+    })
+    const saved = await getPageView(owner.user.id, note.id)
+    await updatePageForToken(owner.user.id, token.id, {
+      pageId: note.id,
+      body: mention(fake),
+      updatedAt: saved.updatedAt,
+    })
+    expect(await ids('Realpersonqa')).toContain(note.id)
+    expect(await ids(fake)).not.toContain(note.id)
+    expect(await ids(decoy)).not.toContain(note.id)
   })
 
   it('rate limits a token and refuses a body over 1 MiB', async () => {

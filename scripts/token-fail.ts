@@ -1299,6 +1299,138 @@ async function bodyCap(base: string) {
   if (response.status !== 413 || stored !== 0) fail('body_cap')
 }
 
+async function mentionIndex(base: string) {
+  const real = `Real${randomBytes(4).toString('hex')}`
+  const fake = `Fake${randomBytes(4).toString('hex')}`
+  const decoy = `Decoy${randomBytes(4).toString('hex')}`
+  const user = await signUp(base, real)
+  const created = await createToken(base, user.cookie, 'mention')
+  const spaceId = await personalSpace(base, created.token)
+  const mention = (label: string) =>
+    `[@${label}](atlas://user/${encodeURIComponent(user.userId)})`
+  const made = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: {
+      name: 'create_page',
+      arguments: {
+        space_id: spaceId,
+        title: 'Token mention',
+        body: mention(fake),
+      },
+    },
+  })
+  if (made.status !== 200) fail('mention_create_failed')
+  const createdPage = toolPayload(made.text).data
+  const createdId = String(createdPage.id ?? '')
+  if (!createdId) fail('mention_page=missing')
+  const createdReal = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/call',
+    params: { name: 'search_pages', arguments: { query: real } },
+  })
+  const createdFake = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 4,
+    method: 'tools/call',
+    params: { name: 'search_pages', arguments: { query: fake } },
+  })
+  const createdRealVisible =
+    createdReal.status === 200 &&
+    searchHitIds(createdReal.text).includes(createdId)
+  const createdFakeVisible = searchHitIds(createdFake.text).includes(createdId)
+  const plain = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 5,
+    method: 'tools/call',
+    params: {
+      name: 'create_page',
+      arguments: { space_id: spaceId, title: 'App mention', body: 'plain' },
+    },
+  })
+  if (plain.status !== 200) fail('mention_app_create_failed')
+  const appPage = toolPayload(plain.text).data
+  const appId = String(appPage.id ?? '')
+  if (!appId) fail('mention_app_page=missing')
+  const saved = await callServerFn(base, user.cookie, 'savePageFn', {
+    pageId: appId,
+    title: 'App mention',
+    body: {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'mention', attrs: { id: user.userId, label: decoy } },
+          ],
+        },
+      ],
+    },
+  })
+  if (saved.status !== 200) fail('mention_save_failed')
+  const read = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 6,
+    method: 'tools/call',
+    params: { name: 'get_page', arguments: { page_id: appId } },
+  })
+  if (read.status !== 200) fail('mention_read_failed')
+  const stamp = String(toolPayload(read.text).data.updated_at ?? '')
+  const updated = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 7,
+    method: 'tools/call',
+    params: {
+      name: 'update_page',
+      arguments: {
+        page_id: appId,
+        body: mention(fake),
+        updated_at: stamp,
+      },
+    },
+  })
+  const updatedReal = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 8,
+    method: 'tools/call',
+    params: { name: 'search_pages', arguments: { query: real } },
+  })
+  const updatedFake = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 9,
+    method: 'tools/call',
+    params: { name: 'search_pages', arguments: { query: fake } },
+  })
+  const updatedDecoy = await mcp(base, created.token, {
+    jsonrpc: '2.0',
+    id: 10,
+    method: 'tools/call',
+    params: { name: 'search_pages', arguments: { query: decoy } },
+  })
+  const updatedRealVisible =
+    updated.status === 200 &&
+    updatedReal.status === 200 &&
+    searchHitIds(updatedReal.text).includes(appId)
+  const updatedFakeVisible = searchHitIds(updatedFake.text).includes(appId)
+  const updatedDecoyVisible = searchHitIds(updatedDecoy.text).includes(appId)
+  console.log(`mention_create_real_visible=${createdRealVisible}`)
+  console.log(`mention_create_fake_visible=${createdFakeVisible}`)
+  console.log(`mention_update_real_visible=${updatedRealVisible}`)
+  console.log(`mention_update_fake_visible=${updatedFakeVisible}`)
+  console.log(`mention_update_decoy_visible=${updatedDecoyVisible}`)
+  if (
+    !createdRealVisible ||
+    createdFakeVisible ||
+    !updatedRealVisible ||
+    updatedFakeVisible ||
+    updatedDecoyVisible
+  ) {
+    fail('mention_index')
+  }
+}
+
 async function searchAccess(base: string) {
   const owner = await signUp(base, 'SearchOwner')
   const outsider = await signUp(base, 'SearchOut')
@@ -1418,8 +1550,9 @@ else if (mode === 'expiry') await expiry(base)
 else if (mode === 'rate') await rate(base)
 else if (mode === 'body') await bodyCap(base)
 else if (mode === 'search') await searchAccess(base)
+else if (mode === 'mention') await mentionIndex(base)
 else {
   fail(
-    'usage: token-fail.ts revoked|cross|secret|bearer|writes|team|reset|roundtrip|image|fidelity|conflict|scope|expiry|rate|body|search',
+    'usage: token-fail.ts revoked|cross|secret|bearer|writes|team|reset|roundtrip|image|fidelity|conflict|scope|expiry|rate|body|search|mention',
   )
 }
