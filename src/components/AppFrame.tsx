@@ -9,6 +9,7 @@ import type { SpaceRole } from '#/lib/access'
 import type { TreeNode } from '#/lib/pages'
 import type { SpaceSummary } from '#/lib/teams'
 import { flushEditor } from '#/lib/editor-flush'
+import type { SearchHit } from '#/lib/search'
 import {
   archivePageFn,
   createPageFn,
@@ -17,6 +18,7 @@ import {
 } from '#/server/fns'
 import { CreateTeamDialog } from './CreateTeamDialog'
 import { MoveDialog } from './MoveDialog'
+import { SearchPanel } from './SearchPanel'
 import { Sidebar } from './Sidebar'
 
 export function AppFrame({
@@ -45,6 +47,7 @@ export function AppFrame({
   const [drawer, setDrawer] = useState(false)
   const [moving, setMoving] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const createTeamTrigger = useRef<HTMLElement | null>(null)
   const navigate = useNavigate()
   const router = useRouter()
@@ -58,6 +61,35 @@ export function AppFrame({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [drawer])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setDrawer(false)
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const openSearchHit = (hit: SearchHit, newTab: boolean) => {
+    const location = router.buildLocation({
+      to: '/s/$spaceId/p/$pageId',
+      params: { spaceId: hit.spaceId, pageId: hit.id },
+    })
+    if (newTab) {
+      window.open(location.href, '_blank', 'noopener')
+      return
+    }
+    void flushEditor().then(() =>
+      navigate({
+        to: '/s/$spaceId/p/$pageId',
+        params: { spaceId: hit.spaceId, pageId: hit.id },
+      }),
+    )
+  }
 
   const refresh = () => {
     void router.invalidate()
@@ -131,6 +163,10 @@ export function AppFrame({
         spaces={spaces}
         role={role}
         pendingInvites={pendingInvites}
+        onOpenSearch={() => {
+          setDrawer(false)
+          setSearchOpen(true)
+        }}
         onCreateTeam={() => {
           const active = document.activeElement
           const trigger =
@@ -163,7 +199,11 @@ export function AppFrame({
               <h1>Couldn't load this space.</h1>
               <p className="empty">Something went wrong.</p>
               {onRetry ? (
-                <button type="button" className="btn secondary" onClick={onRetry}>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={onRetry}
+                >
                   Try again
                 </button>
               ) : null}
@@ -179,6 +219,12 @@ export function AppFrame({
           pageId={moving}
           onCancel={() => setMoving(null)}
           onMove={(parentId) => void move(parentId)}
+        />
+      ) : null}
+      {searchOpen ? (
+        <SearchPanel
+          onClose={() => setSearchOpen(false)}
+          onOpen={openSearchHit}
         />
       ) : null}
       {creating ? (

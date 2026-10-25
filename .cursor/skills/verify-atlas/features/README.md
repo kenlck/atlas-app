@@ -37,3 +37,4 @@ Each feature file has an H1, one paragraph, then these H2 sections in order: `Su
 - [Failed save](./failed-save.md) covers reload and the Retry banner.
 - [Tables and dates](./tables-and-dates.md) covers editor tables, date chips, and paste from Sheets or Excel.
 - [Team calendar](./team-calendar.md) covers the team month view, the add panel, and the 390px agenda.
+- [Page search](./page-search.md) covers sidebar search, visible pages, and literal `%` / `_` queries.

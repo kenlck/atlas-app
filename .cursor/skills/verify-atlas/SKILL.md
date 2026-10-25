@@ -76,9 +76,18 @@ Prefer the recipe script. It is the maintained check for issue 1.
 ./scripts/verify-fail-conditions.sh 5-2
 ./scripts/verify-fail-conditions.sh 5-3
 ./scripts/verify-fail-conditions.sh 5-4
+./scripts/verify-fail-conditions.sh 4-1
+./scripts/verify-fail-conditions.sh 4-2
+./scripts/verify-fail-conditions.sh 4-3
+./scripts/verify-fail-conditions.sh 4-4
+./scripts/verify-fail-conditions.sh 4-5
+./scripts/verify-fail-conditions.sh 4-6
+./scripts/verify-fail-conditions.sh 4-7
 ```
 
 Each recipe prints `START <utc> sha=<head>` and `END <utc> sha=<head>`. A non-zero exit means that check failed. `5d` reads `docker logs` for its own container and greps the full `admin_audit` row. `5f` and `5g` grep that audit row for the secret, the temporary password, and the new password. `5a`, `5e`, `5b`, `5c`, `5d`, `5h`, and `6` start their own containers from `ATLAS_IMAGE` (default `atlas-app`). `5h` uses a fresh process so the in-memory rate limit starts at zero. `5f` performs two resets on the shared app. `5g` performs one more. That stays under the limit of five. Recipe `5b` does not time requests. Constant-time comparison is the unit test `rejects a wrong secret, returns a temp password once, locks the user, and audits` in `tests/admin-reset.test.ts`.
+
+Issue 4 recipes call `searchVisiblePages`. `4-1` expects `cross_team_visible=false`, `other_personal_visible=false`, `archived_visible=false`, and `archived_child_visible=false`. `4-2` expects `percent_literal=true`, `underscore_literal=true`, and `backslash_literal=true`. `4-3` expects `body_only_visible=true`. `4-4` expects `autosave_visible=true`. `4-5` expects `backfill_body_text=true`. `4-6` expects `table_label_visible=true`, `mention_label_visible=true`, and `date_label_visible=true`. `4-7` hits `GET /api/atlas/search` and expects 200 for `a&b`, `(`, `plan:*`, a quote, a backslash, an emoji, an empty query, and a one-character query. The database URL comes from the environment and is not printed.
 
 Issue 5 recipes hit the team calendar API. `5-1` expects 404 for a non-member on the calendar and event routes, and `other_team_event_visible=false`. `5-2` expects `invalid_range_status=400` and `wrote_invalid=false`. `5-3` expects the stored UTC instant `2026-06-16T01:00:00.000Z`, wall times `kiritimati=2026-06-16 15:00` and `midway=2026-06-15 14:00`, `same_instant=true`, and `all_day_shifted=false`. `5-4` expects `january_contains=true` and `february_contains=true`. Each recipe exits non-zero when `DATABASE_URL` and `TEST_DATABASE_URL` are both unset.
 
