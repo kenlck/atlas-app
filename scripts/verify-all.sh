@@ -47,6 +47,12 @@ cleanup() {
     docker rm -f "$name" >/dev/null 2>&1 || true
   done
   rm -f "${REDACTOR:-}" "${PG_ENV:-}"
+  if [[ "$status" -ne 0 && -n "${SHA:-}" ]]; then
+    echo "verify_all sha=${SHA} result=fail"
+    if [[ -n "${ART:-}" && -d "$ART" ]]; then
+      echo "verify_all sha=${SHA} result=fail" > "${ART}/result.txt"
+    fi
+  fi
   exit "$status"
 }
 trap cleanup EXIT
