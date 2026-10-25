@@ -408,7 +408,7 @@ require_step_log fail5-3 "stored_start=2026-06-16T01:00:00.000Z" "kiritimati=202
 run_step fail5-4 ./scripts/verify-fail-conditions.sh 5-4
 require_step_log fail5-4 "january_contains=true" "february_contains=true"
 run_step fail10-3 ./scripts/verify-fail-conditions.sh 10-3
-require_step_log fail10-3 "grandchild_status=400" "grandchild_error_clear=true" "parents_unchanged=true" "self_status=400" "self_error_clear=true" "self_unchanged=true" "valid_status=200" "valid_parent_updated=true"
+require_step_log fail10-3 "grandchild_status=400" "grandchild_error_clear=true" "parents_unchanged=true" "self_status=400" "self_error_clear=true" "self_unchanged=true" "valid_status=200" "valid_parent_updated=true" "cycle_walk_within_500ms=true" "statement_timeout=false"
 run_step screenshots pnpm visual-shots
 run_step baselines run_baselines
 run_step baseline-side-by-side run_side_by_side

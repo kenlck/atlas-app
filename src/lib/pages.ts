@@ -91,7 +91,7 @@ function executeHasRow(result: unknown) {
 
 const MAX_PAGE_DEPTH = 1000
 
-async function targetIsSelfOrDescendant(
+export async function targetIsSelfOrDescendant(
   tx: MoveTx,
   pageId: string,
   parentId: string,
