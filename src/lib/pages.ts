@@ -297,6 +297,66 @@ export async function archivePage(userId: string, pageId: string) {
   return { ok: true as const }
 }
 
+export async function createPageForToken(
+  userId: string,
+  tokenId: string,
+  input: {
+    spaceId: string
+    parentId?: string | null
+    title?: string
+    body: Json
+  },
+) {
+  const created = await createPage(userId, {
+    spaceId: input.spaceId,
+    parentId: input.parentId,
+    title: input.title,
+  })
+  const db = getDb()
+  await db
+    .update(page)
+    .set({
+      body: input.body,
+      bodyText: tiptapToText(input.body),
+      updatedBy: userId,
+      updatedAt: new Date(),
+      updatedViaTokenId: tokenId,
+    })
+    .where(eq(page.id, created.id))
+  return getPageView(userId, created.id)
+}
+
+export async function updatePageForToken(
+  userId: string,
+  tokenId: string,
+  input: { pageId: string; title?: string; body?: Json; updatedAt: string },
+) {
+  const { page: row } = await assertAccess(userId, { pageId: input.pageId })
+  if (!row) notFound()
+  const expected = Date.parse(input.updatedAt)
+  if (!Number.isFinite(expected) || row.updatedAt.getTime() !== expected) {
+    throw new HttpError(409, 'Conflict')
+  }
+  const title =
+    input.title === undefined ? row.title : input.title.trim() || 'Untitled'
+  const body = input.body === undefined ? (row.body as Json) : input.body
+  const db = getDb()
+  const written = await db
+    .update(page)
+    .set({
+      title,
+      body,
+      bodyText: tiptapToText(body),
+      updatedBy: userId,
+      updatedAt: new Date(),
+      updatedViaTokenId: tokenId,
+    })
+    .where(and(eq(page.id, row.id), eq(page.updatedAt, row.updatedAt)))
+    .returning({ id: page.id })
+  if (written.length === 0) throw new HttpError(409, 'Conflict')
+  return getPageView(userId, row.id)
+}
+
 export async function getPersonalSpace(userId: string) {
   const db = getDb()
   const rows = await db

@@ -368,6 +368,14 @@ run_step docker-build build_image
 run_step psql ensure_psql
 run_step verify-migrate migrate_image
 run_step verify-start start_image
+run_step token-revoked ./scripts/verify-fail-conditions.sh token-revoked
+require_step_log token-revoked "before_revoke_status=200" "revoked_status=401"
+run_step token-cross ./scripts/verify-fail-conditions.sh token-cross
+require_step_log token-cross "owner_status=200" "cross_user_status=404"
+run_step token-secret ./scripts/verify-fail-conditions.sh token-secret
+require_step_log token-secret "token_in_db=false" "token_in_logs=false"
+run_step token-bearer ./scripts/verify-fail-conditions.sh token-bearer
+require_step_log token-bearer "missing_bearer_status=401" "garbage_bearer_status=401" "bearer_bodies_match=true"
 run_step fail1 ./scripts/verify-fail-conditions.sh 1
 run_step fail2 ./scripts/verify-fail-conditions.sh 2
 run_step fail3 ./scripts/verify-fail-conditions.sh 3

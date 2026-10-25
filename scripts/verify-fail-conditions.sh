@@ -730,6 +730,30 @@ recipe_4_7() {
   pnpm exec tsx scripts/search-fail.ts 4-7
 }
 
+recipe_token_revoked() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts revoked"
+  pnpm exec tsx scripts/token-fail.ts revoked
+}
+
+recipe_token_cross() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts cross"
+  pnpm exec tsx scripts/token-fail.ts cross
+}
+
+recipe_token_secret() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts secret"
+  pnpm exec tsx scripts/token-fail.ts secret
+}
+
+recipe_token_bearer() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts bearer"
+  pnpm exec tsx scripts/token-fail.ts bearer
+}
+
 case "${1:-}" in
   1|fail1) run_recipe recipe_1 ;;
   2|fail2) run_recipe recipe_2 ;;
@@ -768,6 +792,10 @@ case "${1:-}" in
   4-5) run_recipe recipe_4_5 ;;
   4-6) run_recipe recipe_4_6 ;;
   4-7) run_recipe recipe_4_7 ;;
+  token-revoked) run_recipe recipe_token_revoked ;;
+  token-cross) run_recipe recipe_token_cross ;;
+  token-secret) run_recipe recipe_token_secret ;;
+  token-bearer) run_recipe recipe_token_bearer ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     echo "all runs in-process checks and vitest, which drops the public schema"
@@ -776,7 +804,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|token-revoked|token-cross|token-secret|token-bearer|all]" >&2
     exit 2
     ;;
 esac
