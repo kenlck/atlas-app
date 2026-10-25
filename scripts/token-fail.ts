@@ -870,10 +870,10 @@ async function fidelity(base: string) {
   const page = toolPayload(made.text).data
   const sql = postgres(databaseUrl(), postgresPoolOptions(databaseUrl()))
   try {
-    await sql.unsafe(`update page set body = $1::jsonb where id = $2`, [
-      JSON.stringify(richDoc),
-      String(page.id),
-    ])
+    await sql`
+      update page set body = ${sql.json(richDoc)}
+      where id = ${String(page.id)}
+    `
     const before = await sql<{ body: string }[]>`
       select body::text as body from page where id = ${page.id as string}
     `
