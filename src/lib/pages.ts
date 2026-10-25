@@ -89,6 +89,8 @@ function executeHasRow(result: unknown) {
   return false
 }
 
+const MAX_PAGE_DEPTH = 1000
+
 async function targetIsSelfOrDescendant(
   tx: MoveTx,
   pageId: string,
@@ -96,10 +98,15 @@ async function targetIsSelfOrDescendant(
 ) {
   const result = await tx.execute(sql`
     with recursive descendants as (
-      select id from page where id = ${pageId}
+      select id, 0 as depth, array[id] as path
+      from page
+      where id = ${pageId}
       union all
-      select p.id from page p
+      select p.id, d.depth + 1, d.path || p.id
+      from page p
       inner join descendants d on p.parent_id = d.id
+      where d.depth < ${MAX_PAGE_DEPTH}
+        and not (p.id = any(d.path))
     )
     select id from descendants where id = ${parentId} limit 1
   `)

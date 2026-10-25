@@ -688,6 +688,12 @@ recipe_5_4() {
   pnpm exec tsx scripts/calendar-fail.ts 5-4
 }
 
+recipe_10_3() {
+  require_database_url
+  echo "CMD pnpm exec tsx scripts/move-cycle.ts"
+  pnpm exec tsx scripts/move-cycle.ts
+}
+
 case "${1:-}" in
   1|fail1) run_recipe recipe_1 ;;
   2|fail2) run_recipe recipe_2 ;;
@@ -719,6 +725,7 @@ case "${1:-}" in
   5-2) run_recipe recipe_5_2 ;;
   5-3) run_recipe recipe_5_3 ;;
   5-4) run_recipe recipe_5_4 ;;
+  10-3) run_recipe recipe_10_3 ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     echo "all runs in-process checks and vitest, which drops the public schema"
@@ -727,7 +734,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|10-3|all]" >&2
     exit 2
     ;;
 esac
