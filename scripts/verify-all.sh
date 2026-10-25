@@ -395,6 +395,8 @@ run_step fail7a ./scripts/verify-fail-conditions.sh 7a
 require_step_log fail7a "ADMIN_API_SECRET is required" "names_ADMIN_API_SECRET=true"
 run_step fail8 ./scripts/verify-fail-conditions.sh 8
 require_step_log fail8 "resolved=proxy" "auth_statuses=401,401,401,429"
+run_step fail10 ./scripts/verify-fail-conditions.sh 10
+require_step_log fail10 "inherited_database_url=ignored" "database_url_visible=false" "bad_statuses=401,401,401,401,401,429" "limited_ip_valid_status=429" "other_ip_status=200" "success_statuses=200,200,200,200,200,200" "success_does_not_consume=true" "after_success_bad=401"
 run_step fail9 ./scripts/verify-fail-conditions.sh 9
 require_step_log fail9 "cross_origin_status=403"
 run_step fail9a ./scripts/verify-fail-conditions.sh 9a

@@ -645,6 +645,27 @@ recipe_8() {
     pnpm exec tsx scripts/verify-client-ip.ts
 }
 
+# Issue #10 item 2. Bad bearers fill one IP's bucket. A valid bearer from
+# another IP still resets, and a successful reset does not consume the bucket.
+# An inherited DATABASE_URL is not passed to the checker.
+recipe_10() {
+  if [[ -z "${DATABASE_URL:-}" ]]; then
+    echo "inherited_database_url=absent"
+    return 1
+  fi
+  echo "inherited_database_url=ignored"
+  if [[ -z "${TEST_DATABASE_URL:-}" ]]; then
+    echo "TEST_DATABASE_URL is required"
+    return 1
+  fi
+  echo "CMD env -u DATABASE_URL -u ADMIN_API_SECRET pnpm exec tsx scripts/verify-admin-bearer.ts"
+  env -u DATABASE_URL -u ADMIN_API_SECRET \
+    TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+    BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://127.0.0.1:3000}" \
+    BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-}" \
+    pnpm exec tsx scripts/verify-admin-bearer.ts
+}
+
 recipe_9() {
   : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
   echo "CMD pnpm exec tsx scripts/verify-fail-conditions.ts fail9"
@@ -757,6 +778,7 @@ case "${1:-}" in
   8) run_recipe recipe_8 ;;
   9) run_recipe recipe_9 ;;
   9a) run_recipe recipe_9a ;;
+  10) run_recipe recipe_10 ;;
   5-1) run_recipe recipe_5_1 ;;
   5-2) run_recipe recipe_5_2 ;;
   5-3) run_recipe recipe_5_3 ;;
@@ -776,7 +798,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|all]" >&2
     exit 2
     ;;
 esac
