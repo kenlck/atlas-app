@@ -1,9 +1,9 @@
 import { hashPassword, generateRandomString, constantTimeEqual } from 'better-auth/crypto'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { resolveClientIp } from './client-ip'
 import { getDb } from './db'
 import { newId } from './ids'
-import { account, adminAudit, session, user } from './schema'
+import { account, adminAudit, apiToken, session, user } from './schema'
 
 const RATE_WINDOW_MS = 15 * 60 * 1000
 const RATE_MAX = 5
@@ -111,6 +111,10 @@ export async function handleResetPassword(
       .set({ mustChangePassword: true })
       .where(eq(user.id, target.id))
     await tx.delete(session).where(eq(session.userId, target.id))
+    await tx
+      .update(apiToken)
+      .set({ revokedAt: now })
+      .where(and(eq(apiToken.userId, target.id), isNull(apiToken.revokedAt)))
     await tx.insert(adminAudit).values({
       id: newId(),
       action: 'reset_password',

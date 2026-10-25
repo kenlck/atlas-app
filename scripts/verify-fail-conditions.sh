@@ -730,11 +730,114 @@ recipe_4_7() {
   pnpm exec tsx scripts/search-fail.ts 4-7
 }
 
+recipe_token_revoked() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts revoked"
+  pnpm exec tsx scripts/token-fail.ts revoked
+}
+
+recipe_token_cross() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts cross"
+  pnpm exec tsx scripts/token-fail.ts cross
+}
+
+recipe_token_secret() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts secret"
+  pnpm exec tsx scripts/token-fail.ts secret
+}
+
+recipe_token_bearer() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts bearer"
+  pnpm exec tsx scripts/token-fail.ts bearer
+}
+
+recipe_token_writes() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts writes"
+  pnpm exec tsx scripts/token-fail.ts writes
+}
+
+recipe_token_team() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts team"
+  pnpm exec tsx scripts/token-fail.ts team
+}
+
+recipe_token_reset() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts reset"
+  pnpm exec tsx scripts/token-fail.ts reset
+}
+
+recipe_token_roundtrip() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts roundtrip"
+  pnpm exec tsx scripts/token-fail.ts roundtrip
+}
+
+recipe_token_image() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts image"
+  pnpm exec tsx scripts/token-fail.ts image
+}
+
+recipe_token_fidelity() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts fidelity"
+  pnpm exec tsx scripts/token-fail.ts fidelity
+}
+
+recipe_token_conflict() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts conflict"
+  pnpm exec tsx scripts/token-fail.ts conflict
+}
+
+recipe_token_scope() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts scope"
+  pnpm exec tsx scripts/token-fail.ts scope
+}
+
+recipe_token_expiry() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts expiry"
+  pnpm exec tsx scripts/token-fail.ts expiry
+}
+
+recipe_token_rate() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts rate"
+  pnpm exec tsx scripts/token-fail.ts rate
+}
+
+recipe_token_body() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts body"
+  pnpm exec tsx scripts/token-fail.ts body
+}
+
+recipe_token_search() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts search"
+  pnpm exec tsx scripts/token-fail.ts search
+}
+
+recipe_token_mention() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/token-fail.ts mention"
+  pnpm exec tsx scripts/token-fail.ts mention
+}
+
 recipe_10_3() {
   require_database_url
   echo "CMD pnpm exec tsx scripts/move-cycle.ts"
   pnpm exec tsx scripts/move-cycle.ts
 }
+
 
 case "${1:-}" in
   1|fail1) run_recipe recipe_1 ;;
@@ -774,6 +877,23 @@ case "${1:-}" in
   4-5) run_recipe recipe_4_5 ;;
   4-6) run_recipe recipe_4_6 ;;
   4-7) run_recipe recipe_4_7 ;;
+  token-revoked) run_recipe recipe_token_revoked ;;
+  token-cross) run_recipe recipe_token_cross ;;
+  token-secret) run_recipe recipe_token_secret ;;
+  token-bearer) run_recipe recipe_token_bearer ;;
+  token-writes) run_recipe recipe_token_writes ;;
+  token-team) run_recipe recipe_token_team ;;
+  token-reset) run_recipe recipe_token_reset ;;
+  token-roundtrip) run_recipe recipe_token_roundtrip ;;
+  token-image) run_recipe recipe_token_image ;;
+  token-fidelity) run_recipe recipe_token_fidelity ;;
+  token-conflict) run_recipe recipe_token_conflict ;;
+  token-scope) run_recipe recipe_token_scope ;;
+  token-expiry) run_recipe recipe_token_expiry ;;
+  token-rate) run_recipe recipe_token_rate ;;
+  token-body) run_recipe recipe_token_body ;;
+  token-search) run_recipe recipe_token_search ;;
+  token-mention) run_recipe recipe_token_mention ;;
   10-3) run_recipe recipe_10_3 ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
@@ -783,7 +903,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|10-3|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|10-3|all]" >&2
     exit 2
     ;;
 esac

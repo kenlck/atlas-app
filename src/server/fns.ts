@@ -31,6 +31,7 @@ import {
   lookupAccount,
   removeMember,
 } from '#/lib/teams'
+import { listApiTokens } from '#/lib/api-tokens'
 import { setNewPassword } from '#/lib/password'
 import {
   readSession,
@@ -233,6 +234,16 @@ export const fetchInvitations = createServerFn({ method: 'GET' })
   .handler(async ({ context }) => {
     try {
       return { invites: await listInvitations(context.userId) }
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const fetchTokens = createServerFn({ method: 'GET' })
+  .middleware([unlocked])
+  .handler(async ({ context }) => {
+    try {
+      return { tokens: await listApiTokens(context.userId) }
     } catch (error) {
       rethrow(error)
     }

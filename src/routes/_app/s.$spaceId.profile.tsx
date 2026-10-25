@@ -5,7 +5,8 @@ import {
   useRouter,
 } from '@tanstack/react-router'
 import { Invitations } from '#/components/Invitations'
-import { fetchInvitations } from '#/server/fns'
+import { Tokens } from '#/components/Tokens'
+import { fetchInvitations, fetchTokens } from '#/server/fns'
 
 function loaderError(error: unknown): never {
   const message = error instanceof Error ? error.message : ''
@@ -19,7 +20,11 @@ function loaderError(error: unknown): never {
 export const Route = createFileRoute('/_app/s/$spaceId/profile')({
   loader: async () => {
     try {
-      return await fetchInvitations({ data: { screen: 'invitations' } })
+      const [invites, tokens] = await Promise.all([
+        fetchInvitations({ data: { screen: 'invitations' } }),
+        fetchTokens(),
+      ])
+      return { invites: invites.invites, tokens: tokens.tokens }
     } catch (error) {
       loaderError(error)
     }
@@ -40,14 +45,18 @@ export const Route = createFileRoute('/_app/s/$spaceId/profile')({
 
 function ProfileRoute() {
   const data = Route.useLoaderData()
-  return <Invitations invites={data.invites} />
+  return (
+    <Invitations invites={data.invites}>
+      <Tokens tokens={data.tokens} />
+    </Invitations>
+  )
 }
 
 function InvitationsPending() {
   return (
     <>
       <div className="top">
-        <b>Invitations</b>
+        <b>Profile</b>
       </div>
       <div className="doc">
         <div className="col">
@@ -64,11 +73,11 @@ function InvitationsError() {
   return (
     <>
       <div className="top">
-        <b>Invitations</b>
+        <b>Profile</b>
       </div>
       <div className="doc">
         <div className="col">
-          <div className="banner">Couldn't load invitations.</div>
+          <div className="banner">Couldn't load profile.</div>
           <button
             className="btn secondary"
             type="button"
