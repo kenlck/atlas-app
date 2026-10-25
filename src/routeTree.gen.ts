@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as HealthcheckRouteImport } from './routes/healthcheck'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as SetPasswordRouteImport } from './routes/set-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
@@ -34,6 +35,11 @@ const AppRoute = AppRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HealthcheckRoute = HealthcheckRouteImport.update({
+  id: '/healthcheck',
+  path: '/healthcheck',
   getParentRoute: () => rootRouteImport,
 } as any)
 const McpRoute = McpRouteImport.update({
@@ -115,6 +121,7 @@ const AppSSpaceIdPPageIdRoute = AppSSpaceIdPPageIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/healthcheck': typeof HealthcheckRoute
   '/mcp': typeof McpRoute
   '/set-password': typeof SetPasswordRoute
   '/sign-in': typeof SignInRoute
@@ -132,6 +139,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
+  '/healthcheck': typeof HealthcheckRoute
   '/mcp': typeof McpRoute
   '/set-password': typeof SetPasswordRoute
   '/sign-in': typeof SignInRoute
@@ -151,6 +159,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
+  '/healthcheck': typeof HealthcheckRoute
   '/mcp': typeof McpRoute
   '/set-password': typeof SetPasswordRoute
   '/sign-in': typeof SignInRoute
@@ -172,6 +181,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/forgot-password'
+    | '/healthcheck'
     | '/mcp'
     | '/set-password'
     | '/sign-in'
@@ -189,6 +199,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/forgot-password'
+    | '/healthcheck'
     | '/mcp'
     | '/set-password'
     | '/sign-in'
@@ -207,6 +218,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/forgot-password'
+    | '/healthcheck'
     | '/mcp'
     | '/set-password'
     | '/sign-in'
@@ -227,6 +239,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   ForgotPasswordRoute: typeof ForgotPasswordRoute
+  HealthcheckRoute: typeof HealthcheckRoute
   McpRoute: typeof McpRoute
   SetPasswordRoute: typeof SetPasswordRoute
   SignInRoute: typeof SignInRoute
@@ -251,6 +264,13 @@ declare module '@tanstack/react-router' {
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/healthcheck': {
+      id: '/healthcheck'
+      path: '/healthcheck'
+      fullPath: '/healthcheck'
+      preLoaderRoute: typeof HealthcheckRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mcp': {
@@ -396,6 +416,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   ForgotPasswordRoute: ForgotPasswordRoute,
+  HealthcheckRoute: HealthcheckRoute,
   McpRoute: McpRoute,
   SetPasswordRoute: SetPasswordRoute,
   SignInRoute: SignInRoute,
