@@ -1,3 +1,4 @@
+import { createEvent, deleteEvent, listEvents, updateEvent } from './calendar'
 import { listMentionCandidates } from './mentions'
 import {
   acceptInvite,
@@ -102,6 +103,50 @@ export async function handleAtlasApi(request: Request) {
     ) {
       await removeMember(userId, parts[1], parts[3])
       return json({ ok: true })
+    }
+
+    if (parts[0] === 'teams' && parts[2] === 'calendar' && parts[1]) {
+      const teamId = parts[1]
+      if (method === 'GET' && parts.length === 3) {
+        const events = await listEvents(
+          userId,
+          teamId,
+          url.searchParams.get('month') ?? '',
+          url.searchParams.get('timeZone') ?? '',
+        )
+        return json({ events })
+      }
+      if (method === 'POST' && parts[3] === 'events' && parts.length === 4) {
+        const created = await createEvent(
+          userId,
+          teamId,
+          await readJson(request),
+        )
+        return json(created, 201)
+      }
+      if (
+        method === 'POST' &&
+        parts[3] === 'events' &&
+        parts.length === 5 &&
+        parts[4]
+      ) {
+        const updated = await updateEvent(
+          userId,
+          teamId,
+          parts[4],
+          await readJson(request),
+        )
+        return json(updated)
+      }
+      if (
+        method === 'DELETE' &&
+        parts[3] === 'events' &&
+        parts.length === 5 &&
+        parts[4]
+      ) {
+        await deleteEvent(userId, teamId, parts[4])
+        return json({ ok: true })
+      }
     }
 
     if (method === 'GET' && parts.length === 1 && parts[0] === 'invites') {

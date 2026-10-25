@@ -21,6 +21,7 @@ import { Route as ApiAtlasSplatRouteImport } from './routes/api/atlas/$'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiPagesSaveRouteImport } from './routes/api/pages/save'
 import { Route as AppSSpaceIdIndexRouteImport } from './routes/_app/s.$spaceId.index'
+import { Route as AppSSpaceIdCalendarRouteImport } from './routes/_app/s.$spaceId.calendar'
 import { Route as AppSSpaceIdProfileRouteImport } from './routes/_app/s.$spaceId.profile'
 import { Route as AppSSpaceIdSettingsRouteImport } from './routes/_app/s.$spaceId.settings'
 import { Route as AppSSpaceIdPPageIdRouteImport } from './routes/_app/s.$spaceId.p.$pageId'
@@ -84,6 +85,11 @@ const AppSSpaceIdIndexRoute = AppSSpaceIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppSSpaceIdRoute,
 } as any)
+const AppSSpaceIdCalendarRoute = AppSSpaceIdCalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
+  getParentRoute: () => AppSSpaceIdRoute,
+} as any)
 const AppSSpaceIdProfileRoute = AppSSpaceIdProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -111,6 +117,7 @@ export interface FileRoutesByFullPath {
   '/api/atlas/$': typeof ApiAtlasSplatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/pages/save': typeof ApiPagesSaveRoute
+  '/s/$spaceId/calendar': typeof AppSSpaceIdCalendarRoute
   '/s/$spaceId/profile': typeof AppSSpaceIdProfileRoute
   '/s/$spaceId/settings': typeof AppSSpaceIdSettingsRoute
   '/s/$spaceId/': typeof AppSSpaceIdIndexRoute
@@ -126,6 +133,7 @@ export interface FileRoutesByTo {
   '/api/atlas/$': typeof ApiAtlasSplatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/pages/save': typeof ApiPagesSaveRoute
+  '/s/$spaceId/calendar': typeof AppSSpaceIdCalendarRoute
   '/s/$spaceId/profile': typeof AppSSpaceIdProfileRoute
   '/s/$spaceId/settings': typeof AppSSpaceIdSettingsRoute
   '/s/$spaceId': typeof AppSSpaceIdIndexRoute
@@ -144,6 +152,7 @@ export interface FileRoutesById {
   '/api/atlas/$': typeof ApiAtlasSplatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/pages/save': typeof ApiPagesSaveRoute
+  '/_app/s/$spaceId/calendar': typeof AppSSpaceIdCalendarRoute
   '/_app/s/$spaceId/profile': typeof AppSSpaceIdProfileRoute
   '/_app/s/$spaceId/settings': typeof AppSSpaceIdSettingsRoute
   '/_app/s/$spaceId/': typeof AppSSpaceIdIndexRoute
@@ -162,6 +171,7 @@ export interface FileRouteTypes {
     | '/api/atlas/$'
     | '/api/auth/$'
     | '/api/pages/save'
+    | '/s/$spaceId/calendar'
     | '/s/$spaceId/profile'
     | '/s/$spaceId/settings'
     | '/s/$spaceId/'
@@ -177,6 +187,7 @@ export interface FileRouteTypes {
     | '/api/atlas/$'
     | '/api/auth/$'
     | '/api/pages/save'
+    | '/s/$spaceId/calendar'
     | '/s/$spaceId/profile'
     | '/s/$spaceId/settings'
     | '/s/$spaceId'
@@ -194,6 +205,7 @@ export interface FileRouteTypes {
     | '/api/atlas/$'
     | '/api/auth/$'
     | '/api/pages/save'
+    | '/_app/s/$spaceId/calendar'
     | '/_app/s/$spaceId/profile'
     | '/_app/s/$spaceId/settings'
     | '/_app/s/$spaceId/'
@@ -298,6 +310,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSSpaceIdIndexRouteImport
       parentRoute: typeof AppSSpaceIdRoute
     }
+    '/_app/s/$spaceId/calendar': {
+      id: '/_app/s/$spaceId/calendar'
+      path: '/calendar'
+      fullPath: '/s/$spaceId/calendar'
+      preLoaderRoute: typeof AppSSpaceIdCalendarRouteImport
+      parentRoute: typeof AppSSpaceIdRoute
+    }
     '/_app/s/$spaceId/profile': {
       id: '/_app/s/$spaceId/profile'
       path: '/profile'
@@ -323,6 +342,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppSSpaceIdRouteChildren {
+  AppSSpaceIdCalendarRoute: typeof AppSSpaceIdCalendarRoute
   AppSSpaceIdProfileRoute: typeof AppSSpaceIdProfileRoute
   AppSSpaceIdSettingsRoute: typeof AppSSpaceIdSettingsRoute
   AppSSpaceIdIndexRoute: typeof AppSSpaceIdIndexRoute
@@ -330,6 +350,7 @@ interface AppSSpaceIdRouteChildren {
 }
 
 const AppSSpaceIdRouteChildren: AppSSpaceIdRouteChildren = {
+  AppSSpaceIdCalendarRoute: AppSSpaceIdCalendarRoute,
   AppSSpaceIdProfileRoute: AppSSpaceIdProfileRoute,
   AppSSpaceIdSettingsRoute: AppSSpaceIdSettingsRoute,
   AppSSpaceIdIndexRoute: AppSSpaceIdIndexRoute,

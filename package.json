@@ -19,6 +19,7 @@
     "db:migrate": "drizzle-kit migrate",
     "team-visual-shots": "tsx scripts/team-visual-shots.ts",
     "visual-shots": "tsx scripts/visual-shots.ts",
+    "calendar-view": "tsx scripts/calendar-view.ts",
     "autosave-flush": "tsx scripts/autosave-flush.ts",
     "lint:tokens": "node scripts/lint-tokens.mjs",
     "verify": "bash scripts/verify-fail-conditions.sh",

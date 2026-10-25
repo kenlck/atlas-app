@@ -1,4 +1,4 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
 import { authClient } from '#/lib/auth-client'
 import type { SpaceRole } from '#/lib/access'
 import { initials } from '#/lib/relative-time'
@@ -46,6 +46,9 @@ export function Sidebar({
   onCreateTeam: () => void
   onNavigate: () => void
 }) {
+  const onCalendar = useRouterState({
+    select: (state) => state.location.pathname.endsWith('/calendar'),
+  })
   return (
     <aside className={open ? 'side open' : 'side'}>
       <SpaceSwitcher
@@ -57,6 +60,17 @@ export function Sidebar({
         onNavigate={onNavigate}
       />
       <div className="lab">Pages</div>
+      {role === 'personal' ? null : (
+        <Link
+          to="/s/$spaceId/calendar"
+          params={{ spaceId }}
+          className={onCalendar ? 'it act' : 'it'}
+          preload={false}
+          onClick={onNavigate}
+        >
+          Calendar
+        </Link>
+      )}
       {loading ? (
         <div className="tree">
           <div className="skel" />
