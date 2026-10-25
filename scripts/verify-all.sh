@@ -150,7 +150,7 @@ PY
   PG_ENV=
   for i in $(seq 1 90); do
     lines=$(docker logs atlas-verify-all-pg 2>&1 | grep -c "database system is ready to accept connections" || true)
-    if [[ "$lines" -ge 2 ]] && pg_isready -q -h 127.0.0.1 -p "$port"; then
+    if [[ "$lines" -ge 2 ]] && docker exec atlas-verify-all-pg pg_isready -q -h 127.0.0.1; then
       ready="true"
       break
     fi
