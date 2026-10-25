@@ -407,6 +407,20 @@ run_step fail5-3 ./scripts/verify-fail-conditions.sh 5-3
 require_step_log fail5-3 "stored_start=2026-06-16T01:00:00.000Z" "kiritimati=2026-06-16 15:00" "midway=2026-06-15 14:00" "same_instant=true" "all_day_shifted=false"
 run_step fail5-4 ./scripts/verify-fail-conditions.sh 5-4
 require_step_log fail5-4 "january_contains=true" "february_contains=true"
+run_step fail4-1 ./scripts/verify-fail-conditions.sh 4-1
+require_step_log fail4-1 "cross_team_visible=false" "other_personal_visible=false" "archived_visible=false" "archived_child_visible=false" "own_team_visible=true" "own_personal_visible=true"
+run_step fail4-2 ./scripts/verify-fail-conditions.sh 4-2
+require_step_log fail4-2 "percent_literal=true" "underscore_literal=true" "backslash_literal=true"
+run_step fail4-3 ./scripts/verify-fail-conditions.sh 4-3
+require_step_log fail4-3 "body_only_visible=true"
+run_step fail4-4 ./scripts/verify-fail-conditions.sh 4-4
+require_step_log fail4-4 "autosave_visible=true"
+run_step fail4-5 ./scripts/verify-fail-conditions.sh 4-5
+require_step_log fail4-5 "backfill_body_text=true" "migration_updates_body_text=true"
+run_step fail4-6 ./scripts/verify-fail-conditions.sh 4-6
+require_step_log fail4-6 "table_label_visible=true" "mention_label_visible=true" "date_label_visible=true"
+run_step fail4-7 ./scripts/verify-fail-conditions.sh 4-7
+require_step_log fail4-7 "safe_amp=200" "safe_paren=200" "safe_prefix_syntax=200" "safe_quote=200" "safe_backslash=200" "safe_emoji=200" "safe_empty=200" "safe_one=200"
 run_step screenshots pnpm visual-shots
 run_step baselines run_baselines
 run_step baseline-side-by-side run_side_by_side

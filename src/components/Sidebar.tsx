@@ -1,10 +1,12 @@
 import { Link, useRouterState } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
 import { authClient } from '#/lib/auth-client'
 import type { SpaceRole } from '#/lib/access'
 import { initials } from '#/lib/relative-time'
 import type { TreeNode } from '#/lib/pages'
 import type { SpaceSummary } from '#/lib/teams'
 import { PageTree } from './PageTree'
+import { SearchGlyph } from './SearchPanel'
 import { SpaceSwitcher } from './SpaceSwitcher'
 
 export function Sidebar({
@@ -26,6 +28,7 @@ export function Sidebar({
   onArchive,
   onCreateTeam,
   onNavigate,
+  onOpenSearch,
 }: {
   open: boolean
   spaceId: string
@@ -45,7 +48,16 @@ export function Sidebar({
   onArchive: (pageId: string) => void
   onCreateTeam: () => void
   onNavigate: () => void
+  onOpenSearch: () => void
 }) {
+  const [shortcut, setShortcut] = useState('Ctrl K')
+  useEffect(() => {
+    const platform = navigator.platform ?? ''
+    const agent = navigator.userAgent ?? ''
+    if (/Mac|iPhone|iPad|iPod/.test(platform) || /Mac OS X/.test(agent)) {
+      setShortcut('⌘K')
+    }
+  }, [])
   const onCalendar = useRouterState({
     select: (state) => state.location.pathname.endsWith('/calendar'),
   })
@@ -59,6 +71,16 @@ export function Sidebar({
         onCreateTeam={onCreateTeam}
         onNavigate={onNavigate}
       />
+      <button
+        type="button"
+        className="it"
+        aria-label="Search"
+        onClick={onOpenSearch}
+      >
+        <SearchGlyph />
+        Search
+        <span className="k">{shortcut}</span>
+      </button>
       <div className="lab">Pages</div>
       {role === 'personal' ? null : (
         <Link

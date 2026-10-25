@@ -14,6 +14,50 @@ describe('tiptapToText', () => {
     ).toBe('Hello World')
   })
 
+  it('flattens table text and a mention label', () => {
+    expect(
+      tiptapToText({
+        type: 'doc',
+        content: [
+          {
+            type: 'table',
+            content: [
+              {
+                type: 'tableRow',
+                content: [
+                  {
+                    type: 'tableCell',
+                    content: [
+                      {
+                        type: 'paragraph',
+                        content: [{ type: 'text', text: 'Cell' }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'mention', attrs: { id: 'p1', label: 'Stored Name' } },
+            ],
+          },
+        ],
+      }),
+    ).toBe('Cell Stored Name')
+    expect(
+      tiptapToText(
+        {
+          type: 'mention',
+          attrs: { id: 'p1', label: 'Stored Name' },
+        },
+        () => 'Former member',
+      ),
+    ).toBe('Former member')
+  })
+
   it('labels a date chip from its stored day', () => {
     expect(
       tiptapToText({
