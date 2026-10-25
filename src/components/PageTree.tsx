@@ -43,14 +43,13 @@ export function PageTree({
   const [menu, setMenu] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const revealed = useRef<string | null>(null)
+  const expandedFor = useRef<string | null>(null)
 
   useEffect(() => {
-    // A title refresh must not reopen a collapse on the page that is already open.
-    if (!activeId || revealed.current === activeId) return
+    if (!activeId || expandedFor.current === activeId) return
     const ancestors = ancestorIds(tree, activeId)
     if (!ancestors) return
-    revealed.current = activeId
+    expandedFor.current = activeId
     setOpen((current) => {
       let changed = false
       const next = { ...current }
