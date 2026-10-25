@@ -12,6 +12,7 @@ import {
   lookupAccount,
   removeMember,
 } from './teams'
+import { createApiToken, listApiTokens, revokeApiToken } from './api-tokens'
 import { HttpError } from './http'
 import { requireUnlockedSession } from './session'
 
@@ -156,6 +157,32 @@ export async function handleAtlasApi(request: Request) {
         url.searchParams.get('q') ?? '',
       )
       return json({ hits })
+    }
+
+    if (parts[0] === 'tokens' && parts.length === 1) {
+      if (method === 'GET') {
+        return json({ tokens: await listApiTokens(userId) })
+      }
+      if (method === 'POST') {
+        const created = await createApiToken(userId, await readJson(request))
+        return new Response(JSON.stringify(created), {
+          status: 201,
+          headers: {
+            'content-type': 'application/json',
+            'cache-control': 'no-store',
+          },
+        })
+      }
+    }
+
+    if (
+      method === 'DELETE' &&
+      parts[0] === 'tokens' &&
+      parts.length === 2 &&
+      parts[1]
+    ) {
+      await revokeApiToken(userId, parts[1])
+      return json({ ok: true })
     }
 
     if (method === 'GET' && parts.length === 1 && parts[0] === 'invites') {

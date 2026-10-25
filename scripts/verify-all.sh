@@ -47,6 +47,12 @@ cleanup() {
     docker rm -f "$name" >/dev/null 2>&1 || true
   done
   rm -f "${REDACTOR:-}" "${PG_ENV:-}"
+  if [[ "$status" -ne 0 && -n "${SHA:-}" ]]; then
+    echo "verify_all sha=${SHA} result=fail"
+    if [[ -n "${ART:-}" && -d "$ART" ]]; then
+      echo "verify_all sha=${SHA} result=fail" > "${ART}/result.txt"
+    fi
+  fi
   exit "$status"
 }
 trap cleanup EXIT
@@ -368,6 +374,40 @@ run_step docker-build build_image
 run_step psql ensure_psql
 run_step verify-migrate migrate_image
 run_step verify-start start_image
+run_step token-revoked ./scripts/verify-fail-conditions.sh token-revoked
+require_step_log token-revoked "before_revoke_status=200" "revoked_status=401"
+run_step token-cross ./scripts/verify-fail-conditions.sh token-cross
+require_step_log token-cross "owner_status=200" "cross_user_status=404" "cross_search_status=200" "cross_search_visible=false"
+run_step token-secret ./scripts/verify-fail-conditions.sh token-secret
+require_step_log token-secret "token_in_db=false" "token_in_logs=false"
+run_step token-bearer ./scripts/verify-fail-conditions.sh token-bearer
+require_step_log token-bearer "missing_bearer_status=401" "garbage_bearer_status=401" "bearer_bodies_match=true" "revoked_bearer_status=401" "unknown_bearer_status=401" "expired_bearer_status=401" "bearer_bodies_identical=true"
+run_step token-writes ./scripts/verify-fail-conditions.sh token-writes
+require_step_log token-writes "create_denied_status=404" "update_denied_status=404"
+run_step token-team ./scripts/verify-fail-conditions.sh token-team
+require_step_log token-team "before_removal_status=200" "remove_status=200" "after_removal_status=404"
+run_step token-reset ./scripts/verify-fail-conditions.sh token-reset
+require_step_log token-reset "before_reset_status=200" "reset_status=200" "reset_image=atlas-app" "reset_container_removed=true" "pending_status=401" "password_status=200" "after_password_status=401"
+run_step token-roundtrip ./scripts/verify-fail-conditions.sh token-roundtrip
+require_step_log token-roundtrip "create_status=200" "read_status=200" "update_status=200" "search_status=200" "search_visible=true" "list_status=200" "app_status=200" "app_title_matches=true" "last_used_set=true"
+run_step token-image ./scripts/verify-fail-conditions.sh token-image
+require_step_log token-image "app_containers=1" "same_image=true" "mcp_status=401" "mcp_get_status=405" "extra_service=false"
+run_step token-fidelity ./scripts/verify-fail-conditions.sh token-fidelity
+require_step_log token-fidelity "get_status=200" "update_status=200" "mention_link=true" "date_link=true" "table_markup=true" "stored_body_identical=true"
+run_step token-conflict ./scripts/verify-fail-conditions.sh token-conflict
+require_step_log token-conflict "missing_status=409" "missing_unchanged=true" "stale_status=409" "stale_unchanged=true" "parent_status=400" "reparent_status=400" "parent_unchanged=true"
+run_step token-scope ./scripts/verify-fail-conditions.sh token-scope
+require_step_log token-scope "read_create_status=403" "read_update_status=403" "read_get_status=200" "read_create_stored=false" "read_title_unchanged=true" "read_search_status=200" "read_search_visible=true" "write_search_status=200" "write_search_visible=true"
+run_step token-expiry ./scripts/verify-fail-conditions.sh token-expiry
+require_step_log token-expiry "before_expiry_status=200" "expired_status=401" "expired_body_matches=true"
+run_step token-rate ./scripts/verify-fail-conditions.sh token-rate
+require_step_log token-rate "under_limit_status=200" "rate_status=429" "rate_limit=60"
+run_step token-body ./scripts/verify-fail-conditions.sh token-body
+require_step_log token-body "body_status=413" "body_limit_bytes=1048576" "stored_pages=0"
+run_step token-search ./scripts/verify-fail-conditions.sh token-search
+require_step_log token-search "team_search_status=200" "owner_search_visible=true" "cross_team_search_visible=false"
+run_step token-mention ./scripts/verify-fail-conditions.sh token-mention
+require_step_log token-mention "mention_create_real_visible=true" "mention_create_fake_visible=false" "mention_update_real_visible=true" "mention_update_fake_visible=false" "mention_update_decoy_visible=false"
 run_step fail1 ./scripts/verify-fail-conditions.sh 1
 run_step fail2 ./scripts/verify-fail-conditions.sh 2
 run_step fail3 ./scripts/verify-fail-conditions.sh 3
