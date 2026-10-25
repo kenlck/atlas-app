@@ -1,6 +1,6 @@
 # Admin reset
 
-`POST /api/admin/reset-password` sets a temporary password when the request carries `ADMIN_API_SECRET`. The person signs in with that password, lands on `/set-password`, and cannot use the rest of the app until they save a new password. The reset route stays hidden when the secret is unset, empty, or shorter than 32 characters.
+`POST /api/admin/reset-password` sets a temporary password when the request carries `ADMIN_API_SECRET`. The person signs in with that password, lands on `/set-password`, and cannot use the rest of the app until they save a new password. The reset route stays hidden when the secret is unset, empty, or shorter than 32 characters. Production does not boot when the secret is missing or empty.
 
 ## Sub-features
 
@@ -27,7 +27,7 @@ Preconditions:
 - Run `5h` against its own container. The main container's rate limit is a separate counter.
 - `5c` and `5d` also use their own containers so their resets do not consume the shared limit.
 
-- **Unset or empty secret.** Run `./scripts/verify-fail-conditions.sh 5a`. The log shows `status_unset=404`, `status_empty=404`, and `body_bytes_*=0`.
+- **Unset or empty secret.** Run `./scripts/verify-fail-conditions.sh 5a`. The production process exits. The log shows `names_ADMIN_API_SECRET_unset=true`, `names_ADMIN_API_SECRET_empty=true`, and a non-zero `exit_*`. The handler still returns an empty 404 when it is invoked with a missing or short secret; that is `tests/admin-reset.test.ts`.
 - **Short secret.** Run `./scripts/verify-fail-conditions.sh 5e`. The log shows `status_short=404`, `status_boundary=404`, and `body_bytes_*=0`. `boundary` is 31 characters.
 - **Wrong bearer.** Run `./scripts/verify-fail-conditions.sh 5b`. The log shows `401` for the missing, short, and long bearers, `bearer_bodies_match=true`, and `constant_time_unit_test` naming `tests/admin-reset.test.ts`.
 - **Sessions.** Run `./scripts/verify-fail-conditions.sh 5c`. The log shows `session_count=0` and `sessions_ended=true`.

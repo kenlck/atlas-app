@@ -1,5 +1,6 @@
 import { hashPassword, generateRandomString, constantTimeEqual } from 'better-auth/crypto'
 import { and, eq } from 'drizzle-orm'
+import { resolveClientIp } from './client-ip'
 import { getDb } from './db'
 import { newId } from './ids'
 import { account, adminAudit, session, user } from './schema'
@@ -30,21 +31,8 @@ function allowRequest(ip: string) {
   return true
 }
 
-function trustProxyEnabled() {
-  const value = process.env.TRUST_PROXY?.trim().toLowerCase()
-  return value === '1' || value === 'true' || value === 'yes'
-}
-
 export function adminCallerIp(request: Request, socketIp?: string | null) {
-  if (trustProxyEnabled()) {
-    const parts = (request.headers.get('x-forwarded-for') ?? '')
-      .split(',')
-      .map((part) => part.trim())
-      .filter(Boolean)
-    const picked = parts[parts.length - 1]
-    if (picked) return picked
-  }
-  return socketIp || 'unknown'
+  return resolveClientIp(request, socketIp)
 }
 
 function json(body: unknown, status: number) {

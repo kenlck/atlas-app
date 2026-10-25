@@ -140,15 +140,49 @@ recipe_4() {
   pnpm exec tsx scripts/fail4-live.ts
 }
 
+expect_production_exit() {
+  local name=$1 port=$2 mode=$3 env_file=$4 work=$5 label=$6
+  write_app_env "$env_file" "$port" "$mode"
+  docker rm -f "$name" >/dev/null 2>&1 || true
+  echo "CMD docker run -d --name $name --network host --env-file <unprinted> $ATLAS_IMAGE"
+  docker run -d --name "$name" --network host --env-file "$env_file" "$ATLAS_IMAGE" >/dev/null
+  local status=running
+  local _
+  for _ in $(seq 1 40); do
+    status=$(docker inspect -f '{{.State.Status}}' "$name" 2>/dev/null || echo missing)
+    if [[ "$status" != "running" && "$status" != "created" ]]; then
+      break
+    fi
+    sleep 0.25
+  done
+  local code
+  code=$(docker inspect -f '{{.State.ExitCode}}' "$name" 2>/dev/null || echo none)
+  echo "status_${label}=$status"
+  echo "exit_${label}=$code"
+  docker logs "$name" >"$work/${label}.log" 2>&1 || true
+  python3 - "$work/${label}.log" "$code" "$label" << 'PY'
+import re
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text(errors="replace")
+text = re.sub(r"postgres(?:ql)?://\S+", "[redacted-url]", text)
+code, label = sys.argv[2], sys.argv[3]
+print(text.rstrip())
+named = "ADMIN_API_SECRET is required" in text
+print(f"names_ADMIN_API_SECRET_{label}={str(named).lower()}")
+if code in {"0", "none"} or not named:
+    raise SystemExit(1)
+PY
+}
+
 recipe_5a() {
   local work
   work=$(mktemp -d)
   chmod 700 "$work"
   trap "docker rm -f atlas-5a-unset atlas-5a-empty >/dev/null 2>&1 || true; rm -rf '$work'" EXIT
-  boot_app atlas-5a-unset 3411 unset "$work/unset.env"
-  expect_empty_404 3411 unset
-  boot_app atlas-5a-empty 3412 empty "$work/empty.env"
-  expect_empty_404 3412 empty
+  expect_production_exit atlas-5a-unset 3411 unset "$work/unset.env" "$work" unset
+  expect_production_exit atlas-5a-empty 3412 empty "$work/empty.env" "$work" empty
   docker rm -f atlas-5a-unset atlas-5a-empty >/dev/null 2>&1 || true
   rm -rf "$work"
   trap - EXIT
@@ -536,6 +570,95 @@ PY
   trap - EXIT
 }
 
+refuse_boot() {
+  local missing=$1
+  local server="$ROOT/.output/server/index.mjs"
+  if [[ ! -f "$server" ]]; then
+    echo "missing .output/server/index.mjs"
+    return 1
+  fi
+  local work
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  local -a env_args=(
+    NODE_ENV=production
+    "DATABASE_URL=${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+    BETTER_AUTH_URL=http://127.0.0.1:3997
+    HOST=127.0.0.1
+    PORT=3997
+    BETTER_AUTH_TELEMETRY=0
+  )
+  if [[ "$missing" == "BETTER_AUTH_SECRET" ]]; then
+    env_args+=(ADMIN_API_SECRET=dummy-admin-api-secret-32-characters)
+  else
+    env_args+=(BETTER_AUTH_SECRET=dummy-better-auth-secret-32-chars)
+  fi
+  echo "CMD env -u ${missing} NODE_ENV=production HOST=127.0.0.1 PORT=3997 node .output/server/index.mjs"
+  set +e
+  env -u "$missing" "${env_args[@]}" timeout 8 node "$server" >"$work/out" 2>&1
+  local code=$?
+  python3 - "$work/out" "$code" "$missing" << 'PY'
+import re
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text(errors="replace")
+text = re.sub(r"postgres(?:ql)?://\S+", "[redacted-url]", text)
+code = int(sys.argv[2])
+name = sys.argv[3]
+print(text.rstrip())
+print(f"exit_code={code}")
+needle = f"{name} is required"
+print(f"names_{name}={str(needle in text).lower()}")
+dummies = (
+    "dummy-admin-api-secret-32-characters",
+    "dummy-better-auth-secret-32-chars",
+)
+leaked = any(item in text for item in dummies)
+print(f"dummy_values_absent={str(not leaked).lower()}")
+if code in (0, 124) or needle not in text or leaked or "[redacted-url]" in text:
+    raise SystemExit(1)
+PY
+  local py=$?
+  set -e
+  rm -rf "$work"
+  return "$py"
+}
+
+recipe_7() {
+  refuse_boot BETTER_AUTH_SECRET
+}
+
+recipe_7a() {
+  refuse_boot ADMIN_API_SECRET
+}
+
+recipe_8() {
+  echo "CMD NODE_ENV=production TRUST_PROXY=1 pnpm exec tsx scripts/verify-client-ip.ts"
+  NODE_ENV=production \
+    DATABASE_URL="${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}" \
+    BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://127.0.0.1:3000}" \
+    BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-dummy-better-auth-secret-32-chars}" \
+    ADMIN_API_SECRET="${ADMIN_API_SECRET:-dummy-admin-api-secret-32-characters}" \
+    TRUST_PROXY=1 \
+    BETTER_AUTH_TELEMETRY=0 \
+    pnpm exec tsx scripts/verify-client-ip.ts
+}
+
+recipe_9() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/verify-fail-conditions.ts fail9"
+  BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://127.0.0.1:3000}" \
+    pnpm exec tsx scripts/verify-fail-conditions.ts fail9
+}
+
+recipe_9a() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/verify-fail-conditions.ts fail9a"
+  BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://127.0.0.1:3000}" \
+    pnpm exec tsx scripts/verify-fail-conditions.ts fail9a
+}
+
 case "${1:-}" in
   1|fail1) run_recipe recipe_1 ;;
   2|fail2) run_recipe recipe_2 ;;
@@ -558,6 +681,11 @@ case "${1:-}" in
   3-5) run_recipe recipe_3_5 ;;
   space-error) run_recipe recipe_space_error ;;
   6|fail6) run_recipe recipe_6 ;;
+  7) run_recipe recipe_7 ;;
+  7a) run_recipe recipe_7a ;;
+  8) run_recipe recipe_8 ;;
+  9) run_recipe recipe_9 ;;
+  9a) run_recipe recipe_9a ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     echo "all runs in-process checks and vitest, which drops the public schema"
@@ -566,7 +694,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|all]" >&2
     exit 2
     ;;
 esac

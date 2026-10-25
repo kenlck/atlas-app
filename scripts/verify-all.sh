@@ -107,6 +107,18 @@ run_step() {
   fi
 }
 
+require_step_log() {
+  local name=$1
+  shift
+  local needle
+  for needle in "$@"; do
+    if ! grep -F -q -- "$needle" "${LOG}/${name}.log"; then
+      echo "step ${name} failed" >&2
+      exit 1
+    fi
+  done
+}
+
 pick_port() {
   local port
   for port in 5432 55432 55433 55434; do
@@ -353,6 +365,16 @@ run_step fail3-4 ./scripts/verify-fail-conditions.sh 3-4
 run_step fail3-5 ./scripts/verify-fail-conditions.sh 3-5
 run_step space-error ./scripts/verify-fail-conditions.sh space-error
 run_step fail6 ./scripts/verify-fail-conditions.sh 6
+run_step fail7 ./scripts/verify-fail-conditions.sh 7
+require_step_log fail7 "BETTER_AUTH_SECRET is required" "names_BETTER_AUTH_SECRET=true"
+run_step fail7a ./scripts/verify-fail-conditions.sh 7a
+require_step_log fail7a "ADMIN_API_SECRET is required" "names_ADMIN_API_SECRET=true"
+run_step fail8 ./scripts/verify-fail-conditions.sh 8
+require_step_log fail8 "resolved=proxy" "auth_statuses=401,401,401,429"
+run_step fail9 ./scripts/verify-fail-conditions.sh 9
+require_step_log fail9 "cross_origin_status=403"
+run_step fail9a ./scripts/verify-fail-conditions.sh 9a
+require_step_log fail9a "malformed_status=400"
 run_step screenshots pnpm visual-shots
 run_step baselines run_baselines
 run_step baseline-side-by-side run_side_by_side

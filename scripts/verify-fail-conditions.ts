@@ -5,6 +5,7 @@ import { getDb } from '../src/lib/db'
 import { HttpError } from '../src/lib/http'
 import { createPage, getPageView } from '../src/lib/pages'
 import { account, adminAudit, session, user } from '../src/lib/schema'
+import { handlePageSave } from '../src/lib/page-save-request'
 import { createUser } from '../tests/helpers'
 
 const LOCAL_SECRET = process.env.ADMIN_API_SECRET || 'test-admin-api-secret-32-chars-minx'
@@ -52,8 +53,15 @@ async function fail2() {
   if (!location.includes('sign-in')) fail(`fail2: redirect was ${location}`)
   const api = await fetch(`${base.replace(/\/$/, '')}/api/pages/save`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ pageId: 'x', title: 'x', body: {} }),
+    headers: {
+      'content-type': 'application/json',
+      origin: new URL(base).origin,
+    },
+    body: JSON.stringify({
+      pageId: 'x',
+      title: 'x',
+      body: { type: 'doc', content: [] },
+    }),
   })
   if (api.status !== 401) fail(`fail2: page API expected 401, got ${api.status}`)
   console.log('fail2 pass: signed-out page redirects, page API 401')
@@ -171,6 +179,44 @@ async function fail5h() {
   console.log('fail5h pass: rotating X-Forwarded-For still 429; audit uses socket IP')
 }
 
+async function fail9() {
+  process.env.BETTER_AUTH_URL = ORIGIN
+  const response = await handlePageSave(
+    new Request(`${ORIGIN}/api/pages/save`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'http://evil.example',
+      },
+      body: JSON.stringify({
+        pageId: 'page-1',
+        title: 'Notes',
+        body: { type: 'doc', content: [] },
+      }),
+    }),
+  )
+  console.log(`cross_origin_status=${response.status}`)
+  if (response.status !== 403) fail(`fail9: expected 403, got ${response.status}`)
+  console.log('fail9 pass: cross-origin save is 403')
+}
+
+async function fail9a() {
+  process.env.BETTER_AUTH_URL = ORIGIN
+  const response = await handlePageSave(
+    new Request(`${ORIGIN}/api/pages/save`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: ORIGIN,
+      },
+      body: JSON.stringify({ pageId: 'page-1', title: 'Notes', body: 'not-a-doc' }),
+    }),
+  )
+  console.log(`malformed_status=${response.status}`)
+  if (response.status !== 400) fail(`fail9a: expected 400, got ${response.status}`)
+  console.log('fail9a pass: malformed save body is 400')
+}
+
 const cmd = process.argv[2] ?? 'all'
 const jobs: Record<string, () => Promise<void>> = {
   fail1,
@@ -178,6 +224,8 @@ const jobs: Record<string, () => Promise<void>> = {
   fail5f,
   fail5g,
   fail5h,
+  fail9,
+  fail9a,
 }
 
 async function main() {
@@ -190,7 +238,7 @@ async function main() {
     return
   }
   const job = jobs[cmd]
-  if (!job) fail(`usage: verify-fail-conditions.ts [all|fail1|fail2|fail5f|fail5g|fail5h]`)
+  if (!job) fail(`usage: verify-fail-conditions.ts [all|fail1|fail2|fail5f|fail5g|fail5h|fail9|fail9a]`)
   await job()
 }
 
