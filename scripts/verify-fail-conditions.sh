@@ -582,7 +582,7 @@ refuse_boot() {
   chmod 700 "$work"
   local -a env_args=(
     NODE_ENV=production
-    "DATABASE_URL=${DATABASE_URL:-postgres://atlas:atlas@127.0.0.1:5432/atlas_test}"
+    "DATABASE_URL=${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
     BETTER_AUTH_URL=http://127.0.0.1:3997
     HOST=127.0.0.1
     PORT=3997
@@ -636,7 +636,7 @@ recipe_7a() {
 recipe_8() {
   echo "CMD NODE_ENV=production TRUST_PROXY=1 pnpm exec tsx scripts/verify-client-ip.ts"
   NODE_ENV=production \
-    DATABASE_URL="${DATABASE_URL:-postgres://atlas:atlas@127.0.0.1:5432/atlas_test}" \
+    DATABASE_URL="${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}" \
     BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://127.0.0.1:3000}" \
     BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-dummy-better-auth-secret-32-chars}" \
     ADMIN_API_SECRET="${ADMIN_API_SECRET:-dummy-admin-api-secret-32-characters}" \
@@ -646,12 +646,14 @@ recipe_8() {
 }
 
 recipe_9() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
   echo "CMD pnpm exec tsx scripts/verify-fail-conditions.ts fail9"
   BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://127.0.0.1:3000}" \
     pnpm exec tsx scripts/verify-fail-conditions.ts fail9
 }
 
 recipe_9a() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
   echo "CMD pnpm exec tsx scripts/verify-fail-conditions.ts fail9a"
   BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://127.0.0.1:3000}" \
     pnpm exec tsx scripts/verify-fail-conditions.ts fail9a
