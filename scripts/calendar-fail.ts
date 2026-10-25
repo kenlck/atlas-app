@@ -61,7 +61,15 @@ async function signUp(base: string, name: string) {
       body: JSON.stringify({ name, email, password: PASSWORD }),
     })
     if (response.status !== 429) break
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    // Sign-up shares a 3-per-10s bucket with sign-in. Wait out that window.
+    const retryAfter = Number(response.headers.get('x-retry-after') ?? '10')
+    const seconds = Math.min(
+      15,
+      Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter + 1 : 11,
+    )
+    console.log(`signup_status=429 retry_after=${seconds}`)
+    await response.text().catch(() => '')
+    await new Promise((resolve) => setTimeout(resolve, seconds * 1000))
   }
   if (!response) fail('sign-up missing response')
   const text = await response.text()
