@@ -17,6 +17,7 @@ import {
   renamePage,
   savePage,
 } from '#/lib/pages'
+import { searchVisiblePages } from '#/lib/search'
 import {
   acceptInvite,
   countPendingInvites,
@@ -118,6 +119,23 @@ export const fetchCalendar = createServerFn({ method: 'GET' })
   .handler(async ({ data, context }) => {
     try {
       return await openCalendar(context.userId, data.spaceId)
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const searchPagesFn = createServerFn({ method: 'GET' })
+  .middleware([unlocked])
+  .validator((data: { query: string }) => {
+    if (typeof data.query !== 'string') throw new Error('Bad request')
+    return { query: data.query }
+  })
+  .handler(async ({ data, context }) => {
+    try {
+      const hits = await searchVisiblePages(context.userId, data.query, {
+        limit: 21,
+      })
+      return { hits }
     } catch (error) {
       rethrow(error)
     }

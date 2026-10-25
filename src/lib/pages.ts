@@ -4,7 +4,7 @@ import { emptyDoc, tiptapToText, type Json } from './body-text'
 import { getDb } from './db'
 import { HttpError, notFound } from './http'
 import { newId } from './ids'
-import { peopleForBody } from './mentions'
+import { mentionChipText, peopleForBody } from './mentions'
 import type { MentionPerson } from './mentions'
 import { page, space, user, type Page } from './schema'
 
@@ -200,15 +200,23 @@ export async function savePage(
   userId: string,
   input: { pageId: string; title: string; body: Json },
 ) {
-  await assertAccess(userId, { pageId: input.pageId })
+  const access = await assertAccess(userId, { pageId: input.pageId })
   const title = input.title.trim() || 'Untitled'
+  const people = await peopleForBody(access.space, input.body)
+  const labels = new Map(
+    people.map((person) => [person.id, mentionChipText(person)]),
+  )
+  const bodyText = tiptapToText(
+    input.body,
+    (id) => labels.get(id) ?? 'Unknown person',
+  )
   const db = getDb()
   await db
     .update(page)
     .set({
       title,
       body: input.body,
-      bodyText: tiptapToText(input.body),
+      bodyText,
       updatedBy: userId,
       updatedAt: new Date(),
     })

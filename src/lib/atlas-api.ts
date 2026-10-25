@@ -1,4 +1,5 @@
 import { createEvent, deleteEvent, listEvents, updateEvent } from './calendar'
+import { searchVisiblePages } from './search'
 import { listMentionCandidates } from './mentions'
 import {
   acceptInvite,
@@ -147,6 +148,14 @@ export async function handleAtlasApi(request: Request) {
         await deleteEvent(userId, teamId, parts[4])
         return json({ ok: true })
       }
+    }
+
+    if (method === 'GET' && parts.length === 1 && parts[0] === 'search') {
+      const hits = await searchVisiblePages(
+        userId,
+        url.searchParams.get('q') ?? '',
+      )
+      return json({ hits })
     }
 
     if (method === 'GET' && parts.length === 1 && parts[0] === 'invites') {
