@@ -683,6 +683,37 @@ body {
   margin: 22px 0 8px;
 }
 
+.token-section {
+  margin-top: 28px;
+}
+
+.token-form {
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.token-form .btn {
+  width: auto;
+  margin-top: 4px;
+  padding: 0 14px;
+}
+
+.token-reveal {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.token-reveal p {
+  margin: 0;
+}
+
+.token-once {
+  font-family: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
+  font-size: 13px;
+}
+
 .member-row,
 .found,
 .invite-card {

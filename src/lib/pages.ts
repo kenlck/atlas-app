@@ -6,7 +6,7 @@ import { HttpError, notFound } from './http'
 import { newId } from './ids'
 import { mentionChipText, peopleForBody } from './mentions'
 import type { MentionPerson } from './mentions'
-import { page, space, user, type Page } from './schema'
+import { page, space, user, type Page, type Space } from './schema'
 
 export type TreeNode = {
   id: string
@@ -196,20 +196,21 @@ export async function renamePage(
   return getPageView(userId, input.pageId)
 }
 
+async function indexedBodyText(spaceRow: Space, body: Json) {
+  const people = await peopleForBody(spaceRow, body)
+  const labels = new Map(
+    people.map((person) => [person.id, mentionChipText(person)]),
+  )
+  return tiptapToText(body, (id) => labels.get(id) ?? 'Unknown person')
+}
+
 export async function savePage(
   userId: string,
   input: { pageId: string; title: string; body: Json },
 ) {
   const access = await assertAccess(userId, { pageId: input.pageId })
   const title = input.title.trim() || 'Untitled'
-  const people = await peopleForBody(access.space, input.body)
-  const labels = new Map(
-    people.map((person) => [person.id, mentionChipText(person)]),
-  )
-  const bodyText = tiptapToText(
-    input.body,
-    (id) => labels.get(id) ?? 'Unknown person',
-  )
+  const bodyText = await indexedBodyText(access.space, input.body)
   const db = getDb()
   await db
     .update(page)
@@ -295,6 +296,72 @@ export async function archivePage(userId: string, pageId: string) {
     .set({ archivedAt: new Date(), updatedBy: userId, updatedAt: new Date() })
     .where(eq(page.id, pageId))
   return { ok: true as const }
+}
+
+export async function createPageForToken(
+  userId: string,
+  tokenId: string,
+  input: {
+    spaceId: string
+    parentId?: string | null
+    title?: string
+    body: Json
+  },
+) {
+  const created = await createPage(userId, {
+    spaceId: input.spaceId,
+    parentId: input.parentId,
+    title: input.title,
+  })
+  const { space: spaceRow } = await assertAccess(userId, {
+    spaceId: input.spaceId,
+  })
+  const db = getDb()
+  await db
+    .update(page)
+    .set({
+      body: input.body,
+      bodyText: await indexedBodyText(spaceRow, input.body),
+      updatedBy: userId,
+      updatedAt: new Date(),
+      updatedViaTokenId: tokenId,
+    })
+    .where(eq(page.id, created.id))
+  return getPageView(userId, created.id)
+}
+
+export async function updatePageForToken(
+  userId: string,
+  tokenId: string,
+  input: { pageId: string; title?: string; body?: Json; updatedAt: unknown },
+) {
+  const access = await assertAccess(userId, { pageId: input.pageId })
+  const row = access.page
+  if (!row) notFound()
+  const expected =
+    typeof input.updatedAt === 'string' ? Date.parse(input.updatedAt) : Number.NaN
+  if (!Number.isFinite(expected) || row.updatedAt.getTime() !== expected) {
+    throw new HttpError(409, 'Conflict')
+  }
+  const title =
+    input.title === undefined ? row.title : input.title.trim() || 'Untitled'
+  const body = input.body === undefined ? (row.body as Json) : input.body
+  const bodyText = await indexedBodyText(access.space, body)
+  const db = getDb()
+  const written = await db
+    .update(page)
+    .set({
+      title,
+      body,
+      bodyText,
+      updatedBy: userId,
+      updatedAt: new Date(),
+      updatedViaTokenId: tokenId,
+    })
+    .where(and(eq(page.id, row.id), eq(page.updatedAt, row.updatedAt)))
+    .returning({ id: page.id })
+  if (written.length === 0) throw new HttpError(409, 'Conflict')
+  return getPageView(userId, row.id)
 }
 
 export async function getPersonalSpace(userId: string) {

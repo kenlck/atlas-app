@@ -29,6 +29,13 @@
       "when": 1761400000000,
       "tag": "0003_page_text",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1761500000000,
+      "tag": "0004_api_token",
+      "breakpoints": true
     }
   ]
 }

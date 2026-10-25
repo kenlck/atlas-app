@@ -1,9 +1,16 @@
+import type { ReactNode } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { initials } from '#/lib/relative-time'
 import { acceptInviteFn, declineInviteFn } from '#/server/fns'
 import type { InvitationCard } from '#/lib/teams'
 
-export function Invitations({ invites }: { invites: InvitationCard[] }) {
+export function Invitations({
+  invites,
+  children,
+}: {
+  invites: InvitationCard[]
+  children?: ReactNode
+}) {
   const router = useRouter()
   const refresh = () => {
     void router.invalidate()
@@ -12,7 +19,7 @@ export function Invitations({ invites }: { invites: InvitationCard[] }) {
   return (
     <>
       <div className="top">
-        <b>Invitations</b>
+        <b>Profile</b>
       </div>
       <div className="doc">
         <div className="col">
@@ -56,6 +63,7 @@ export function Invitations({ invites }: { invites: InvitationCard[] }) {
               </div>
             </div>
           ))}
+          {children}
         </div>
       </div>
     </>
