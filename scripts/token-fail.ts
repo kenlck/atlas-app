@@ -535,6 +535,78 @@ async function teamRemoval(base: string) {
   }
 }
 
+async function resetThroughSameImage(email: string, secret: string) {
+  const running = process.env.ATLAS_CONTAINER
+  if (!running) fail('ATLAS_CONTAINER is required')
+  const inspected = spawnSync(
+    'docker',
+    ['inspect', '-f', '{{.Config.Image}}', running],
+    { encoding: 'utf8' },
+  )
+  if (inspected.status !== 0) fail('image_inspect_failed')
+  const image = (inspected.stdout ?? '').trim()
+  if (!image.startsWith('atlas-app')) fail('image_unexpected')
+  const name = 'atlas-token-reset'
+  spawnSync('docker', ['rm', '-f', name], { encoding: 'utf8' })
+  const started = spawnSync(
+    'docker',
+    [
+      'run',
+      '-d',
+      '--name',
+      name,
+      '--network',
+      'host',
+      '-e',
+      'DATABASE_URL',
+      '-e',
+      'BETTER_AUTH_SECRET',
+      '-e',
+      'ADMIN_API_SECRET',
+      '-e',
+      'BETTER_AUTH_URL=http://127.0.0.1:3001',
+      '-e',
+      'HOST=127.0.0.1',
+      '-e',
+      'PORT=3001',
+      image,
+    ],
+    { encoding: 'utf8' },
+  )
+  if (started.status !== 0) fail('reset_container_failed')
+  const origin = 'http://127.0.0.1:3001'
+  try {
+    let ready = false
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      try {
+        const ping = await fetch(`${origin}/sign-in`)
+        await ping.text().catch(() => '')
+        if (ping.ok) {
+          ready = true
+          break
+        }
+      } catch {
+        // the second process is still booting
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+    if (!ready) fail('reset_container_down')
+    console.log('reset_image=atlas-app')
+    console.log('reset_port=3001')
+    return await fetch(`${origin}/api/admin/reset-password`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${secret}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    })
+  } finally {
+    spawnSync('docker', ['rm', '-f', name], { encoding: 'utf8' })
+    console.log('reset_container_removed=true')
+  }
+}
+
 async function reset(base: string) {
   const secret = process.env.ADMIN_API_SECRET
   if (!secret) fail('ADMIN_API_SECRET is required')
@@ -546,14 +618,7 @@ async function reset(base: string) {
     method: 'tools/list',
   })
   console.log(`before_reset_status=${before.status}`)
-  const response = await fetch(`${base}/api/admin/reset-password`, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${secret}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({ email: user.email }),
-  })
+  const response = await resetThroughSameImage(user.email, secret)
   const resetText = await response.text()
   console.log(`reset_status=${response.status}`)
   if (response.status !== 200) fail('reset_failed')

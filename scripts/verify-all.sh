@@ -381,7 +381,7 @@ require_step_log token-writes "create_denied_status=404" "update_denied_status=4
 run_step token-team ./scripts/verify-fail-conditions.sh token-team
 require_step_log token-team "before_removal_status=200" "remove_status=200" "after_removal_status=404"
 run_step token-reset ./scripts/verify-fail-conditions.sh token-reset
-require_step_log token-reset "before_reset_status=200" "reset_status=200" "pending_status=401" "password_status=200" "after_password_status=401"
+require_step_log token-reset "before_reset_status=200" "reset_status=200" "reset_image=atlas-app" "reset_container_removed=true" "pending_status=401" "password_status=200" "after_password_status=401"
 run_step token-roundtrip ./scripts/verify-fail-conditions.sh token-roundtrip
 require_step_log token-roundtrip "create_status=200" "read_status=200" "update_status=200" "list_status=200" "app_status=200" "app_title_matches=true" "last_used_set=true"
 run_step token-image ./scripts/verify-fail-conditions.sh token-image
