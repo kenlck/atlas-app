@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
-import { useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 import type { TreeNode } from '#/lib/pages'
 
 function depthPad(depth: number) {
@@ -8,6 +9,15 @@ function depthPad(depth: number) {
 
 function collectIds(nodes: TreeNode[]): string[] {
   return nodes.flatMap((node) => [node.id, ...collectIds(node.children)])
+}
+
+function ancestorIds(nodes: TreeNode[], pageId: string): string[] | null {
+  for (const node of nodes) {
+    if (node.id === pageId) return []
+    const nested = ancestorIds(node.children, pageId)
+    if (nested !== null) return [node.id, ...nested]
+  }
+  return null
 }
 
 export function PageTree({
@@ -33,6 +43,26 @@ export function PageTree({
   const [menu, setMenu] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const revealed = useRef<string | null>(null)
+
+  useEffect(() => {
+    // A title refresh must not reopen a collapse on the page that is already open.
+    if (!activeId || revealed.current === activeId) return
+    const ancestors = ancestorIds(tree, activeId)
+    if (!ancestors) return
+    revealed.current = activeId
+    setOpen((current) => {
+      let changed = false
+      const next = { ...current }
+      for (const id of ancestors) {
+        if (next[id] === false) {
+          next[id] = true
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+  }, [activeId, tree])
 
   const render = (nodes: TreeNode[], depth: number) =>
     nodes.map((node) => {
@@ -78,7 +108,10 @@ export function PageTree({
                     onClick={(event) => {
                       event.preventDefault()
                       event.stopPropagation()
-                      setOpen((current) => ({ ...current, [node.id]: !expanded }))
+                      setOpen((current) => ({
+                        ...current,
+                        [node.id]: !expanded,
+                      }))
                     }}
                   >
                     {expanded ? '▾' : '▸'}
@@ -86,7 +119,13 @@ export function PageTree({
                 ) : (
                   <span className="dot" style={{ width: 6, height: 6 }} />
                 )}
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span
+                  style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
                   {node.title}
                 </span>
               </Link>
@@ -138,7 +177,12 @@ export function PageTree({
       ) : (
         render(tree, 0)
       )}
-      <button className="it" style={{ color: 'var(--muted)' }} type="button" onClick={() => onCreate(null)}>
+      <button
+        className="it"
+        style={{ color: 'var(--muted)' }}
+        type="button"
+        onClick={() => onCreate(null)}
+      >
         + New page
       </button>
     </div>
