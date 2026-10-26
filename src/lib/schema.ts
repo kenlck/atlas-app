@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import {
   boolean,
   check,
@@ -23,6 +24,9 @@ export const user = pgTable('user', {
   createdAt: timestamp('created_at').notNull(),
   updatedAt: timestamp('updated_at').notNull(),
   mustChangePassword: boolean('must_change_password').notNull().default(false),
+  lastSpaceId: text('last_space_id').references((): AnyPgColumn => space.id, {
+    onDelete: 'set null',
+  }),
 })
 
 export const session = pgTable('session', {

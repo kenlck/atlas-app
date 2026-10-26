@@ -11,13 +11,13 @@ import {
   archivePage,
   createPage,
   getPageView,
-  getPersonalSpace,
   listPageTree,
   movePage,
   renamePage,
   savePage,
 } from '#/lib/pages'
 import { searchVisiblePages } from '#/lib/search'
+import { getDefaultSpace, touchLastSpace } from '#/lib/spaces'
 import {
   acceptInvite,
   countPendingInvites,
@@ -88,11 +88,11 @@ export const fetchSession = createServerFn({ method: 'GET' }).handler(
   },
 )
 
-export const fetchPersonalSpace = createServerFn({ method: 'GET' })
+export const fetchDefaultSpace = createServerFn({ method: 'GET' })
   .middleware([unlocked])
   .handler(async ({ context }) => {
     try {
-      return await getPersonalSpace(context.userId)
+      return await getDefaultSpace(context.userId)
     } catch (error) {
       rethrow(error)
     }
@@ -104,6 +104,7 @@ export const fetchPageTree = createServerFn({ method: 'GET' })
   .handler(async ({ data, context }) => {
     try {
       const listed = await listPageTree(context.userId, data.spaceId)
+      await touchLastSpace(context.userId, listed.space.id)
       const [spaces, pendingInvites] = await Promise.all([
         listMySpaces(context.userId),
         countPendingInvites(context.userId),
@@ -161,7 +162,9 @@ export const createPageFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ data, context }) => {
     try {
-      return await createPage(context.userId, data)
+      const view = await createPage(context.userId, data)
+      await touchLastSpace(context.userId, view.spaceId)
+      return view
     } catch (error) {
       rethrow(error)
     }
@@ -172,7 +175,9 @@ export const renamePageFn = createServerFn({ method: 'POST' })
   .validator((data: { pageId: string; title: string }) => data)
   .handler(async ({ data, context }) => {
     try {
-      return await renamePage(context.userId, data)
+      const view = await renamePage(context.userId, data)
+      await touchLastSpace(context.userId, view.spaceId)
+      return view
     } catch (error) {
       rethrow(error)
     }
@@ -183,7 +188,9 @@ export const savePageFn = createServerFn({ method: 'POST' })
   .validator((data: { pageId: string; title: string; body: Json }) => data)
   .handler(async ({ data, context }) => {
     try {
-      return await savePage(context.userId, data)
+      const view = await savePage(context.userId, data)
+      await touchLastSpace(context.userId, view.spaceId)
+      return view
     } catch (error) {
       rethrow(error)
     }
@@ -194,7 +201,9 @@ export const movePageFn = createServerFn({ method: 'POST' })
   .validator((data: { pageId: string; parentId: string | null }) => data)
   .handler(async ({ data, context }) => {
     try {
-      return await movePage(context.userId, data)
+      const view = await movePage(context.userId, data)
+      await touchLastSpace(context.userId, view.spaceId)
+      return view
     } catch (error) {
       rethrow(error)
     }
