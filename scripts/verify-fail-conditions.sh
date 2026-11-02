@@ -645,6 +645,27 @@ recipe_8() {
     pnpm exec tsx scripts/verify-client-ip.ts
 }
 
+# Issue #10 item 2. Bad bearers fill one IP's bucket. A valid bearer from
+# another IP still resets, and a successful reset does not consume the bucket.
+# An inherited DATABASE_URL is not passed to the checker.
+recipe_10() {
+  if [[ -z "${DATABASE_URL:-}" ]]; then
+    echo "inherited_database_url=absent"
+    return 1
+  fi
+  echo "inherited_database_url=ignored"
+  if [[ -z "${TEST_DATABASE_URL:-}" ]]; then
+    echo "TEST_DATABASE_URL is required"
+    return 1
+  fi
+  echo "CMD env -u DATABASE_URL -u ADMIN_API_SECRET pnpm exec tsx scripts/verify-admin-bearer.ts"
+  env -u DATABASE_URL -u ADMIN_API_SECRET \
+    TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+    BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://127.0.0.1:3000}" \
+    BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-}" \
+    pnpm exec tsx scripts/verify-admin-bearer.ts
+}
+
 recipe_9() {
   : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
   echo "CMD pnpm exec tsx scripts/verify-fail-conditions.ts fail9"
@@ -728,6 +749,16 @@ recipe_4_7() {
   require_database_url
   echo "CMD pnpm exec tsx scripts/search-fail.ts 4-7"
   pnpm exec tsx scripts/search-fail.ts 4-7
+}
+
+recipe_13() {
+  echo "CMD pnpm exec tsx scripts/sidebar-untitled.ts"
+  pnpm exec tsx scripts/sidebar-untitled.ts
+}
+
+recipe_20() {
+  echo "CMD pnpm exec tsx scripts/date-paste-fail.ts"
+  pnpm exec tsx scripts/date-paste-fail.ts
 }
 
 recipe_token_revoked() {
@@ -838,6 +869,12 @@ recipe_whiteboard() {
   pnpm exec tsx scripts/whiteboard-fail.ts "$1"
 }
 
+recipe_10_3() {
+  require_database_url
+  echo "CMD pnpm exec tsx scripts/move-cycle.ts"
+  pnpm exec tsx scripts/move-cycle.ts
+}
+
 recipe_healthcheck() {
   local headers body code location_count
   headers=$(mktemp)
@@ -881,6 +918,7 @@ case "${1:-}" in
   8) run_recipe recipe_8 ;;
   9) run_recipe recipe_9 ;;
   9a) run_recipe recipe_9a ;;
+  10) run_recipe recipe_10 ;;
   5-1) run_recipe recipe_5_1 ;;
   5-2) run_recipe recipe_5_2 ;;
   5-3) run_recipe recipe_5_3 ;;
@@ -892,6 +930,8 @@ case "${1:-}" in
   4-5) run_recipe recipe_4_5 ;;
   4-6) run_recipe recipe_4_6 ;;
   4-7) run_recipe recipe_4_7 ;;
+  13) run_recipe recipe_13 ;;
+  20) run_recipe recipe_20 ;;
   token-revoked) run_recipe recipe_token_revoked ;;
   token-cross) run_recipe recipe_token_cross ;;
   token-secret) run_recipe recipe_token_secret ;;
@@ -923,6 +963,7 @@ case "${1:-}" in
   7-11) run_recipe recipe_whiteboard archive ;;
   7-12) run_recipe recipe_whiteboard scroll ;;
   7-13) run_recipe recipe_whiteboard retry ;;
+  10-3) run_recipe recipe_10_3 ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     echo "all runs in-process checks and vitest, which drops the public schema"
@@ -931,7 +972,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|10-3|all]" >&2
     exit 2
     ;;
 esac

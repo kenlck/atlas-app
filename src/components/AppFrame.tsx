@@ -117,7 +117,13 @@ export function AppFrame({
     await flushEditor()
     const created = await createPageFn({ data: { spaceId, parentId, kind } })
     setDrawer(false)
-    await router.invalidate()
+    // The tree loader is already on screen, so a normal invalidate refetches in
+    // the background and this navigation drops that result. Wait for the space
+    // tree before opening the page, including a page still titled Untitled.
+    await router.invalidate({
+      filter: (match) => match.routeId === '/_app/s/$spaceId',
+      sync: true,
+    })
     await navigate({
       to: '/s/$spaceId/p/$pageId',
       params: { spaceId, pageId: created.id },
