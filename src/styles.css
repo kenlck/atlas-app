@@ -33,8 +33,6 @@
   --drawer-breakpoint: 900px;
 }
 
-@custom-media --atlas-drawer (width < 900px);
-
 * {
   box-sizing: border-box;
 }
@@ -251,6 +249,31 @@ body {
   display: flex;
   gap: 16px;
   align-items: center;
+  flex-shrink: 0;
+}
+
+.crumbs {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.create-page {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 6px 0;
+  flex-shrink: 0;
+}
+
+.create-page:hover {
+  color: var(--ink);
 }
 
 .tool {
@@ -1715,7 +1738,7 @@ body {
   flex-shrink: 0;
 }
 
-@media (--atlas-drawer) {
+@media (width < 900px) {
   .menu-btn {
     display: grid;
     position: absolute;

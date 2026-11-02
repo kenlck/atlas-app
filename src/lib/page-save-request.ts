@@ -2,6 +2,7 @@ import type { Json } from './body-text'
 import { HttpError } from './http'
 import { savePage } from './pages'
 import { requireUnlockedSession } from './session'
+import { touchLastSpace } from './spaces'
 
 function appOrigin() {
   const raw = process.env.BETTER_AUTH_URL
@@ -70,7 +71,8 @@ export async function handlePageSave(request: Request) {
   if (!parsed) return json({ error: 'Bad request' }, 400)
   try {
     const session = await requireUnlockedSession()
-    await savePage(session.user.id, parsed)
+    const view = await savePage(session.user.id, parsed)
+    await touchLastSpace(session.user.id, view.spaceId)
     return new Response(null, { status: 204 })
   } catch (error) {
     if (error instanceof HttpError) {

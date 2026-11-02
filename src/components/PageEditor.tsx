@@ -22,6 +22,7 @@ import { relativeTime } from '#/lib/relative-time'
 import { savePageFn } from '#/server/fns'
 import { DateChip } from '#/lib/date-chip'
 import { TableCursor } from '#/lib/table-cursor'
+import { useSpaceOutlet } from './AppFrame'
 import { DatePickerHost } from './DatePicker'
 import { EditorToolbar } from './EditorToolbar'
 import { createMentionExtension } from './MentionExtension'
@@ -67,6 +68,7 @@ function clearDraft(pageId: string) {
 
 export function PageEditor({ page }: { page: PageView }) {
   const router = useRouter()
+  const { createChild } = useSpaceOutlet()
   const draftRef = useRef(readDraft(page.id))
   const draft = draftRef.current
   const [title, setTitle] = useState(page.title)
@@ -137,7 +139,7 @@ export function PageEditor({ page }: { page: PageView }) {
 
   const schedule = () => {
     dirtyRef.current = true
-    writeDraft(pageIdRef.current, titleRef.current, bodyRef.current as Json)
+    writeDraft(pageIdRef.current, titleRef.current, bodyRef.current)
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => {
       void flushSaveRef.current()
@@ -232,7 +234,7 @@ export function PageEditor({ page }: { page: PageView }) {
       const snapshot = {
         pageId: pageIdRef.current,
         title: titleRef.current,
-        body: bodyRef.current as Json,
+        body: bodyRef.current,
       }
       queueRef.current.update(snapshot)
       dirtyRef.current = false
@@ -251,17 +253,26 @@ export function PageEditor({ page }: { page: PageView }) {
   return (
     <>
       <div className="top">
-        {page.breadcrumbs.map((crumb, index) => (
-          <span key={crumb.id}>
-            {index > 0 ? <span> / </span> : null}
-            {index === page.breadcrumbs.length - 1 ? (
-              <b>{crumb.title}</b>
-            ) : (
-              crumb.title
-            )}
-          </span>
-        ))}
+        <div className="crumbs">
+          {page.breadcrumbs.map((crumb, index) => (
+            <span key={crumb.id}>
+              {index > 0 ? <span> / </span> : null}
+              {index === page.breadcrumbs.length - 1 ? (
+                <b>{crumb.title}</b>
+              ) : (
+                crumb.title
+              )}
+            </span>
+          ))}
+        </div>
         <div className="r">
+          <button
+            type="button"
+            className="create-page"
+            onClick={() => createChild(page.id)}
+          >
+            Create page
+          </button>
           <span className="save">
             {saveState === 'saving'
               ? 'Saving'

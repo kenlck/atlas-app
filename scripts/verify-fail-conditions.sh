@@ -838,6 +838,21 @@ recipe_10_3() {
   pnpm exec tsx scripts/move-cycle.ts
 }
 
+recipe_healthcheck() {
+  local headers body code location_count
+  headers=$(mktemp)
+  body=$(mktemp)
+  code=$(curl -sS -D "$headers" -o "$body" -w '%{http_code}' "${BASE_URL%/}/healthcheck")
+  location_count=$(grep -ci '^location:' "$headers" || true)
+  echo "healthcheck_status=${code}"
+  if [[ "$location_count" == "0" ]]; then
+    echo "healthcheck_location=absent"
+  else
+    echo "healthcheck_location=present"
+  fi
+  rm -f "$headers" "$body"
+  [[ "$code" == "200" && "$location_count" == "0" ]]
+}
 
 case "${1:-}" in
   1|fail1) run_recipe recipe_1 ;;
@@ -894,6 +909,7 @@ case "${1:-}" in
   token-body) run_recipe recipe_token_body ;;
   token-search) run_recipe recipe_token_search ;;
   token-mention) run_recipe recipe_token_mention ;;
+  healthcheck) run_recipe recipe_healthcheck ;;
   10-3) run_recipe recipe_10_3 ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
@@ -903,7 +919,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|10-3|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|10-3|all]" >&2
     exit 2
     ;;
 esac

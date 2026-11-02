@@ -1,5 +1,5 @@
-import { createFileRoute, getRouteApi, useNavigate } from '@tanstack/react-router'
-import { createPageFn } from '#/server/fns'
+import { createFileRoute, getRouteApi } from '@tanstack/react-router'
+import { useSpaceOutlet } from '#/components/AppFrame'
 
 const spaceRoute = getRouteApi('/_app/s/$spaceId')
 
@@ -8,9 +8,8 @@ export const Route = createFileRoute('/_app/s/$spaceId/')({
 })
 
 function EmptySpace() {
-  const { spaceId } = Route.useParams()
   const { tree } = spaceRoute.useLoaderData()
-  const navigate = useNavigate()
+  const { createRoot } = useSpaceOutlet()
 
   return (
     <>
@@ -22,19 +21,14 @@ function EmptySpace() {
           {tree.length === 0 ? (
             <>
               <h1>No pages yet</h1>
-              <p className="empty">Create a page to start writing in this space.</p>
+              <p className="empty">
+                Create a page to start writing in this space.
+              </p>
               <button
                 className="btn"
                 style={{ width: 'auto', padding: '0 12px' }}
                 type="button"
-                onClick={() =>
-                  void createPageFn({ data: { spaceId } }).then((created) =>
-                    navigate({
-                      to: '/s/$spaceId/p/$pageId',
-                      params: { spaceId, pageId: created.id },
-                    }),
-                  )
-                }
+                onClick={() => createRoot()}
               >
                 + New page
               </button>
@@ -42,7 +36,9 @@ function EmptySpace() {
           ) : (
             <>
               <h1>Select a page</h1>
-              <p className="empty">Choose a page from the sidebar, or create a new one.</p>
+              <p className="empty">
+                Choose a page from the sidebar, or create a new one.
+              </p>
             </>
           )}
         </div>

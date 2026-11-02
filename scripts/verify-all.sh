@@ -374,6 +374,8 @@ run_step docker-build build_image
 run_step psql ensure_psql
 run_step verify-migrate migrate_image
 run_step verify-start start_image
+run_step healthcheck ./scripts/verify-fail-conditions.sh healthcheck
+require_step_log healthcheck "healthcheck_status=200" "healthcheck_location=absent"
 run_step token-revoked ./scripts/verify-fail-conditions.sh token-revoked
 require_step_log token-revoked "before_revoke_status=200" "revoked_status=401"
 run_step token-cross ./scripts/verify-fail-conditions.sh token-cross

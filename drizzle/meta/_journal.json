@@ -36,6 +36,13 @@
       "when": 1761500000000,
       "tag": "0004_api_token",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1761600000000,
+      "tag": "0005_user_last_space",
+      "breakpoints": true
     }
   ]
 }
