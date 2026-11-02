@@ -463,6 +463,10 @@ run_step fail4-6 ./scripts/verify-fail-conditions.sh 4-6
 require_step_log fail4-6 "table_label_visible=true" "mention_label_visible=true" "date_label_visible=true"
 run_step fail4-7 ./scripts/verify-fail-conditions.sh 4-7
 require_step_log fail4-7 "safe_amp=200" "safe_paren=200" "safe_prefix_syntax=200" "safe_quote=200" "safe_backslash=200" "safe_emoji=200" "safe_empty=200" "safe_one=200"
+run_step fail13 ./scripts/verify-fail-conditions.sh 13
+require_step_log fail13 "sidebar_untitled=true" "sidebar_active=true" "sidebar_empty=false" "document_loads_after_create=0"
+run_step fail20 ./scripts/verify-fail-conditions.sh 20
+require_step_log fail20 "timestamp_text=true" "word_text=true" "invalid_day_text=true" "valid_chip=true" "blank_chip=false"
 run_step screenshots pnpm visual-shots
 run_step baselines run_baselines
 run_step baseline-side-by-side run_side_by_side

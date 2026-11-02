@@ -730,6 +730,16 @@ recipe_4_7() {
   pnpm exec tsx scripts/search-fail.ts 4-7
 }
 
+recipe_13() {
+  echo "CMD pnpm exec tsx scripts/sidebar-untitled.ts"
+  pnpm exec tsx scripts/sidebar-untitled.ts
+}
+
+recipe_20() {
+  echo "CMD pnpm exec tsx scripts/date-paste-fail.ts"
+  pnpm exec tsx scripts/date-paste-fail.ts
+}
+
 recipe_token_revoked() {
   : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
   echo "CMD pnpm exec tsx scripts/token-fail.ts revoked"
@@ -886,6 +896,8 @@ case "${1:-}" in
   4-5) run_recipe recipe_4_5 ;;
   4-6) run_recipe recipe_4_6 ;;
   4-7) run_recipe recipe_4_7 ;;
+  13) run_recipe recipe_13 ;;
+  20) run_recipe recipe_20 ;;
   token-revoked) run_recipe recipe_token_revoked ;;
   token-cross) run_recipe recipe_token_cross ;;
   token-secret) run_recipe recipe_token_secret ;;
@@ -912,7 +924,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|all]" >&2
     exit 2
     ;;
 esac
