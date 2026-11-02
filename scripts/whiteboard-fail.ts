@@ -322,6 +322,7 @@ async function recipeCreate(base: string) {
   const canvas = await page.locator('.excalidraw').count()
   expectLine('whiteboard_created', canvas > 0, true)
   await page.getByRole('button', { name: 'Create page' }).click()
+  await page.locator('.top .new-page').getByRole('button', { name: 'Page', exact: true }).click()
   await page.locator('.doc-editor').waitFor()
   const pens = await page.locator('.tree svg.pen').count()
   const rows = await page.locator('.tree a.it').count()

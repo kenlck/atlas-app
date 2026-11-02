@@ -22,7 +22,7 @@ import { SearchPanel } from './SearchPanel'
 import { Sidebar } from './Sidebar'
 
 export type SpaceOutlet = {
-  createChild: (parentId: string) => void
+  createChild: (parentId: string, kind?: 'doc' | 'whiteboard') => void
   createRoot: (kind?: 'doc' | 'whiteboard') => void
 }
 
@@ -154,8 +154,8 @@ export function AppFrame({
     }
 
   const spaceOutlet: SpaceOutlet = {
-    createChild: (parentId) => {
-      void create(parentId, 'doc')
+    createChild: (parentId, kind = 'doc') => {
+      void create(parentId, kind)
     },
     createRoot: (kind = 'doc') => {
       void create(null, kind)

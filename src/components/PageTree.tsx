@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import type { TreeNode } from '#/lib/pages'
+import { NewPageMenu } from './NewPageMenu'
 
 function depthPad(depth: number) {
   return { paddingLeft: `${8 + 18 * depth}px` }
@@ -54,7 +55,6 @@ export function PageTree({
     Object.fromEntries(collectIds(tree).map((id) => [id, true])),
   )
   const [menu, setMenu] = useState<string | null>(null)
-  const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const expandedFor = useRef<string | null>(null)
@@ -187,7 +187,6 @@ export function PageTree({
       className="tree"
       onClick={() => {
         setMenu(null)
-        setAdding(false)
       }}
     >
       {tree.length === 0 ? (
@@ -197,40 +196,12 @@ export function PageTree({
       ) : (
         render(tree, 0)
       )}
-      <div className="new-page" onClick={(event) => event.stopPropagation()}>
-        <button
-          className="it"
-          style={{ color: 'var(--muted)' }}
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={adding}
-          onClick={() => setAdding((open) => !open)}
-        >
-          + New page
-        </button>
-        {adding ? (
-          <div className="menu" role="menu">
-            <button
-              type="button"
-              onClick={() => {
-                setAdding(false)
-                onCreate(null, 'doc')
-              }}
-            >
-              Page
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAdding(false)
-                onCreate(null, 'whiteboard')
-              }}
-            >
-              Whiteboard
-            </button>
-          </div>
-        ) : null}
-      </div>
+      <NewPageMenu
+        label="+ New page"
+        className="it"
+        style={{ color: 'var(--muted)' }}
+        onChoose={(kind) => onCreate(null, kind)}
+      />
     </div>
   )
 }

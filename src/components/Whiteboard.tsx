@@ -9,6 +9,7 @@ import {
 import { relativeTime } from '#/lib/relative-time'
 import type { PageView } from '#/lib/pages'
 import { useSpaceOutlet } from './AppFrame'
+import { NewPageMenu } from './NewPageMenu'
 
 type SaveState = 'saved' | 'saving' | 'error' | 'conflict'
 
@@ -159,9 +160,11 @@ export function Whiteboard({ page }: { page: PageView }) {
           ))}
         </div>
         <div className="r">
-          <button type="button" className="create-page" onClick={() => createChild(page.id)}>
-            Create page
-          </button>
+          <NewPageMenu
+            label="Create page"
+            className="create-page"
+            onChoose={(kind) => createChild(page.id, kind)}
+          />
           <span className="save">
             {saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : ''}
           </span>

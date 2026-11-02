@@ -340,7 +340,8 @@ body {
   padding-bottom: 80px;
 }
 
-.tree .new-page .menu {
+.tree .new-page .menu,
+.top .new-page .menu {
   left: 0;
   top: 100%;
   bottom: auto;
