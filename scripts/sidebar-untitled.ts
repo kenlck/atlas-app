@@ -33,7 +33,12 @@ async function main() {
     await page.getByRole('heading', { name: 'No pages yet' }).waitFor()
     documentLoads = 0
     const before = page.url()
-    await page.getByRole('button', { name: '+ New page' }).last().click()
+    const create = page.getByRole('button', { name: '+ New page' }).last()
+    await create.click()
+    await create
+      .locator('xpath=..')
+      .getByRole('button', { name: 'Page', exact: true })
+      .click()
     await page.waitForFunction(
       (href) => window.location.href !== href,
       before,
