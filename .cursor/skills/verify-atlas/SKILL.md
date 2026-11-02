@@ -83,9 +83,24 @@ Prefer the recipe script. It is the maintained check for issue 1.
 ./scripts/verify-fail-conditions.sh 4-5
 ./scripts/verify-fail-conditions.sh 4-6
 ./scripts/verify-fail-conditions.sh 4-7
+./scripts/verify-fail-conditions.sh 7-1
+./scripts/verify-fail-conditions.sh 7-2
+./scripts/verify-fail-conditions.sh 7-3
+./scripts/verify-fail-conditions.sh 7-4
+./scripts/verify-fail-conditions.sh 7-5
+./scripts/verify-fail-conditions.sh 7-6
+./scripts/verify-fail-conditions.sh 7-7
+./scripts/verify-fail-conditions.sh 7-8
+./scripts/verify-fail-conditions.sh 7-9
+./scripts/verify-fail-conditions.sh 7-10
+./scripts/verify-fail-conditions.sh 7-11
+./scripts/verify-fail-conditions.sh 7-12
+./scripts/verify-fail-conditions.sh 7-13
 ```
 
 Each recipe prints `START <utc> sha=<head>` and `END <utc> sha=<head>`. A non-zero exit means that check failed. `5d` reads `docker logs` for its own container and greps the full `admin_audit` row. `5f` and `5g` grep that audit row for the secret, the temporary password, and the new password. `5a`, `5e`, `5b`, `5c`, `5d`, `5h`, and `6` start their own containers from `ATLAS_IMAGE` (default `atlas-app`). `5h` uses a fresh process so the in-memory rate limit starts at zero. `5f` performs two resets on the shared app. `5g` performs one more. That stays under the limit of five. Recipe `5b` does not time requests. Constant-time comparison is the unit test `rejects a wrong secret, returns a temp password once, locks the user, and audits` in `tests/admin-reset.test.ts`.
+
+Issue 7 recipes cover the team whiteboard. `7-1` expects `whiteboard_created=true` and `sidebar_row_differs=true`. `7-2` expects 404 for an outsider and a removed member by page id, drawing id, and personal token, with the same body as a missing page, and `outsider_search_visible=false`. `7-3` expects `reload_scene_identical=true`. `7-4` expects `flush_hidden_scene_identical=true` after autosave is aborted and the tab is hidden two seconds later. `7-5` expects `stale_status=409`, `stored_unchanged=true`, and `reload_prompt=true`. `7-6` expects `oversize_status=413` and `stored_oversize=false`. `7-7` expects `files_status=400` and `image_status=400`. `7-8` expects `title_visible=true`, `label_visible=true`, and `scene_secret_visible=false`. `7-9` expects `doc_excalidraw_requests=0`, `watermark=absent`, and the library, live collaboration, and image tool hidden. `7-10` expects `read_body=Whiteboard, open in Atlas to view`, `update_status=200`, and `scene_unchanged=true`. `7-11` expects the archived board and its child hidden from the tree, search, MCP, and the drawing endpoint. `7-12` expects `scrollbar_1280=false` and `scrollbar_390=false`. `7-13` expects `retry_banner=true`.
 
 Issue 4 recipes call `searchVisiblePages`. `4-1` expects `cross_team_visible=false`, `other_personal_visible=false`, `archived_visible=false`, and `archived_child_visible=false`. `4-2` expects `percent_literal=true`, `underscore_literal=true`, and `backslash_literal=true`. `4-3` expects `body_only_visible=true`. `4-4` expects `autosave_visible=true`. `4-5` expects `backfill_body_text=true`. `4-6` expects `table_label_visible=true`, `mention_label_visible=true`, and `date_label_visible=true`. `4-7` hits `GET /api/atlas/search` and expects 200 for `a&b`, `(`, `plan:*`, a quote, a backslash, an emoji, an empty query, and a one-character query. The database URL comes from the environment and is not printed.
 

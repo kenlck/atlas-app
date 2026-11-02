@@ -463,6 +463,32 @@ run_step fail4-6 ./scripts/verify-fail-conditions.sh 4-6
 require_step_log fail4-6 "table_label_visible=true" "mention_label_visible=true" "date_label_visible=true"
 run_step fail4-7 ./scripts/verify-fail-conditions.sh 4-7
 require_step_log fail4-7 "safe_amp=200" "safe_paren=200" "safe_prefix_syntax=200" "safe_quote=200" "safe_backslash=200" "safe_emoji=200" "safe_empty=200" "safe_one=200"
+run_step fail7-1 ./scripts/verify-fail-conditions.sh 7-1
+require_step_log fail7-1 "whiteboard_created=true" "sidebar_row_differs=true"
+run_step fail7-2 ./scripts/verify-fail-conditions.sh 7-2
+require_step_log fail7-2 "outsider_page_get=404" "outsider_page_post=404" "outsider_drawing_get=404" "outsider_drawing_post=404" "token_page_get=404" "token_page_post=404" "token_drawing_get=404" "token_drawing_post=404" "removed_page_get=404" "removed_page_post=404" "removed_token_get=404" "removed_token_post=404" "missing_status=404" "outsider_body_matches_missing=true" "token_body_matches_missing=true" "outsider_search_visible=false" "removed_search_visible=false"
+run_step fail7-3 ./scripts/verify-fail-conditions.sh 7-3
+require_step_log fail7-3 "reload_scene_identical=true"
+run_step fail7-4 ./scripts/verify-fail-conditions.sh 7-4
+require_step_log fail7-4 "flush_hidden_scene_identical=true" "waited_ms=2000" "autosave_aborted=true"
+run_step fail7-5 ./scripts/verify-fail-conditions.sh 7-5
+require_step_log fail7-5 "stale_status=409" "stale_body=true" "stored_unchanged=true" "reload_prompt=true"
+run_step fail7-6 ./scripts/verify-fail-conditions.sh 7-6
+require_step_log fail7-6 "oversize_status=413" "stored_oversize=false"
+run_step fail7-7 ./scripts/verify-fail-conditions.sh 7-7
+require_step_log fail7-7 "files_status=400" "image_status=400" "stored_rejected=false"
+run_step fail7-8 ./scripts/verify-fail-conditions.sh 7-8
+require_step_log fail7-8 "title_visible=true" "label_visible=true" "scene_secret_visible=false"
+run_step fail7-9 ./scripts/verify-fail-conditions.sh 7-9
+require_step_log fail7-9 "doc_excalidraw_requests=0" "board_excalidraw_requests=true" "watermark=absent" "library_visible=false" "collab_visible=false" "image_tool_visible=false"
+run_step fail7-10 ./scripts/verify-fail-conditions.sh 7-10
+require_step_log fail7-10 "read_body=Whiteboard, open in Atlas to view" "update_status=200" "scene_unchanged=true" "title_updated=true" "body_only_status=200"
+run_step fail7-11 ./scripts/verify-fail-conditions.sh 7-11
+require_step_log fail7-11 "archived_tree=false" "archived_search=false" "archived_mcp_status=404" "archived_drawing_status=404" "child_hidden=true"
+run_step fail7-12 ./scripts/verify-fail-conditions.sh 7-12
+require_step_log fail7-12 "scrollbar_1280=false" "scrollbar_390=false"
+run_step fail7-13 ./scripts/verify-fail-conditions.sh 7-13
+require_step_log fail7-13 "retry_banner=true"
 run_step screenshots pnpm visual-shots
 run_step baselines run_baselines
 run_step baseline-side-by-side run_side_by_side

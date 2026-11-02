@@ -8,6 +8,7 @@ import { chromium, type BrowserContext, type Page } from 'playwright'
 import {
   assertLocalBaseUrl,
   assertLocalDatabaseUrl,
+  clickNewDoc,
   submitAuthForm,
   waitForClient,
 } from './verify-local.ts'
@@ -190,7 +191,7 @@ async function createPage(page: Page) {
     )
   })
   await page.goto(previous, { waitUntil: 'networkidle' })
-  await page.getByRole('button', { name: '+ New page' }).last().click()
+  await clickNewDoc(page)
   await page.waitForFunction((href) => window.location.href !== href, previous)
   await page.locator('#page-title').waitFor()
   await page.locator('.doc-editor').waitFor()
@@ -502,7 +503,7 @@ async function fail2(dir: string) {
     if (!isAppServerFn(request.url())) return
     fnUrls.add(`${request.method()} ${request.url()}`)
   })
-  await page.getByRole('button', { name: '+ New page' }).last().click()
+  await clickNewDoc(page)
   await page.locator('#page-title').waitFor()
   console.log('observed_server_fns')
   for (const line of fnUrls) console.log(line.split('?')[0])
@@ -720,7 +721,7 @@ async function captureServerFns(context: BrowserContext) {
     })
   })
   await page.goto(`${BASE_URL}/s/${space}`, { waitUntil: 'networkidle' })
-  await page.getByRole('button', { name: '+ New page' }).last().click()
+  await clickNewDoc(page)
   await page.locator('#page-title').waitFor()
   await page.locator('.doc-editor').waitFor()
   const getFn = seen.find(

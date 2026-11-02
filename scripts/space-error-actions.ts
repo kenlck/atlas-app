@@ -1,5 +1,5 @@
 import { chromium, type Page, type Request } from 'playwright'
-import { assertLocalBaseUrl, submitAuthForm } from './verify-local.ts'
+import { assertLocalBaseUrl, clickNewDoc, submitAuthForm } from './verify-local.ts'
 
 const BASE_URL = assertLocalBaseUrl(process.env.BASE_URL ?? 'http://127.0.0.1:3000')
 const PASSWORD = 'space-error-password'
@@ -155,7 +155,7 @@ async function main() {
     await page.getByRole('heading', { name: 'No pages yet' }).waitFor()
 
     const previous = page.url()
-    await page.getByRole('button', { name: '+ New page' }).last().click()
+    await clickNewDoc(page)
     await page.waitForFunction((href) => window.location.href !== href, previous)
     await page.locator('#page-title').waitFor()
     const pageId = new URL(page.url()).pathname.split('/').pop() ?? ''

@@ -1375,6 +1375,7 @@ async function fail6(dir: string) {
     waitUntil: 'networkidle',
   })
   await editor.getByRole('button', { name: '+ New page' }).first().click()
+  await editor.getByRole('button', { name: 'Page', exact: true }).click()
   await editor.locator('.doc-editor').waitFor()
   await editor.locator('.doc-editor').click()
   await editor.keyboard.type('@')
