@@ -165,6 +165,10 @@ prepare_database() {
     echo "inherited_database_url=ignored"
     unset DATABASE_URL
   fi
+  if [[ -n "${TEST_DATABASE_URL:-}" ]]; then
+    echo "inherited_test_database_url=ignored"
+    unset TEST_DATABASE_URL
+  fi
 
   local port password ready="false" i lines
   port=$(pick_port) || return 1
@@ -279,7 +283,28 @@ build_image() {
   export ATLAS_IMAGE="atlas-app:${SHA}"
 }
 
+refuse_remote_database() {
+  python3 - << 'PY'
+import os
+import sys
+from urllib.parse import urlparse
+
+raw = os.environ.get("DATABASE_URL") or ""
+parsed = urlparse(raw)
+host = (parsed.hostname or "").lower()
+if parsed.scheme not in {"postgres", "postgresql"} or host not in {"localhost", "127.0.0.1", "::1"}:
+    sys.stderr.write("refusing non-local DATABASE_URL\n")
+    raise SystemExit(1)
+PY
+}
+
+migrate_schema() {
+  refuse_remote_database
+  pnpm db:migrate
+}
+
 migrate_image() {
+  refuse_remote_database
   echo "CMD docker run --rm --network host -e DATABASE_URL ${ATLAS_IMAGE} node migrate.mjs"
   docker run --rm --network host -e DATABASE_URL "$ATLAS_IMAGE" node migrate.mjs
 }
@@ -358,9 +383,11 @@ PY
 
 run_step postgres prepare_database
 run_step install pnpm install --frozen-lockfile
-run_step migrate pnpm db:migrate
+run_step migrate migrate_schema
 run_step typecheck pnpm typecheck
 run_step test pnpm test
+run_step test-db-guard ./scripts/verify-fail-conditions.sh test-db-guard
+require_step_log test-db-guard "test_db_guard_remote_refused=true" "result=pass"
 run_step build pnpm build
 run_step playwright-install pnpm exec playwright install --with-deps chromium
 start_server || exit 1

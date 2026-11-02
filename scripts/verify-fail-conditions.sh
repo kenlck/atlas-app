@@ -35,6 +35,19 @@ if parsed.scheme not in {"postgres", "postgresql"} or host not in {"localhost", 
 PY
 fi
 
+if [[ -n "${TEST_DATABASE_URL:-}" ]]; then
+  python3 - "$TEST_DATABASE_URL" << 'PY'
+import sys
+from urllib.parse import urlparse
+
+parsed = urlparse(sys.argv[1])
+host = (parsed.hostname or "").lower()
+if parsed.scheme not in {"postgres", "postgresql"} or host not in {"localhost", "127.0.0.1", "::1"}:
+    sys.stderr.write("refusing non-local TEST_DATABASE_URL\n")
+    raise SystemExit(2)
+PY
+fi
+
 echo "verify-fail-conditions BASE_URL set ADMIN_API_SECRET=$([[ -n "$ADMIN_API_SECRET" ]] && echo set || echo unset)"
 
 run_recipe() {
@@ -364,6 +377,10 @@ recipe_editor() {
 
 recipe_space_error() {
   pnpm exec tsx scripts/space-error-actions.ts
+}
+
+recipe_test_db_guard() {
+  pnpm exec tsx scripts/test-db-guard.ts
 }
 
 recipe_design_lock() {
@@ -981,6 +998,7 @@ case "${1:-}" in
   8-10) run_recipe recipe_diagram clean ;;
   8-11) run_recipe recipe_diagram foreign ;;
   8-12) run_recipe recipe_diagram serve ;;
+  test-db-guard) run_recipe recipe_test_db_guard ;;
   10-3) run_recipe recipe_10_3 ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
@@ -990,7 +1008,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|8-1|8-2|8-3|8-4|8-5|8-6|8-7|8-8|8-9|8-10|8-11|8-12|10-3|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|8-1|8-2|8-3|8-4|8-5|8-6|8-7|8-8|8-9|8-10|8-11|8-12|test-db-guard|10-3|all]" >&2
     exit 2
     ;;
 esac
