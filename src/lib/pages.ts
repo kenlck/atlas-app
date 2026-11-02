@@ -297,8 +297,9 @@ async function indexedBodyText(spaceRow: Space, body: Json) {
 }
 
 // A block keeps a drawing id only when that row already belongs to this page
-// and no earlier block in the body uses it. Anything else is copied.
-async function adoptDiagrams(db: DrawingDb, pageId: string, body: Json) {
+// and no earlier block in the body uses it. Anything else is copied, but only
+// when the saver can open the source page. Otherwise the id is dropped.
+async function adoptDiagrams(db: DrawingDb, userId: string, pageId: string, body: Json) {
   const seen = new Set<string>()
   const walk = async (value: Json): Promise<Json> => {
     if (!value || typeof value !== 'object') return value
@@ -323,6 +324,14 @@ async function adoptDiagrams(db: DrawingDb, pageId: string, body: Json) {
         return value
       }
       if (!row) return value
+      try {
+        await assertAccess(userId, { pageId: row.pageId })
+      } catch (error) {
+        if (!(error instanceof HttpError) || error.status !== 404) throw error
+        attrs.drawingId = ''
+        record.attrs = attrs
+        return record
+      }
       const id = newId()
       await db.insert(drawing).values({
         id,
@@ -357,7 +366,7 @@ async function writeDocBody(
 ) {
   const db = getDb()
   await db.transaction(async (tx) => {
-    const adopted = await adoptDiagrams(tx, pageId, body)
+    const adopted = await adoptDiagrams(tx, userId, pageId, body)
     const rows = await tx
       .update(page)
       .set({

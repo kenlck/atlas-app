@@ -1,15 +1,11 @@
-import { isLocalPostgresHost } from '../src/lib/postgres-options'
+import { assertLocalPostgresUrl } from '../scripts/verify-local'
 
 const DEFAULT_TEST_URL = 'postgres://atlas:atlas@127.0.0.1:5432/atlas_test'
 
 function localOrThrow(source: 'TEST_DATABASE_URL' | 'DATABASE_URL' | 'default test database', raw: string) {
-  let hostname = ''
   try {
-    hostname = new URL(raw).hostname
+    assertLocalPostgresUrl(raw)
   } catch {
-    throw new Error(`${source} must be a local database`)
-  }
-  if (!isLocalPostgresHost(hostname)) {
     throw new Error(`${source} must be a local database`)
   }
   return raw

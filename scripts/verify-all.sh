@@ -284,18 +284,7 @@ build_image() {
 }
 
 refuse_remote_database() {
-  python3 - << 'PY'
-import os
-import sys
-from urllib.parse import urlparse
-
-raw = os.environ.get("DATABASE_URL") or ""
-parsed = urlparse(raw)
-host = (parsed.hostname or "").lower()
-if parsed.scheme not in {"postgres", "postgresql"} or host not in {"localhost", "127.0.0.1", "::1"}:
-    sys.stderr.write("refusing non-local DATABASE_URL\n")
-    raise SystemExit(1)
-PY
+  pnpm exec tsx scripts/assert-local-database.ts --require
 }
 
 migrate_schema() {
@@ -387,7 +376,7 @@ run_step migrate migrate_schema
 run_step typecheck pnpm typecheck
 run_step test pnpm test
 run_step test-db-guard ./scripts/verify-fail-conditions.sh test-db-guard
-require_step_log test-db-guard "test_db_guard_remote_refused=true" "result=pass"
+require_step_log test-db-guard "test_db_guard_remote_refused=true" "test_db_guard_multihost_refused=true" "test_db_guard_double_at_refused=true" "test_db_guard_encoded_multihost_refused=true" "test_db_guard_ipv6_local=true" "test_db_guard_encoded_local=true" "result=pass"
 run_step build pnpm build
 run_step playwright-install pnpm exec playwright install --with-deps chromium
 start_server || exit 1
@@ -542,6 +531,8 @@ run_step fail8-11 ./scripts/verify-fail-conditions.sh 8-11
 require_step_log fail8-11 "foreign_id_rendered=false" "foreign_id_left_in_body=false" "copied_page_id_matches=true" "copied_scene_matches=true" "result=pass"
 run_step fail8-12 ./scripts/verify-fail-conditions.sh 8-12
 require_step_log fail8-12 "svg_in_drawing_row=true" "served_svg=true" "outsider_status=404" "file_storage=false" "result=pass"
+run_step fail8-13 ./scripts/verify-fail-conditions.sh 8-13
+require_step_log fail8-13 "node_copied=false" "node_response_leaks=false" "mcp_copied=false" "mcp_response_leaks=false" "source_only=true" "result=pass"
 run_step fail10-3 ./scripts/verify-fail-conditions.sh 10-3
 require_step_log fail10-3 "grandchild_status=400" "grandchild_error_clear=true" "parents_unchanged=true" "self_status=400" "self_error_clear=true" "self_unchanged=true" "valid_status=200" "valid_parent_updated=true" "cycle_walk_within_500ms=true" "statement_timeout=false"
 run_step fail13 ./scripts/verify-fail-conditions.sh 13

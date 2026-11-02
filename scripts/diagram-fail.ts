@@ -189,8 +189,13 @@ async function mcp(base: string, token: string, name: string, args: Record<strin
   } catch {
     payload = {}
   }
-  let data: { body?: string; title?: string; updated_at?: string; hits?: Array<{ id?: string }> } =
-    {}
+  let data: {
+    id?: string
+    body?: string
+    title?: string
+    updated_at?: string
+    hits?: Array<{ id?: string }>
+  } = {}
   try {
     data = JSON.parse(payload.result?.content?.[0]?.text ?? '{}') as typeof data
   } catch {
@@ -877,6 +882,93 @@ async function recipeServe(base: string) {
   expectLine('outsider_status', denied.status, 404)
 }
 
+const stamp = crypto.randomUUID()
+const OUTSIDER_SCENE = `outsider-scene-${stamp}`
+const OUTSIDER_PREVIEW = `outsider-preview-${stamp}`
+
+function responseLeaks(text: string, sourceId: string) {
+  return text.includes(OUTSIDER_SCENE) || text.includes(OUTSIDER_PREVIEW) || text.includes(sourceId)
+}
+
+async function copiedForeignRows(sourceId: string) {
+  const rows = await getSql()<{ id: string; scene: string; preview: string | null }[]>`
+    select id, scene::text as scene, preview_svg as preview from drawing
+  `
+  return rows.filter(
+    (row) =>
+      row.id !== sourceId &&
+      (row.scene.includes(OUTSIDER_SCENE) || (row.preview ?? '').includes(OUTSIDER_PREVIEW)),
+  ).length
+}
+
+async function recipeOutsider(base: string) {
+  databaseUrl()
+  const owner = await signUp(base, 'Source')
+  const outsider = await signUp(base, 'Outsider')
+  const ownerSpace = await personalSpaceId(owner.id)
+  const outsiderSpace = await personalSpaceId(outsider.id)
+  const source = await createPage(owner.id, { spaceId: ownerSpace, title: 'Private' })
+  const created = await createDiagram(owner.id, source.id)
+  await savePage(owner.id, {
+    pageId: source.id,
+    title: 'Private',
+    body: {
+      type: 'doc',
+      content: [{ type: 'diagram', attrs: { drawingId: created.id } }],
+    },
+  })
+  const planted = await drawingRequest(base, 'POST', '/api/drawings', {
+    cookie: owner.cookie,
+    body: sceneBody(created.id, 1, {
+      elements: elements(LABEL, OUTSIDER_SCENE),
+      previewSvg: `<svg xmlns="http://www.w3.org/2000/svg"><text>${OUTSIDER_PREVIEW}</text></svg>`,
+    }),
+  })
+  expectLine('source_save_status', planted.status, 200)
+  const dest = await createPage(outsider.id, { spaceId: outsiderSpace, title: 'Mine' })
+  const saved = await savePage(outsider.id, {
+    pageId: dest.id,
+    title: 'Mine',
+    body: {
+      type: 'doc',
+      content: [{ type: 'diagram', attrs: { drawingId: created.id } }],
+    },
+  })
+  const fetched = await drawingRequest(base, 'GET', `/api/drawings?pageId=${dest.id}`, {
+    cookie: outsider.cookie,
+  })
+  expectLine('node_copied', (await copiedForeignRows(created.id)) > 0, false)
+  expectLine(
+    'node_response_leaks',
+    responseLeaks(JSON.stringify(saved), created.id) || responseLeaks(fetched.text, created.id),
+    false,
+  )
+  const token = await createToken(base, outsider.cookie, 'outsider')
+  const createdPage = await mcp(base, token, 'create_page', {
+    space_id: outsiderSpace,
+    title: 'Via agent',
+    body: `[Drawing](atlas://drawing/${encodeURIComponent(created.id)})`,
+  })
+  expectLine('mcp_status', createdPage.status, 200)
+  const mcpPageId = createdPage.data.id ?? ''
+  const mcpFetched = mcpPageId
+    ? await drawingRequest(base, 'GET', `/api/drawings?pageId=${mcpPageId}`, {
+        cookie: outsider.cookie,
+      })
+    : { status: 0, text: '' }
+  expectLine('mcp_copied', (await copiedForeignRows(created.id)) > 0, false)
+  expectLine(
+    'mcp_response_leaks',
+    responseLeaks(JSON.stringify(createdPage.data), created.id) ||
+      responseLeaks(mcpFetched.text, created.id),
+    false,
+  )
+  const rows = await getSql()<{ id: string }[]>`
+    select id from drawing where scene::text like ${'%' + OUTSIDER_SCENE + '%'}
+  `
+  expectLine('source_only', rows.length === 1 && rows[0]?.id === created.id, true)
+}
+
 const recipes: Record<string, (base: string) => Promise<void>> = {
   access: recipeAccess,
   roundtrip: recipeRoundTrip,
@@ -890,13 +982,14 @@ const recipes: Record<string, (base: string) => Promise<void>> = {
   clean: recipeClean,
   foreign: recipeForeign,
   serve: recipeServe,
+  outsider: recipeOutsider,
 }
 
 const name = process.argv[2] ?? ''
 const recipe = recipes[name]
 if (!recipe) {
   fail(
-    'usage: diagram-fail.ts access|roundtrip|remove|chunk|search|edit|archive|copy|lazy|clean|foreign|serve',
+    'usage: diagram-fail.ts access|roundtrip|remove|chunk|search|edit|archive|copy|lazy|clean|foreign|serve|outsider',
   )
 }
 

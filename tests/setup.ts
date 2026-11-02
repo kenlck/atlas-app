@@ -13,9 +13,8 @@ process.env.BETTER_AUTH_URL = process.env.BETTER_AUTH_URL || 'http://localhost:3
 process.env.ADMIN_API_SECRET =
   process.env.ADMIN_API_SECRET || 'test-admin-api-secret-32-chars-minx'
 
-const url = process.env.DATABASE_URL ?? ''
+const url = assertLocalDatabaseUrl(process.env.DATABASE_URL ?? '')
 const client = postgres(url, { max: 1, onnotice: () => {} })
-assertLocalDatabaseUrl(url)
 await client.unsafe('DROP SCHEMA IF EXISTS public CASCADE')
 await client.unsafe('CREATE SCHEMA public')
 await client.unsafe('DROP SCHEMA IF EXISTS drizzle CASCADE')
