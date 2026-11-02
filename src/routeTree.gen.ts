@@ -17,6 +17,7 @@ import { Route as SetPasswordRouteImport } from './routes/set-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as ApiDrawingsRouteImport } from './routes/api/drawings'
 import { Route as AppSSpaceIdRouteImport } from './routes/_app/s.$spaceId'
 import { Route as ApiAdminResetPasswordRouteImport } from './routes/api/admin/reset-password'
 import { Route as ApiAtlasSplatRouteImport } from './routes/api/atlas/$'
@@ -66,6 +67,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRoute,
+} as any)
+const ApiDrawingsRoute = ApiDrawingsRouteImport.update({
+  id: '/api/drawings',
+  path: '/api/drawings',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AppSSpaceIdRoute = AppSSpaceIdRouteImport.update({
   id: '/s/$spaceId',
@@ -126,6 +132,7 @@ export interface FileRoutesByFullPath {
   '/set-password': typeof SetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
+  '/api/drawings': typeof ApiDrawingsRoute
   '/s/$spaceId': typeof AppSSpaceIdRouteWithChildren
   '/api/admin/reset-password': typeof ApiAdminResetPasswordRoute
   '/api/atlas/$': typeof ApiAtlasSplatRoute
@@ -144,6 +151,7 @@ export interface FileRoutesByTo {
   '/set-password': typeof SetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
+  '/api/drawings': typeof ApiDrawingsRoute
   '/': typeof AppIndexRoute
   '/api/admin/reset-password': typeof ApiAdminResetPasswordRoute
   '/api/atlas/$': typeof ApiAtlasSplatRoute
@@ -164,6 +172,7 @@ export interface FileRoutesById {
   '/set-password': typeof SetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
+  '/api/drawings': typeof ApiDrawingsRoute
   '/_app/': typeof AppIndexRoute
   '/_app/s/$spaceId': typeof AppSSpaceIdRouteWithChildren
   '/api/admin/reset-password': typeof ApiAdminResetPasswordRoute
@@ -186,6 +195,7 @@ export interface FileRouteTypes {
     | '/set-password'
     | '/sign-in'
     | '/sign-up'
+    | '/api/drawings'
     | '/s/$spaceId'
     | '/api/admin/reset-password'
     | '/api/atlas/$'
@@ -204,6 +214,7 @@ export interface FileRouteTypes {
     | '/set-password'
     | '/sign-in'
     | '/sign-up'
+    | '/api/drawings'
     | '/'
     | '/api/admin/reset-password'
     | '/api/atlas/$'
@@ -223,6 +234,7 @@ export interface FileRouteTypes {
     | '/set-password'
     | '/sign-in'
     | '/sign-up'
+    | '/api/drawings'
     | '/_app/'
     | '/_app/s/$spaceId'
     | '/api/admin/reset-password'
@@ -244,6 +256,7 @@ export interface RootRouteChildren {
   SetPasswordRoute: typeof SetPasswordRoute
   SignInRoute: typeof SignInRoute
   SignUpRoute: typeof SignUpRoute
+  ApiDrawingsRoute: typeof ApiDrawingsRoute
   ApiAdminResetPasswordRoute: typeof ApiAdminResetPasswordRoute
   ApiAtlasSplatRoute: typeof ApiAtlasSplatRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
@@ -307,6 +320,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/api/drawings': {
+      id: '/api/drawings'
+      path: '/api/drawings'
+      fullPath: '/api/drawings'
+      preLoaderRoute: typeof ApiDrawingsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_app/s/$spaceId': {
       id: '/_app/s/$spaceId'
@@ -421,6 +441,7 @@ const rootRouteChildren: RootRouteChildren = {
   SetPasswordRoute: SetPasswordRoute,
   SignInRoute: SignInRoute,
   SignUpRoute: SignUpRoute,
+  ApiDrawingsRoute: ApiDrawingsRoute,
   ApiAdminResetPasswordRoute: ApiAdminResetPasswordRoute,
   ApiAtlasSplatRoute: ApiAtlasSplatRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,

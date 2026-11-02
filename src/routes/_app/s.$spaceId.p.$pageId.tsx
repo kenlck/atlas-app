@@ -7,6 +7,7 @@ import {
   useRouter,
 } from '@tanstack/react-router'
 import { PageEditor } from '#/components/PageEditor'
+import { Whiteboard } from '#/components/Whiteboard'
 import type { TreeNode } from '#/lib/pages'
 import { fetchPage } from '#/server/fns'
 
@@ -100,6 +101,7 @@ function PageError() {
 
 function PageRoute() {
   const page = Route.useLoaderData()
+  if (page.kind === 'whiteboard') return <Whiteboard page={page} />
   const peopleKey = page.people
     .map((person) => `${person.id}:${person.member ? 1 : 0}`)
     .join(',')

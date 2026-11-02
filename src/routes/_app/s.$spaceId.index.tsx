@@ -1,4 +1,5 @@
 import { createFileRoute, getRouteApi } from '@tanstack/react-router'
+import { useState } from 'react'
 import { useSpaceOutlet } from '#/components/AppFrame'
 
 const spaceRoute = getRouteApi('/_app/s/$spaceId')
@@ -10,6 +11,7 @@ export const Route = createFileRoute('/_app/s/$spaceId/')({
 function EmptySpace() {
   const { tree } = spaceRoute.useLoaderData()
   const { createRoot } = useSpaceOutlet()
+  const [adding, setAdding] = useState(false)
 
   return (
     <>
@@ -24,14 +26,28 @@ function EmptySpace() {
               <p className="empty">
                 Create a page to start writing in this space.
               </p>
-              <button
-                className="btn"
-                style={{ width: 'auto', padding: '0 12px' }}
-                type="button"
-                onClick={() => createRoot()}
-              >
-                + New page
-              </button>
+              <div className="new-page">
+                <button
+                  className="btn"
+                  style={{ width: 'auto', padding: '0 12px' }}
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={adding}
+                  onClick={() => setAdding((open) => !open)}
+                >
+                  + New page
+                </button>
+                {adding ? (
+                  <div className="menu" role="menu">
+                    <button type="button" onClick={() => createRoot('doc')}>
+                      Page
+                    </button>
+                    <button type="button" onClick={() => createRoot('whiteboard')}>
+                      Whiteboard
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </>
           ) : (
             <>

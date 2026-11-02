@@ -320,6 +320,68 @@ body {
   flex-shrink: 0;
 }
 
+.pen {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.new-page {
+  position: relative;
+}
+
+.new-page .menu {
+  left: 8px;
+  bottom: 32px;
+}
+
+.tree {
+  padding-bottom: 80px;
+}
+
+.tree .new-page .menu {
+  left: 0;
+  top: 100%;
+  bottom: auto;
+  margin-top: 4px;
+}
+
+.board {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.board-head {
+  padding: 16px 20px 8px;
+  flex-shrink: 0;
+}
+
+.board-canvas {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.board-frame,
+.board-frame .excalidraw {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.excalidraw .default-sidebar-trigger,
+.excalidraw button[title='Library'],
+.excalidraw .library-menu-browse-button,
+.excalidraw [data-testid='collab-button'] {
+  display: none !important;
+}
+
 .tool .style-wrap {
   position: relative;
   flex-shrink: 0;

@@ -157,8 +157,12 @@ export const fetchPage = createServerFn({ method: 'GET' })
 export const createPageFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
   .validator(
-    (data: { spaceId: string; parentId?: string | null; title?: string }) =>
-      data,
+    (data: {
+      spaceId: string
+      parentId?: string | null
+      title?: string
+      kind?: 'doc' | 'whiteboard'
+    }) => data,
   )
   .handler(async ({ data, context }) => {
     try {

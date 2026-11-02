@@ -23,7 +23,7 @@ import { Sidebar } from './Sidebar'
 
 export type SpaceOutlet = {
   createChild: (parentId: string) => void
-  createRoot: () => void
+  createRoot: (kind?: 'doc' | 'whiteboard') => void
 }
 
 const SpaceOutletContext = createContext<SpaceOutlet | null>(null)
@@ -110,9 +110,12 @@ export function AppFrame({
     void router.invalidate()
   }
 
-  const create = async (parentId: string | null) => {
+  const create = async (
+    parentId: string | null,
+    kind: 'doc' | 'whiteboard' = 'doc',
+  ) => {
     await flushEditor()
-    const created = await createPageFn({ data: { spaceId, parentId } })
+    const created = await createPageFn({ data: { spaceId, parentId, kind } })
     setDrawer(false)
     await router.invalidate()
     await navigate({
@@ -152,10 +155,10 @@ export function AppFrame({
 
   const spaceOutlet: SpaceOutlet = {
     createChild: (parentId) => {
-      void create(parentId)
+      void create(parentId, 'doc')
     },
-    createRoot: () => {
-      void create(null)
+    createRoot: (kind = 'doc') => {
+      void create(null, kind)
     },
   }
 
@@ -174,8 +177,8 @@ export function AppFrame({
         loading={loading}
         error={error}
         onRetry={onRetry}
-        onCreate={guard((parentId) => {
-          void create(parentId)
+        onCreate={guard((parentId, kind) => {
+          void create(parentId, kind ?? 'doc')
         })}
         onRename={guard((pageId, title) => {
           void rename(pageId, title)

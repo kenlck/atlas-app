@@ -70,6 +70,7 @@ export const verification = pgTable('verification', {
 })
 
 export const apiTokenScope = pgEnum('api_token_scope', ['read', 'read_write'])
+export const pageKind = pgEnum('page_kind', ['doc', 'whiteboard'])
 export const spaceKind = pgEnum('space_kind', ['personal', 'team'])
 export const teamRole = pgEnum('team_role', ['owner', 'member'])
 export const inviteStatus = pgEnum('invite_status', [
@@ -185,6 +186,7 @@ export const page = pgTable('page', {
     .references(() => space.id, { onDelete: 'cascade' }),
   parentId: text('parent_id'),
   title: text('title').notNull(),
+  kind: pageKind('kind').notNull().default('doc'),
   body: jsonb('body').notNull(),
   bodyText: text('body_text').notNull().default(''),
   position: integer('position').notNull(),
@@ -204,6 +206,19 @@ export const page = pgTable('page', {
     },
   ),
 })
+
+export const drawing = pgTable(
+  'drawing',
+  {
+    id: text('id').primaryKey(),
+    pageId: text('page_id')
+      .notNull()
+      .references(() => page.id, { onDelete: 'cascade' }),
+    scene: jsonb('scene').notNull(),
+    version: integer('version').notNull(),
+  },
+  (t) => [uniqueIndex('drawing_page_unique').on(t.pageId)],
+)
 
 export const calendarEvent = pgTable(
   'calendar_event',
@@ -269,6 +284,7 @@ export const adminAudit = pgTable('admin_audit', {
 export type User = typeof user.$inferSelect
 export type Space = typeof space.$inferSelect
 export type Page = typeof page.$inferSelect
+export type Drawing = typeof drawing.$inferSelect
 export type AdminAudit = typeof adminAudit.$inferSelect
 export type Team = typeof team.$inferSelect
 export type TeamMember = typeof teamMember.$inferSelect

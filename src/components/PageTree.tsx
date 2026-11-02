@@ -7,6 +7,19 @@ function depthPad(depth: number) {
   return { paddingLeft: `${8 + 18 * depth}px` }
 }
 
+function PenIcon() {
+  return (
+    <svg className="pen" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M11.2 1.8l3 3L5.6 13.4 2.2 14l.6-3.4L11.2 1.8z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+    </svg>
+  )
+}
+
 function collectIds(nodes: TreeNode[]): string[] {
   return nodes.flatMap((node) => [node.id, ...collectIds(node.children)])
 }
@@ -32,7 +45,7 @@ export function PageTree({
   spaceId: string
   tree: TreeNode[]
   activeId?: string
-  onCreate: (parentId: string | null) => void
+  onCreate: (parentId: string | null, kind?: 'doc' | 'whiteboard') => void
   onRename: (pageId: string, title: string) => void
   onMove: (pageId: string) => void
   onArchive: (pageId: string) => void
@@ -41,6 +54,7 @@ export function PageTree({
     Object.fromEntries(collectIds(tree).map((id) => [id, true])),
   )
   const [menu, setMenu] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const expandedFor = useRef<string | null>(null)
@@ -102,6 +116,7 @@ export function PageTree({
                   setMenu(node.id)
                 }}
               >
+                {node.kind === 'whiteboard' ? <PenIcon /> : null}
                 {hasKids ? (
                   <span
                     onClick={(event) => {
@@ -168,7 +183,13 @@ export function PageTree({
     })
 
   return (
-    <div className="tree" onClick={() => setMenu(null)}>
+    <div
+      className="tree"
+      onClick={() => {
+        setMenu(null)
+        setAdding(false)
+      }}
+    >
       {tree.length === 0 ? (
         <div className="it" style={{ color: 'var(--muted)' }}>
           No pages
@@ -176,14 +197,40 @@ export function PageTree({
       ) : (
         render(tree, 0)
       )}
-      <button
-        className="it"
-        style={{ color: 'var(--muted)' }}
-        type="button"
-        onClick={() => onCreate(null)}
-      >
-        + New page
-      </button>
+      <div className="new-page" onClick={(event) => event.stopPropagation()}>
+        <button
+          className="it"
+          style={{ color: 'var(--muted)' }}
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={adding}
+          onClick={() => setAdding((open) => !open)}
+        >
+          + New page
+        </button>
+        {adding ? (
+          <div className="menu" role="menu">
+            <button
+              type="button"
+              onClick={() => {
+                setAdding(false)
+                onCreate(null, 'doc')
+              }}
+            >
+              Page
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAdding(false)
+                onCreate(null, 'whiteboard')
+              }}
+            >
+              Whiteboard
+            </button>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
