@@ -54,7 +54,26 @@ function toolbarSnapshot(current: Editor) {
   }
 }
 
-export function EditorToolbar({ editor }: { editor: Editor | null }) {
+function PenIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M11.2 1.8l3 3L5.6 13.4 2.2 14l.6-3.4L11.2 1.8z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+    </svg>
+  )
+}
+
+export function EditorToolbar({
+  editor,
+  onDrawing,
+}: {
+  editor: Editor | null
+  onDrawing: () => void
+}) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const scrollTop = useRef(0)
@@ -215,6 +234,16 @@ export function EditorToolbar({ editor }: { editor: Editor | null }) {
           }
         >
           <CalendarIcon />
+        </button>
+        <button
+          type="button"
+          className="tool-btn"
+          title="Drawing"
+          aria-label="Drawing"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onDrawing}
+        >
+          <PenIcon />
         </button>
         <span className="sep" />
         <button type="button" className={snapshot.code ? 'on' : ''} onClick={() => editor.chain().focus().toggleCodeBlock().run()}>

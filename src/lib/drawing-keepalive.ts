@@ -1,11 +1,13 @@
 const SAVE_URL = '/api/drawings'
 
 export type DrawingSavePayload = {
-  pageId: string
+  pageId?: string
+  drawingId?: string
   version: number
-  title: string
+  title?: string
   elements: unknown[]
   appState: Record<string, unknown>
+  previewSvg?: string | null
 }
 
 export type DrawingSaveTransport = {

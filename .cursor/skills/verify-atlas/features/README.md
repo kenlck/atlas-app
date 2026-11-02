@@ -39,3 +39,4 @@ Each feature file has an H1, one paragraph, then these H2 sections in order: `Su
 - [Team calendar](./team-calendar.md) covers the team month view, the add panel, and the 390px agenda.
 - [Page search](./page-search.md) covers sidebar search, visible pages, and literal `%` / `_` queries.
 - [Team whiteboard](./whiteboard.md) covers the pen row, the canvas, save failures, and who can read a board.
+- [Diagram block](./diagram.md) covers a drawing inside a page, the saved image, and who can read it.

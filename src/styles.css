@@ -383,6 +383,93 @@ body {
   display: none !important;
 }
 
+.diagram-block {
+  width: 100%;
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  overflow: hidden;
+}
+
+.diagram-block img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--white);
+}
+
+.diagram-empty {
+  margin: 0;
+  padding: 16px;
+  color: var(--muted);
+}
+
+.diagram-edit {
+  margin: 0 8px 8px;
+  border: 1px solid var(--line);
+  background: var(--white);
+  color: var(--ink);
+  border-radius: 5px;
+  height: 28px;
+  padding: 0 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.diagram-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.diagram-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.diagram-bar button {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.diagram-spin-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.diagram-spin {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: diagram-spin 0.8s linear infinite;
+}
+
+@keyframes diagram-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .tool .style-wrap {
   position: relative;
   flex-shrink: 0;

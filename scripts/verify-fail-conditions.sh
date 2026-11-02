@@ -869,6 +869,12 @@ recipe_whiteboard() {
   pnpm exec tsx scripts/whiteboard-fail.ts "$1"
 }
 
+recipe_diagram() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/diagram-fail.ts $1"
+  pnpm exec tsx scripts/diagram-fail.ts "$1"
+}
+
 recipe_10_3() {
   require_database_url
   echo "CMD pnpm exec tsx scripts/move-cycle.ts"
@@ -963,6 +969,18 @@ case "${1:-}" in
   7-11) run_recipe recipe_whiteboard archive ;;
   7-12) run_recipe recipe_whiteboard scroll ;;
   7-13) run_recipe recipe_whiteboard retry ;;
+  8-1) run_recipe recipe_diagram access ;;
+  8-2) run_recipe recipe_diagram roundtrip ;;
+  8-3) run_recipe recipe_diagram remove ;;
+  8-4) run_recipe recipe_diagram chunk ;;
+  8-5) run_recipe recipe_diagram search ;;
+  8-6) run_recipe recipe_diagram edit ;;
+  8-7) run_recipe recipe_diagram archive ;;
+  8-8) run_recipe recipe_diagram copy ;;
+  8-9) run_recipe recipe_diagram lazy ;;
+  8-10) run_recipe recipe_diagram clean ;;
+  8-11) run_recipe recipe_diagram foreign ;;
+  8-12) run_recipe recipe_diagram serve ;;
   10-3) run_recipe recipe_10_3 ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
@@ -972,7 +990,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|10-3|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|8-1|8-2|8-3|8-4|8-5|8-6|8-7|8-8|8-9|8-10|8-11|8-12|10-3|all]" >&2
     exit 2
     ;;
 esac

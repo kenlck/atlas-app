@@ -491,6 +491,30 @@ run_step fail7-12 ./scripts/verify-fail-conditions.sh 7-12
 require_step_log fail7-12 "scrollbar_1280=false" "scrollbar_390=false"
 run_step fail7-13 ./scripts/verify-fail-conditions.sh 7-13
 require_step_log fail7-13 "retry_banner=true"
+run_step fail8-1 ./scripts/verify-fail-conditions.sh 8-1
+require_step_log fail8-1 "outsider_page_get=404" "outsider_drawing_get=404" "token_page_get=404" "token_drawing_get=404" "missing_status=404" "outsider_body_matches_missing=true" "token_body_matches_missing=true" "result=pass"
+run_step fail8-2 ./scripts/verify-fail-conditions.sh 8-2
+require_step_log fail8-2 "placeholder_link=true" "update_status=200" "drawing_id_kept=true" "scene_unchanged=true" "result=pass"
+run_step fail8-3 ./scripts/verify-fail-conditions.sh 8-3
+require_step_log fail8-3 "block_removed=true" "drawing_row_kept=true" "scene_unchanged=true" "result=pass"
+run_step fail8-4 ./scripts/verify-fail-conditions.sh 8-4
+require_step_log fail8-4 "doc_excalidraw_requests=0" "result=pass"
+run_step fail8-5 ./scripts/verify-fail-conditions.sh 8-5
+require_step_log fail8-5 "label_visible=true" "scene_secret_visible=false" "body_text_has_secret=false" "result=pass"
+run_step fail8-6 ./scripts/verify-fail-conditions.sh 8-6
+require_step_log fail8-6 "reload_scene_identical=true" "retry_banner=true" "waited_ms=2000" "autosave_aborted=true" "flush_hidden_scene_identical=true" "result=pass"
+run_step fail8-7 ./scripts/verify-fail-conditions.sh 8-7
+require_step_log fail8-7 "archived_api=true" "archived_search=false" "archived_mcp_status=404" "result=pass"
+run_step fail8-8 ./scripts/verify-fail-conditions.sh 8-8
+require_step_log fail8-8 "duplicate_ids_differ=true" "duplicate_scene_copied=true" "original_unchanged=true" "paste_ids_differ=true" "paste_scene_copied=true" "result=pass"
+run_step fail8-9 ./scripts/verify-fail-conditions.sh 8-9
+require_step_log fail8-9 "before_edit_excalidraw_requests=0" "saw_spinner=true" "after_edit_excalidraw_requests=true" "library_visible=false" "collab_visible=false" "image_tool_visible=false" "result=pass"
+run_step fail8-10 ./scripts/verify-fail-conditions.sh 8-10
+require_step_log fail8-10 "stored_script=false" "stored_handler=false" "served_script=false" "served_handler=false" "result=pass"
+run_step fail8-11 ./scripts/verify-fail-conditions.sh 8-11
+require_step_log fail8-11 "foreign_id_rendered=false" "foreign_id_left_in_body=false" "copied_page_id_matches=true" "copied_scene_matches=true" "result=pass"
+run_step fail8-12 ./scripts/verify-fail-conditions.sh 8-12
+require_step_log fail8-12 "svg_in_drawing_row=true" "served_svg=true" "outsider_status=404" "file_storage=false" "result=pass"
 run_step fail10-3 ./scripts/verify-fail-conditions.sh 10-3
 require_step_log fail10-3 "grandchild_status=400" "grandchild_error_clear=true" "parents_unchanged=true" "self_status=400" "self_error_clear=true" "self_unchanged=true" "valid_status=200" "valid_parent_updated=true" "cycle_walk_within_500ms=true" "statement_timeout=false"
 run_step fail13 ./scripts/verify-fail-conditions.sh 13

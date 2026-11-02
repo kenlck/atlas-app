@@ -21,6 +21,8 @@ import {
 import { relativeTime } from '#/lib/relative-time'
 import { savePageFn } from '#/server/fns'
 import { DateChip } from '#/lib/date-chip'
+import { createDiagramExtension } from '#/lib/diagram-node'
+import { createDiagramFn } from '#/server/fns'
 import { TableCursor } from '#/lib/table-cursor'
 import { useSpaceOutlet } from './AppFrame'
 import { NewPageMenu } from './NewPageMenu'
@@ -83,6 +85,7 @@ export function PageEditor({ page }: { page: PageView }) {
   const peopleRef = useRef(page.people)
   peopleRef.current = page.people
   const spaceData = spaceRoute.useLoaderData()
+  const diagram = useMemo(() => createDiagramExtension(page.id), [page.id])
   const mentions = useMemo(
     () =>
       createMentionExtension({
@@ -167,6 +170,7 @@ export function PageEditor({ page }: { page: PageView }) {
       TableHeader,
       TableCell,
       DateChip,
+      diagram,
       TableCursor,
       Placeholder.configure({ placeholder: 'Start writing' }),
       mentions.extension,
@@ -281,7 +285,19 @@ export function PageEditor({ page }: { page: PageView }) {
           </span>
         </div>
       </div>
-      <EditorToolbar editor={editor} />
+      <EditorToolbar
+        editor={editor}
+        onDrawing={() => {
+          if (!editor) return
+          void createDiagramFn({ data: { pageId: page.id } }).then((created) => {
+            editor
+              .chain()
+              .focus()
+              .insertContent({ type: 'diagram', attrs: { drawingId: created.id } })
+              .run()
+          })
+        }}
+      />
       <DatePickerHost />
       {saveState === 'error' ? (
         <div className="retry">

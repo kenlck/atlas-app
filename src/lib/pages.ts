@@ -1,8 +1,15 @@
-import { and, eq, isNull, max, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, max, sql } from 'drizzle-orm'
 import { assertAccess } from './access'
 import { emptyDoc, tiptapToText, type Json } from './body-text'
+import { diagramIds } from './diagram'
 import { getDb } from './db'
-import { emptyScene, sceneFromStored, type DrawingScene } from './drawing'
+import {
+  cleanPreviewSvg,
+  drawingLabelText,
+  emptyScene,
+  sceneFromStored,
+  type DrawingScene,
+} from './drawing'
 import { HttpError, notFound } from './http'
 import { newId } from './ids'
 import { mentionChipText, peopleForBody } from './mentions'
@@ -256,12 +263,124 @@ export async function renamePage(
   return getPageView(userId, input.pageId)
 }
 
+type DrawingDb = Pick<ReturnType<typeof getDb>, 'select' | 'insert'>
+
+async function labelsForBody(db: DrawingDb, body: Json) {
+  const ids = diagramIds(body)
+  const unique = [...new Set(ids)]
+  if (!unique.length) return ''
+  const rows = await db
+    .select({ id: drawing.id, scene: drawing.scene })
+    .from(drawing)
+    .where(inArray(drawing.id, unique))
+  const byId = new Map(
+    rows.map((row) => [
+      row.id,
+      drawingLabelText(sceneFromStored(row.scene).elements),
+    ]),
+  )
+  return ids
+    .map((id) => byId.get(id) ?? '')
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .join('\n')
+}
+
 async function indexedBodyText(spaceRow: Space, body: Json) {
   const people = await peopleForBody(spaceRow, body)
   const labels = new Map(
     people.map((person) => [person.id, mentionChipText(person)]),
   )
-  return tiptapToText(body, (id) => labels.get(id) ?? 'Unknown person')
+  const text = tiptapToText(body, (id) => labels.get(id) ?? 'Unknown person')
+  const drawings = await labelsForBody(getDb(), body)
+  return [text, drawings].filter(Boolean).join('\n')
+}
+
+// A block keeps a drawing id only when that row already belongs to this page
+// and no earlier block in the body uses it. Anything else is copied.
+async function adoptDiagrams(db: DrawingDb, pageId: string, body: Json) {
+  const seen = new Set<string>()
+  const walk = async (value: Json): Promise<Json> => {
+    if (!value || typeof value !== 'object') return value
+    if (Array.isArray(value)) {
+      const next: Json[] = []
+      for (const item of value) next.push(await walk(item))
+      return next
+    }
+    const record = { ...(value as { [key: string]: Json }) }
+    if (record.type === 'diagram') {
+      const attrs =
+        record.attrs && typeof record.attrs === 'object' && !Array.isArray(record.attrs)
+          ? { ...(record.attrs as { [key: string]: Json }) }
+          : {}
+      const current = typeof attrs.drawingId === 'string' ? attrs.drawingId : ''
+      const rows = current
+        ? await db.select().from(drawing).where(eq(drawing.id, current)).limit(1)
+        : []
+      const row = rows[0]
+      if (row && row.pageId === pageId && !seen.has(current)) {
+        seen.add(current)
+        return value
+      }
+      if (!row) return value
+      const id = newId()
+      await db.insert(drawing).values({
+        id,
+        pageId,
+        scene: row.scene,
+        version: 1,
+        previewSvg: cleanPreviewSvg(row.previewSvg),
+        updatedAt: new Date(),
+      })
+      seen.add(id)
+      attrs.drawingId = id
+      record.attrs = attrs
+      return record
+    }
+    if (Array.isArray(record.content)) {
+      const content: Json[] = []
+      for (const child of record.content) content.push(await walk(child))
+      record.content = content
+    }
+    return record
+  }
+  return walk(body)
+}
+
+async function writeDocBody(
+  userId: string,
+  pageId: string,
+  title: string,
+  body: Json,
+  tokenId: string | null,
+  expectedUpdatedAt: Date | null,
+) {
+  const db = getDb()
+  await db.transaction(async (tx) => {
+    const adopted = await adoptDiagrams(tx, pageId, body)
+    const rows = await tx
+      .update(page)
+      .set({
+        title,
+        body: adopted,
+        updatedBy: userId,
+        updatedAt: new Date(),
+        ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
+      })
+      .where(
+        expectedUpdatedAt
+          ? and(eq(page.id, pageId), eq(page.updatedAt, expectedUpdatedAt))
+          : eq(page.id, pageId),
+      )
+      .returning({ id: page.id })
+    if (rows.length === 0) throw new HttpError(409, 'Conflict')
+  })
+  const access = await assertAccess(userId, { pageId })
+  const stored = access.page?.body as Json
+  await db
+    .update(page)
+    .set({ bodyText: await indexedBodyText(access.space, stored) })
+    .where(eq(page.id, pageId))
 }
 
 export async function savePage(
@@ -278,17 +397,7 @@ export async function savePage(
       .where(eq(page.id, input.pageId))
     return getPageView(userId, input.pageId)
   }
-  const bodyText = await indexedBodyText(access.space, input.body)
-  await db
-    .update(page)
-    .set({
-      title,
-      body: input.body,
-      bodyText,
-      updatedBy: userId,
-      updatedAt: new Date(),
-    })
-    .where(eq(page.id, input.pageId))
+  await writeDocBody(userId, input.pageId, title, input.body, null, null)
   return getPageView(userId, input.pageId)
 }
 
@@ -380,20 +489,7 @@ export async function createPageForToken(
     parentId: input.parentId,
     title: input.title,
   })
-  const { space: spaceRow } = await assertAccess(userId, {
-    spaceId: input.spaceId,
-  })
-  const db = getDb()
-  await db
-    .update(page)
-    .set({
-      body: input.body,
-      bodyText: await indexedBodyText(spaceRow, input.body),
-      updatedBy: userId,
-      updatedAt: new Date(),
-      updatedViaTokenId: tokenId,
-    })
-    .where(eq(page.id, created.id))
+  await writeDocBody(userId, created.id, created.title, input.body, tokenId, null)
   return getPageView(userId, created.id)
 }
 
@@ -430,21 +526,81 @@ export async function updatePageForToken(
   const title =
     input.title === undefined ? row.title : input.title.trim() || 'Untitled'
   const body = input.body === undefined ? (row.body as Json) : input.body
-  const bodyText = await indexedBodyText(access.space, body)
-  const written = await db
+  await writeDocBody(userId, row.id, title, body, tokenId, row.updatedAt)
+  return getPageView(userId, row.id)
+}
+
+export async function refreshDocText(
+  userId: string,
+  pageId: string,
+  tokenId: string | null,
+) {
+  const access = await assertAccess(userId, { pageId })
+  if (!access.page || access.page.kind !== 'doc') return
+  await getDb()
     .update(page)
     .set({
-      title,
-      body,
-      bodyText,
+      bodyText: await indexedBodyText(access.space, access.page.body as Json),
       updatedBy: userId,
       updatedAt: new Date(),
-      updatedViaTokenId: tokenId,
+      ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
     })
-    .where(and(eq(page.id, row.id), eq(page.updatedAt, row.updatedAt)))
-    .returning({ id: page.id })
-  if (written.length === 0) throw new HttpError(409, 'Conflict')
-  return getPageView(userId, row.id)
+    .where(eq(page.id, pageId))
+}
+
+export async function createDiagram(userId: string, pageId: string) {
+  const access = await assertAccess(userId, { pageId })
+  if (!access.page || access.page.kind !== 'doc') notFound()
+  const id = newId()
+  await getDb().insert(drawing).values({
+    id,
+    pageId,
+    scene: emptyScene,
+    version: 1,
+    previewSvg: null,
+    updatedAt: new Date(),
+  })
+  return { id, version: 1 }
+}
+
+export async function cloneDiagram(
+  userId: string,
+  input: { pageId: string; drawingId: string },
+) {
+  const access = await assertAccess(userId, { pageId: input.pageId })
+  if (!access.page || access.page.kind !== 'doc') notFound()
+  const db = getDb()
+  const rows = await db
+    .select()
+    .from(drawing)
+    .where(eq(drawing.id, input.drawingId))
+    .limit(1)
+  const source = rows[0]
+  if (!source) notFound()
+  await assertAccess(userId, { pageId: source.pageId })
+  const id = newId()
+  await db.insert(drawing).values({
+    id,
+    pageId: input.pageId,
+    scene: source.scene,
+    version: 1,
+    previewSvg: cleanPreviewSvg(source.previewSvg),
+    updatedAt: new Date(),
+  })
+  return { id, version: 1 }
+}
+
+export async function duplicatePage(userId: string, pageId: string) {
+  const access = await assertAccess(userId, { pageId })
+  const row = access.page
+  if (!row || row.kind !== 'doc') notFound()
+  const created = await createPage(userId, {
+    spaceId: row.spaceId,
+    parentId: row.parentId,
+    title: row.title,
+  })
+  await writeDocBody(userId, created.id, row.title, row.body as Json, null, null)
+  return getPageView(userId, created.id)
 }
 
 export async function getPersonalSpace(userId: string) {
