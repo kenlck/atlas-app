@@ -4,7 +4,7 @@ import {
   useParams,
   useRouter,
 } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { SpaceRole } from '#/lib/access'
 import type { TreeNode } from '#/lib/pages'
 import type { SpaceSummary } from '#/lib/teams'
@@ -20,6 +20,21 @@ import { CreateTeamDialog } from './CreateTeamDialog'
 import { MoveDialog } from './MoveDialog'
 import { SearchPanel } from './SearchPanel'
 import { Sidebar } from './Sidebar'
+
+export type SpaceOutlet = {
+  createChild: (parentId: string) => void
+  createRoot: () => void
+}
+
+const SpaceOutletContext = createContext<SpaceOutlet | null>(null)
+
+export function useSpaceOutlet(): SpaceOutlet {
+  const value = useContext(SpaceOutletContext)
+  if (!value) {
+    throw new Error('useSpaceOutlet requires AppFrame')
+  }
+  return value
+}
 
 export function AppFrame({
   spaceId,
@@ -51,7 +66,7 @@ export function AppFrame({
   const createTeamTrigger = useRef<HTMLElement | null>(null)
   const navigate = useNavigate()
   const router = useRouter()
-  const params = useParams({ strict: false }) as { pageId?: string }
+  const params = useParams({ strict: false })
 
   useEffect(() => {
     if (!drawer) return
@@ -129,11 +144,20 @@ export function AppFrame({
 
   const blocked = Boolean(error)
   const guard =
-    <Args extends unknown[]>(action: (...args: Args) => void) =>
-    (...args: Args) => {
+    <TArgs extends unknown[]>(action: (...args: TArgs) => void) =>
+    (...args: TArgs) => {
       if (blocked) return
       action(...args)
     }
+
+  const spaceOutlet: SpaceOutlet = {
+    createChild: (parentId) => {
+      void create(parentId)
+    },
+    createRoot: () => {
+      void create(null)
+    },
+  }
 
   return (
     <div className="app">
@@ -210,7 +234,9 @@ export function AppFrame({
             </div>
           </>
         ) : (
-          <Outlet />
+          <SpaceOutletContext.Provider value={spaceOutlet}>
+            <Outlet />
+          </SpaceOutletContext.Provider>
         )}
       </div>
       {moving ? (
