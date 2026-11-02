@@ -26,7 +26,16 @@ export const DateChip = Node.create({
   },
 
   parseHTML() {
-    return [{ tag: 'span[data-date]' }]
+    return [
+      {
+        tag: 'span[data-date]',
+        getAttrs: (element) => {
+          const date = dateAttribute(element.getAttribute('data-date'))
+          if (!date) return false
+          return { date }
+        },
+      },
+    ]
   },
 
   renderHTML({ node, HTMLAttributes }) {
