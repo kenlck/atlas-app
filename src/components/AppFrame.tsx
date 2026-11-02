@@ -22,8 +22,8 @@ import { SearchPanel } from './SearchPanel'
 import { Sidebar } from './Sidebar'
 
 export type SpaceOutlet = {
-  createChild: (parentId: string) => void
-  createRoot: () => void
+  createChild: (parentId: string, kind?: 'doc' | 'whiteboard') => void
+  createRoot: (kind?: 'doc' | 'whiteboard') => void
 }
 
 const SpaceOutletContext = createContext<SpaceOutlet | null>(null)
@@ -110,9 +110,12 @@ export function AppFrame({
     void router.invalidate()
   }
 
-  const create = async (parentId: string | null) => {
+  const create = async (
+    parentId: string | null,
+    kind: 'doc' | 'whiteboard' = 'doc',
+  ) => {
     await flushEditor()
-    const created = await createPageFn({ data: { spaceId, parentId } })
+    const created = await createPageFn({ data: { spaceId, parentId, kind } })
     setDrawer(false)
     // The tree loader is already on screen, so a normal invalidate refetches in
     // the background and this navigation drops that result. Wait for the space
@@ -157,11 +160,11 @@ export function AppFrame({
     }
 
   const spaceOutlet: SpaceOutlet = {
-    createChild: (parentId) => {
-      void create(parentId)
+    createChild: (parentId, kind = 'doc') => {
+      void create(parentId, kind)
     },
-    createRoot: () => {
-      void create(null)
+    createRoot: (kind = 'doc') => {
+      void create(null, kind)
     },
   }
 
@@ -180,8 +183,8 @@ export function AppFrame({
         loading={loading}
         error={error}
         onRetry={onRetry}
-        onCreate={guard((parentId) => {
-          void create(parentId)
+        onCreate={guard((parentId, kind) => {
+          void create(parentId, kind ?? 'doc')
         })}
         onRename={guard((pageId, title) => {
           void rename(pageId, title)

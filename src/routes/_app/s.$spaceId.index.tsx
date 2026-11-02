@@ -1,5 +1,6 @@
 import { createFileRoute, getRouteApi } from '@tanstack/react-router'
 import { useSpaceOutlet } from '#/components/AppFrame'
+import { NewPageMenu } from '#/components/NewPageMenu'
 
 const spaceRoute = getRouteApi('/_app/s/$spaceId')
 
@@ -24,14 +25,12 @@ function EmptySpace() {
               <p className="empty">
                 Create a page to start writing in this space.
               </p>
-              <button
+              <NewPageMenu
+                label="+ New page"
                 className="btn"
                 style={{ width: 'auto', padding: '0 12px' }}
-                type="button"
-                onClick={() => createRoot()}
-              >
-                + New page
-              </button>
+                onChoose={createRoot}
+              />
             </>
           ) : (
             <>

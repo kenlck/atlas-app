@@ -2,15 +2,19 @@ import { and, eq, isNull, max, sql } from 'drizzle-orm'
 import { assertAccess } from './access'
 import { emptyDoc, tiptapToText, type Json } from './body-text'
 import { getDb } from './db'
+import { emptyScene, sceneFromStored, type DrawingScene } from './drawing'
 import { HttpError, notFound } from './http'
 import { newId } from './ids'
 import { mentionChipText, peopleForBody } from './mentions'
 import type { MentionPerson } from './mentions'
-import { page, space, user, type Page, type Space } from './schema'
+import { drawing, page, space, user, type Page, type Space } from './schema'
+
+export type PageKind = 'doc' | 'whiteboard'
 
 export type TreeNode = {
   id: string
   title: string
+  kind: PageKind
   parentId: string | null
   position: number
   children: TreeNode[]
@@ -20,6 +24,7 @@ export type PageView = {
   id: string
   spaceId: string
   parentId: string | null
+  kind: PageKind
   title: string
   body: Json
   position: number
@@ -27,6 +32,12 @@ export type PageView = {
   updatedByName: string
   breadcrumbs: Array<{ id: string; title: string }>
   people: MentionPerson[]
+  drawing: {
+    id: string
+    version: number
+    elements: DrawingScene['elements']
+    appState: DrawingScene['appState']
+  } | null
 }
 
 function asTree(rows: Page[]): TreeNode[] {
@@ -44,6 +55,7 @@ function asTree(rows: Page[]): TreeNode[] {
       .map((row) => ({
         id: row.id,
         title: row.title,
+        kind: row.kind,
         parentId: row.parentId,
         position: row.position,
         children: walk(row.id),
@@ -145,23 +157,52 @@ export async function getPageView(
     .from(user)
     .where(eq(user.id, row.updatedBy))
     .limit(1)
+  const board =
+    row.kind === 'whiteboard'
+      ? (
+          await db
+            .select()
+            .from(drawing)
+            .where(eq(drawing.pageId, row.id))
+            .limit(1)
+        )[0]
+      : null
+  if (row.kind === 'whiteboard' && !board) notFound()
+  const scene = board ? sceneFromStored(board.scene) : null
   return {
     id: row.id,
     spaceId: row.spaceId,
     parentId: row.parentId,
+    kind: row.kind,
     title: row.title,
     body: row.body as Json,
     position: row.position,
     updatedAt: row.updatedAt.toISOString(),
     updatedByName: authors[0]?.name ?? space.name,
     breadcrumbs: await breadcrumbsFor(row),
-    people: await peopleForBody(space, row.body as Json),
+    people:
+      row.kind === 'whiteboard'
+        ? []
+        : await peopleForBody(space, row.body as Json),
+    drawing: board
+      ? {
+          id: board.id,
+          version: board.version,
+          elements: scene?.elements ?? [],
+          appState: scene?.appState ?? {},
+        }
+      : null,
   }
 }
 
 export async function createPage(
   userId: string,
-  input: { spaceId: string; parentId?: string | null; title?: string },
+  input: {
+    spaceId: string
+    parentId?: string | null
+    title?: string
+    kind?: PageKind
+  },
 ) {
   await assertAccess(userId, { spaceId: input.spaceId })
   if (input.parentId) {
@@ -172,19 +213,31 @@ export async function createPage(
   const id = newId()
   const now = new Date()
   const title = (input.title ?? 'Untitled').trim() || 'Untitled'
+  const kind: PageKind = input.kind === 'whiteboard' ? 'whiteboard' : 'doc'
   const position = await nextPosition(input.spaceId, input.parentId ?? null)
-  await db.insert(page).values({
-    id,
-    spaceId: input.spaceId,
-    parentId: input.parentId ?? null,
-    title,
-    body: emptyDoc as object,
-    bodyText: '',
-    position,
-    createdBy: userId,
-    updatedBy: userId,
-    createdAt: now,
-    updatedAt: now,
+  await db.transaction(async (tx) => {
+    await tx.insert(page).values({
+      id,
+      spaceId: input.spaceId,
+      parentId: input.parentId ?? null,
+      kind,
+      title,
+      body: emptyDoc as object,
+      bodyText: '',
+      position,
+      createdBy: userId,
+      updatedBy: userId,
+      createdAt: now,
+      updatedAt: now,
+    })
+    if (kind === 'whiteboard') {
+      await tx.insert(drawing).values({
+        id: newId(),
+        pageId: id,
+        scene: emptyScene,
+        version: 1,
+      })
+    }
   })
   return getPageView(userId, id)
 }
@@ -217,8 +270,15 @@ export async function savePage(
 ) {
   const access = await assertAccess(userId, { pageId: input.pageId })
   const title = input.title.trim() || 'Untitled'
-  const bodyText = await indexedBodyText(access.space, input.body)
   const db = getDb()
+  if (access.page?.kind === 'whiteboard') {
+    await db
+      .update(page)
+      .set({ title, updatedBy: userId, updatedAt: new Date() })
+      .where(eq(page.id, input.pageId))
+    return getPageView(userId, input.pageId)
+  }
+  const bodyText = await indexedBodyText(access.space, input.body)
   await db
     .update(page)
     .set({
@@ -350,11 +410,27 @@ export async function updatePageForToken(
   if (!Number.isFinite(expected) || row.updatedAt.getTime() !== expected) {
     throw new HttpError(409, 'Conflict')
   }
+  const db = getDb()
+  if (row.kind === 'whiteboard') {
+    if (input.title === undefined) return getPageView(userId, row.id)
+    const title = input.title.trim() || 'Untitled'
+    const written = await db
+      .update(page)
+      .set({
+        title,
+        updatedBy: userId,
+        updatedAt: new Date(),
+        updatedViaTokenId: tokenId,
+      })
+      .where(and(eq(page.id, row.id), eq(page.updatedAt, row.updatedAt)))
+      .returning({ id: page.id })
+    if (written.length === 0) throw new HttpError(409, 'Conflict')
+    return getPageView(userId, row.id)
+  }
   const title =
     input.title === undefined ? row.title : input.title.trim() || 'Untitled'
   const body = input.body === undefined ? (row.body as Json) : input.body
   const bodyText = await indexedBodyText(access.space, body)
-  const db = getDb()
   const written = await db
     .update(page)
     .set({

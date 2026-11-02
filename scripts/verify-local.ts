@@ -81,3 +81,27 @@ export async function submitAuthForm(
   }
   throw new Error(`auth stayed rate limited for ${apiPath}`)
 }
+
+type NewDocButton = {
+  click: () => Promise<void>
+  getAttribute: (name: string) => Promise<string | null>
+}
+
+type NewDocPage = {
+  getByRole: (
+    role: 'button',
+    options: { name: string; exact?: boolean },
+  ) => NewDocButton & {
+    first: () => NewDocButton
+    last: () => NewDocButton
+  }
+}
+
+export async function clickNewDoc(page: NewDocPage, which: 'first' | 'last' = 'last') {
+  const button = page.getByRole('button', { name: '+ New page', exact: true })[which]()
+  const popup = await button.getAttribute('aria-haspopup')
+  await button.click()
+  if (popup === 'menu') {
+    await page.getByRole('button', { name: 'Page', exact: true }).click()
+  }
+}

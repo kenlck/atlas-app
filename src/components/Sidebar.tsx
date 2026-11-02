@@ -42,7 +42,7 @@ export function Sidebar({
   role: SpaceRole
   pendingInvites: number
   onRetry?: () => void
-  onCreate: (parentId: string | null) => void
+  onCreate: (parentId: string | null, kind?: 'doc' | 'whiteboard') => void
   onRename: (pageId: string, title: string) => void
   onMove: (pageId: string) => void
   onArchive: (pageId: string) => void

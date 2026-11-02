@@ -8,6 +8,7 @@ import {
   MCP_MAX_BODY_BYTES,
   allowMcpRequest,
 } from './mcp-limit'
+import { WHITEBOARD_PLACEHOLDER } from './drawing'
 import { createPageForToken, getPageView, updatePageForToken } from './pages'
 import { searchVisiblePages } from './search'
 import { space } from './schema'
@@ -23,7 +24,12 @@ type ToolName =
   | 'update_page'
 
 const PROTOCOL_VERSIONS = ['2024-11-05', '2025-03-26', '2025-06-18']
-const READ_TOOLS = new Set(['list_spaces', 'search_pages', 'get_page'])
+const READ_TOOLS = new Set([
+  'list_spaces',
+  'search_pages',
+  'get_page',
+  'read_page',
+])
 
 const TOOLS: Array<{ name: ToolName; description: string; inputSchema: Json }> =
   [
@@ -165,7 +171,10 @@ async function pagePayload(userId: string, pageId: string) {
     space_id: view.spaceId,
     parent_id: view.parentId,
     title: view.title,
-    body: tiptapToMarkdown(view.body),
+    body:
+      view.kind === 'whiteboard'
+        ? WHITEBOARD_PLACEHOLDER
+        : tiptapToMarkdown(view.body),
     updated_at: view.updatedAt,
   }
 }
@@ -212,7 +221,7 @@ async function callTool(
     if (query === undefined) throw new HttpError(400, 'Bad request')
     return { hits: await searchVisiblePages(userId, query) }
   }
-  if (name === 'get_page') {
+  if (name === 'get_page' || name === 'read_page') {
     const pageId = stringArg(args, 'page_id')
     if (!pageId) throw new HttpError(400, 'Bad request')
     return pagePayload(userId, pageId)
@@ -250,6 +259,15 @@ async function callTool(
     }
     if (args.title === undefined && args.body === undefined) {
       throw new HttpError(400, 'Bad request')
+    }
+    const current = await getPageView(userId, pageId)
+    if (current.kind === 'whiteboard') {
+      const updated = await updatePageForToken(userId, tokenId, {
+        pageId,
+        title: stringArg(args, 'title'),
+        updatedAt: args.updated_at,
+      })
+      return pagePayload(userId, updated.id)
     }
     const updated = await updatePageForToken(userId, tokenId, {
       pageId,

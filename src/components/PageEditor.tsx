@@ -23,6 +23,7 @@ import { savePageFn } from '#/server/fns'
 import { DateChip } from '#/lib/date-chip'
 import { TableCursor } from '#/lib/table-cursor'
 import { useSpaceOutlet } from './AppFrame'
+import { NewPageMenu } from './NewPageMenu'
 import { DatePickerHost } from './DatePicker'
 import { EditorToolbar } from './EditorToolbar'
 import { createMentionExtension } from './MentionExtension'
@@ -266,13 +267,11 @@ export function PageEditor({ page }: { page: PageView }) {
           ))}
         </div>
         <div className="r">
-          <button
-            type="button"
+          <NewPageMenu
+            label="Create page"
             className="create-page"
-            onClick={() => createChild(page.id)}
-          >
-            Create page
-          </button>
+            onChoose={(kind) => createChild(page.id, kind)}
+          />
           <span className="save">
             {saveState === 'saving'
               ? 'Saving'

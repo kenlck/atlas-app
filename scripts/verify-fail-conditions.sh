@@ -863,6 +863,12 @@ recipe_token_mention() {
   pnpm exec tsx scripts/token-fail.ts mention
 }
 
+recipe_whiteboard() {
+  : "${DATABASE_URL:-${TEST_DATABASE_URL:?TEST_DATABASE_URL or DATABASE_URL must be set}}"
+  echo "CMD pnpm exec tsx scripts/whiteboard-fail.ts $1"
+  pnpm exec tsx scripts/whiteboard-fail.ts "$1"
+}
+
 recipe_10_3() {
   require_database_url
   echo "CMD pnpm exec tsx scripts/move-cycle.ts"
@@ -944,6 +950,19 @@ case "${1:-}" in
   token-search) run_recipe recipe_token_search ;;
   token-mention) run_recipe recipe_token_mention ;;
   healthcheck) run_recipe recipe_healthcheck ;;
+  7-1) run_recipe recipe_whiteboard create ;;
+  7-2) run_recipe recipe_whiteboard access ;;
+  7-3) run_recipe recipe_whiteboard reload ;;
+  7-4) run_recipe recipe_whiteboard flush ;;
+  7-5) run_recipe recipe_whiteboard stale ;;
+  7-6) run_recipe recipe_whiteboard oversize ;;
+  7-7) run_recipe recipe_whiteboard reject ;;
+  7-8) run_recipe recipe_whiteboard search ;;
+  7-9) run_recipe recipe_whiteboard chunk ;;
+  7-10) run_recipe recipe_whiteboard mcp ;;
+  7-11) run_recipe recipe_whiteboard archive ;;
+  7-12) run_recipe recipe_whiteboard scroll ;;
+  7-13) run_recipe recipe_whiteboard retry ;;
   10-3) run_recipe recipe_10_3 ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
@@ -953,7 +972,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|10-3|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|10-3|all]" >&2
     exit 2
     ;;
 esac

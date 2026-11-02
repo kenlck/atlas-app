@@ -1,6 +1,6 @@
 import { chromium, type BrowserContext, type Page } from 'playwright'
 import { excelClipboard, sheetsClipboard } from './clipboard-fixtures.ts'
-import { assertLocalBaseUrl, submitAuthForm } from './verify-local.ts'
+import { assertLocalBaseUrl, clickNewDoc, submitAuthForm } from './verify-local.ts'
 
 const BASE_URL = assertLocalBaseUrl(process.env.BASE_URL ?? 'http://127.0.0.1:3000')
 const PASSWORD = process.env.VERIFY_PASSWORD ?? 'tables-dates-password'
@@ -27,7 +27,7 @@ async function signUp(page: Page, name: string, email: string) {
 
 async function createPage(page: Page) {
   const previous = page.url()
-  await page.getByRole('button', { name: '+ New page' }).last().click()
+  await clickNewDoc(page)
   await page.waitForFunction((href) => window.location.href !== href, previous)
   await page.locator('#page-title').waitFor()
   await page.locator('.doc-editor').waitFor()

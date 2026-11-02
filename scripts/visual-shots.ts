@@ -5,6 +5,7 @@ import { chromium, type Page, type Request } from 'playwright'
 import { captureTableDateStates } from './table-date-states.ts'
 import {
   assertLocalBaseUrl,
+  clickNewDoc,
   stamp as utcStamp,
   submitAuthForm,
   waitForClient,
@@ -190,7 +191,7 @@ async function renameCurrent(page: Page, title: string) {
 async function createNamedPage(page: Page, title: string) {
   const previous = page.url()
   const previousTitle = await page.locator('#page-title').inputValue()
-  await page.getByRole('button', { name: '+ New page' }).last().click()
+  await clickNewDoc(page)
   // Navigation updates the address, and the new page's loader can finish,
   // before the previous PageEditor unmounts. That input still shows the
   // previous title, and renameCurrent would save onto that page. A created
@@ -441,7 +442,7 @@ async function main() {
     await shot(page, 1280, 'space', 'empty')
 
     const emptyUrl = page.url()
-    await page.getByRole('button', { name: '+ New page' }).last().click()
+    await clickNewDoc(page)
     await page.waitForFunction(
       (href) => window.location.href !== href,
       emptyUrl,

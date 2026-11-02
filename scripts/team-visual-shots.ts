@@ -299,6 +299,7 @@ async function main() {
     await page.locator('.sw').click()
     await page.getByRole('menuitem', { name: 'Northwind' }).click()
     await page.getByRole('button', { name: '+ New page' }).first().click()
+    await page.getByRole('button', { name: 'Page', exact: true }).click()
     await page.locator('.doc-editor').waitFor()
     await page.locator('.doc-editor').click()
     await page.keyboard.type('@')

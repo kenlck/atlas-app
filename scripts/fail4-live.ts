@@ -1,5 +1,5 @@
 import { chromium, type Page, type Request } from 'playwright'
-import { assertLocalBaseUrl, submitAuthForm } from './verify-local.ts'
+import { assertLocalBaseUrl, clickNewDoc, submitAuthForm } from './verify-local.ts'
 
 const BASE_URL = assertLocalBaseUrl(
   process.env.BASE_URL ?? 'http://127.0.0.1:3010',
@@ -22,7 +22,7 @@ async function createNamed(page: Page, title: string) {
     .locator('#page-title')
     .inputValue()
     .catch(() => '')
-  await page.getByRole('button', { name: '+ New page' }).last().click()
+  await clickNewDoc(page)
   // The address changes before the new editor replaces the previous one.
   // Filling the input that still shows the previous title saves onto that page.
   await page.waitForFunction(
