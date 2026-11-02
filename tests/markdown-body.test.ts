@@ -258,4 +258,15 @@ describe('markdown body', () => {
       ],
     })
   })
+
+  it('round-trips a diagram as a drawing link', () => {
+    const id = '11111111-1111-4111-8111-111111111111'
+    roundTrip({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'See' }] },
+        { type: 'diagram', attrs: { drawingId: id } },
+      ],
+    })
+  })
 })

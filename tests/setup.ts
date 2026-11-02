@@ -3,6 +3,7 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator'
 import postgres from 'postgres'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { assertLocalDatabaseUrl } from '../scripts/verify-local'
 import { testDatabaseUrl } from './db-url'
 
 process.env.DATABASE_URL = testDatabaseUrl()
@@ -12,7 +13,7 @@ process.env.BETTER_AUTH_URL = process.env.BETTER_AUTH_URL || 'http://localhost:3
 process.env.ADMIN_API_SECRET =
   process.env.ADMIN_API_SECRET || 'test-admin-api-secret-32-chars-minx'
 
-const url = process.env.DATABASE_URL
+const url = assertLocalDatabaseUrl(process.env.DATABASE_URL ?? '')
 const client = postgres(url, { max: 1, onnotice: () => {} })
 await client.unsafe('DROP SCHEMA IF EXISTS public CASCADE')
 await client.unsafe('CREATE SCHEMA public')

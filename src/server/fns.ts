@@ -9,6 +9,8 @@ import { openCalendar } from '#/lib/calendar'
 import { listMentionCandidates } from '#/lib/mentions'
 import {
   archivePage,
+  cloneDiagram,
+  createDiagram,
   createPage,
   getPageView,
   listPageTree,
@@ -195,6 +197,28 @@ export const savePageFn = createServerFn({ method: 'POST' })
       const view = await savePage(context.userId, data)
       await touchLastSpace(context.userId, view.spaceId)
       return view
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const createDiagramFn = createServerFn({ method: 'POST' })
+  .middleware([unlocked])
+  .validator((data: { pageId: string }) => data)
+  .handler(async ({ data, context }) => {
+    try {
+      return await createDiagram(context.userId, data.pageId)
+    } catch (error) {
+      rethrow(error)
+    }
+  })
+
+export const cloneDiagramFn = createServerFn({ method: 'POST' })
+  .middleware([unlocked])
+  .validator((data: { pageId: string; drawingId: string }) => data)
+  .handler(async ({ data, context }) => {
+    try {
+      return await cloneDiagram(context.userId, data)
     } catch (error) {
       rethrow(error)
     }

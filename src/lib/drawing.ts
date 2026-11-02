@@ -91,3 +91,25 @@ function stableValue(value: unknown): unknown {
 export function canonicalElements(elements: unknown[]) {
   return JSON.stringify(stableValue(elements))
 }
+
+// Stored previews are SVG text on the drawing row. Scripts and handlers are removed.
+export function cleanPreviewSvg(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  let svg = value.trim().replace(/^\s*<\?xml[^?]*\?>\s*/i, '')
+  if (!svg || svg.length > 500_000) return null
+  if (/<!DOCTYPE|<!ENTITY/i.test(svg)) return null
+  if (!/^<svg\b/i.test(svg) || !/<\/svg>\s*$/i.test(svg)) return null
+  svg = svg
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, '')
+    .replace(/<embed\b[^>]*\/?>/gi, '')
+    .replace(/[\s/]on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, (match) =>
+      match.startsWith('/') ? '/' : '',
+    )
+    .replace(/\s(?:href|xlink:href)\s*=\s*("\s*javascript:[^"]*"|'\s*javascript:[^']*'|javascript:[^\s>]+)/gi, '')
+    .replace(/javascript:/gi, '')
+  if (/<script\b|[\s/]on[a-z]+\s*=|javascript:/i.test(svg)) return null
+  if (!/^<svg\b/i.test(svg) || !/<\/svg>\s*$/i.test(svg)) return null
+  return svg
+}

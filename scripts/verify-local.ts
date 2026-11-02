@@ -1,3 +1,6 @@
+import postgres from 'postgres'
+import { isLocalPostgresHost } from '../src/lib/postgres-options'
+
 // Refuse anything except an http URL on localhost. Called when a driver loads.
 export function assertLocalBaseUrl(raw: string) {
   let url: URL
@@ -14,17 +17,91 @@ export function assertLocalBaseUrl(raw: string) {
   return url.toString().replace(/\/$/, '')
 }
 
-export function assertLocalDatabaseUrl(raw: string) {
-  let url: URL
-  try {
-    url = new URL(raw)
-  } catch {
-    throw new Error('refusing non-local DATABASE_URL')
+function refuseDatabase(): never {
+  throw new Error('refusing non-local database')
+}
+
+function authorityOf(raw: string) {
+  const match = /^([a-z][a-z0-9+.-]*):\/\/([^/?]*)/i.exec(raw)
+  if (!match) refuseDatabase()
+  const scheme = match[1].toLowerCase()
+  if (scheme !== 'postgres' && scheme !== 'postgresql') refuseDatabase()
+  return match[2]
+}
+
+function hostOf(part: string) {
+  if (part.startsWith('[')) {
+    const end = part.indexOf(']')
+    if (end < 2) refuseDatabase()
+    return part.slice(1, end).toLowerCase()
   }
-  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
-  const local = host === 'localhost' || host === '127.0.0.1' || host === '::1'
-  const postgres = url.protocol === 'postgres:' || url.protocol === 'postgresql:'
-  if (!postgres || !local) {
+  const bare = part.split(':')[0] ?? ''
+  if (!bare) refuseDatabase()
+  try {
+    return decodeURIComponent(bare).toLowerCase()
+  } catch {
+    refuseDatabase()
+  }
+}
+
+// postgres-js takes the host after the first '@' and splits on ','.
+function hostsPostgresWouldUse(raw: string) {
+  const start = raw.indexOf('://')
+  if (start < 0) refuseDatabase()
+  const afterScheme = raw.slice(start + 3).split(/[/?]/)[0] ?? ''
+  const at = afterScheme.indexOf('@')
+  let host = at >= 0 ? afterScheme.slice(at + 1) : afterScheme
+  try {
+    host = decodeURIComponent(host)
+  } catch {
+    refuseDatabase()
+  }
+  const hosts = host.split(',').map((part) => hostOf(part))
+  if (hosts.length === 0) refuseDatabase()
+  return hosts
+}
+
+function libraryHosts(raw: string) {
+  const sql = postgres(raw, { max: 0, idle_timeout: 0, connect_timeout: 0 })
+  try {
+    return sql.options.host.map((host) => {
+      let value = host
+      try {
+        value = decodeURIComponent(host)
+      } catch {
+        refuseDatabase()
+      }
+      return value.toLowerCase()
+    })
+  } finally {
+    void sql.end({ timeout: 0 })
+  }
+}
+
+export function assertLocalPostgresUrl(raw: string) {
+  try {
+    const authority = authorityOf(raw)
+    const ats = authority.split('@').length - 1
+    if (authority.includes(',') || ats > 1) refuseDatabase()
+    const intended = hostsPostgresWouldUse(raw)
+    if (!intended.every((host) => isLocalPostgresHost(host))) refuseDatabase()
+    const parsed = libraryHosts(raw)
+    if (parsed.length === 0) refuseDatabase()
+    for (const host of parsed) {
+      if (isLocalPostgresHost(host)) continue
+      if (host === '[' && intended.includes('::1')) continue
+      refuseDatabase()
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message === 'refusing non-local database') throw error
+    refuseDatabase()
+  }
+}
+
+export function assertLocalDatabaseUrl(raw: string) {
+  try {
+    assertLocalPostgresUrl(raw)
+  } catch {
     throw new Error('refusing non-local DATABASE_URL')
   }
   return raw

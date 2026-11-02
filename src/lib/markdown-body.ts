@@ -1,5 +1,6 @@
 import type { Json } from './body-text'
 import { formatDateLabel } from './date-label'
+import { drawingLink } from './diagram'
 
 type Mark = { type: string; attrs?: Record<string, Json> }
 type Node = {
@@ -285,6 +286,10 @@ function emitBlocks(nodes: Node[]): string[] {
     }
     if (node.type === 'horizontalRule') return '---'
     if (node.type === 'table') return emitTable(node)
+    if (node.type === 'diagram') {
+      const id = attrString(node.attrs, 'drawingId')
+      return id ? drawingLink(id) : ''
+    }
     return ''
   })
 }
@@ -654,6 +659,15 @@ function parseBlocks(source: string): Node[] {
       blocks.push(node)
       continue
     }
+    const drawing = /^\[Drawing\]\(atlas:\/\/drawing\/([^)\s]+)\)$/.exec(line.trim())
+    if (drawing) {
+      const id = decodeURIComponent(drawing[1] ?? '')
+      if (id) {
+        blocks.push({ type: 'diagram', attrs: { drawingId: id } })
+        i += 1
+        continue
+      }
+    }
     const heading = /^(#{1,3}) (.*)$/.exec(line)
     if (heading) {
       blocks.push({
@@ -750,6 +764,7 @@ function parseBlocks(source: string): Node[] {
 
 function blockStart(line: string) {
   return (
+    /^\[Drawing\]\(atlas:\/\/drawing\/[^)\s]+\)$/.test(line.trim()) ||
     line.startsWith('<') ||
     line.startsWith('```') ||
     line.startsWith('#') ||

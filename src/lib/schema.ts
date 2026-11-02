@@ -216,8 +216,10 @@ export const drawing = pgTable(
       .references(() => page.id, { onDelete: 'cascade' }),
     scene: jsonb('scene').notNull(),
     version: integer('version').notNull(),
+    previewSvg: text('preview_svg'),
+    updatedAt: timestamp('updated_at'),
   },
-  (t) => [uniqueIndex('drawing_page_unique').on(t.pageId)],
+  (t) => [index('drawing_page_idx').on(t.pageId)],
 )
 
 export const calendarEvent = pgTable(

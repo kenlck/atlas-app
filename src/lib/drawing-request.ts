@@ -5,6 +5,7 @@ import { getDb } from './db'
 import {
   BOARD_CONFLICT,
   DRAWING_MAX_BYTES,
+  cleanPreviewSvg,
   drawingLabelText,
   plainAppState,
   plainElements,
@@ -14,6 +15,7 @@ import {
 } from './drawing'
 import { HttpError, notFound } from './http'
 import { saveOriginAllowed } from './page-save-request'
+import { refreshDocText } from './pages'
 import { page, drawing } from './schema'
 import { requireUnlockedSession } from './session'
 import { touchLastSpace } from './spaces'
@@ -69,7 +71,10 @@ async function callerOf(request: Request): Promise<Caller> {
     const auth = await authenticateBearer(header)
     return { userId: auth.userId, scope: auth.scope, tokenId: auth.tokenId }
   }
-  if (!saveOriginAllowed(request)) throw new HttpError(403, 'Forbidden')
+  // A same-origin GET often omits Origin. State-changing calls still must send it.
+  if (request.method.toUpperCase() === 'POST' && !saveOriginAllowed(request)) {
+    throw new HttpError(403, 'Forbidden')
+  }
   const session = await requireUnlockedSession()
   return { userId: session.user.id, scope: 'session', tokenId: null }
 }
@@ -103,17 +108,21 @@ async function loadTarget(ids: { pageId: string | null; drawingId: string | null
   return rows[0] ?? null
 }
 
-async function openBoard(userId: string, ids: { pageId: string | null; drawingId: string | null }) {
+async function openDrawing(userId: string, ids: { pageId: string | null; drawingId: string | null }) {
   const target = await loadTarget(ids)
-  if (!target || target.page.kind !== 'whiteboard') notFound()
+  if (!target) notFound()
   const access = await assertAccess(userId, { pageId: target.page.id })
   if (!access.page) notFound()
   return { ...target, spaceId: access.space.id }
 }
 
-function boardPayload(
-  row: { id: string; pageId: string; version: number; scene: unknown },
-) {
+function boardPayload(row: {
+  id: string
+  pageId: string
+  version: number
+  scene: unknown
+  previewSvg?: string | null
+}) {
   const scene = sceneFromStored(row.scene)
   return {
     id: row.id,
@@ -121,6 +130,7 @@ function boardPayload(
     version: row.version,
     elements: scene.elements,
     appState: scene.appState,
+    previewSvg: cleanPreviewSvg(row.previewSvg),
   }
 }
 
@@ -142,7 +152,7 @@ export async function handleDrawingRequest(request: Request) {
       const url = new URL(request.url)
       const ids = oneId(url.searchParams.get('pageId'), url.searchParams.get('drawingId'))
       if (!ids) return json({ error: 'Bad request' }, 400)
-      const board = await openBoard(caller.userId, ids)
+      const board = await openDrawing(caller.userId, ids)
       return json(boardPayload(board.drawing))
     }
 
@@ -158,7 +168,7 @@ export async function handleDrawingRequest(request: Request) {
     const record = payload as Record<string, unknown>
     const ids = oneId(record.pageId, record.drawingId)
     if (!ids) return json({ error: 'Bad request' }, 400)
-    const board = await openBoard(caller.userId, ids)
+    const board = await openDrawing(caller.userId, ids)
     if (caller.scope === 'read') throw new HttpError(403, 'Forbidden')
 
     const elements = plainElements(record.elements)
@@ -177,6 +187,8 @@ export async function handleDrawingRequest(request: Request) {
       elements,
       appState: plainAppState(record.appState),
     }
+    const preview =
+      record.previewSvg === undefined ? undefined : cleanPreviewSvg(record.previewSvg)
     const title =
       record.title === undefined
         ? null
@@ -192,23 +204,30 @@ export async function handleDrawingRequest(request: Request) {
         .set({
           scene,
           version: sql`${drawing.version} + 1`,
+          updatedAt: new Date(),
+          ...(preview === undefined ? {} : { previewSvg: preview }),
         })
         .where(and(eq(drawing.id, board.drawing.id), eq(drawing.version, version)))
         .returning({ id: drawing.id, version: drawing.version, pageId: drawing.pageId })
       if (rows.length === 0) return null
-      await tx
-        .update(page)
-        .set({
-          ...(title === null ? {} : { title }),
-          bodyText: drawingLabelText(elements),
-          updatedBy: caller.userId,
-          updatedAt: new Date(),
-          ...(caller.tokenId ? { updatedViaTokenId: caller.tokenId } : {}),
-        })
-        .where(eq(page.id, board.page.id))
+      if (board.page.kind === 'whiteboard') {
+        await tx
+          .update(page)
+          .set({
+            ...(title === null ? {} : { title }),
+            bodyText: drawingLabelText(elements),
+            updatedBy: caller.userId,
+            updatedAt: new Date(),
+            ...(caller.tokenId ? { updatedViaTokenId: caller.tokenId } : {}),
+          })
+          .where(eq(page.id, board.page.id))
+      }
       return rows[0]
     })
     if (!written) return json({ error: BOARD_CONFLICT }, 409)
+    if (board.page.kind !== 'whiteboard') {
+      await refreshDocText(caller.userId, board.page.id, caller.tokenId)
+    }
     await touchLastSpace(caller.userId, board.spaceId)
     return json({ id: written.id, pageId: written.pageId, version: written.version })
   } catch (error) {
