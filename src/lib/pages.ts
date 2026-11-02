@@ -298,7 +298,17 @@ async function indexedBodyText(spaceRow: Space, body: Json) {
 
 // A block keeps a drawing id only when that row already belongs to this page
 // and no earlier block in the body uses it. Anything else is copied, but only
-// when the saver can open the source page. Otherwise the id is dropped.
+// when the saver can open the source page. An unknown id and a denied id both
+// run the same access lookup and both drop the id, so a later read cannot
+// tell those two cases apart. Scene and preview load only after access passes.
+const MISSING_DRAWING_PAGE = 'missing-drawing-page'
+
+function blankDiagram(record: { [key: string]: Json }, attrs: { [key: string]: Json }) {
+  attrs.drawingId = ''
+  record.attrs = attrs
+  return record
+}
+
 async function adoptDiagrams(db: DrawingDb, userId: string, pageId: string, body: Json) {
   const seen = new Set<string>()
   const walk = async (value: Json): Promise<Json> => {
@@ -315,30 +325,39 @@ async function adoptDiagrams(db: DrawingDb, userId: string, pageId: string, body
           ? { ...(record.attrs as { [key: string]: Json }) }
           : {}
       const current = typeof attrs.drawingId === 'string' ? attrs.drawingId : ''
-      const rows = current
-        ? await db.select().from(drawing).where(eq(drawing.id, current)).limit(1)
-        : []
+      if (!current) return value
+      const rows = await db
+        .select({ id: drawing.id, pageId: drawing.pageId })
+        .from(drawing)
+        .where(eq(drawing.id, current))
+        .limit(1)
       const row = rows[0]
       if (row && row.pageId === pageId && !seen.has(current)) {
         seen.add(current)
         return value
       }
-      if (!row) return value
+      let accessible = false
       try {
-        await assertAccess(userId, { pageId: row.pageId })
+        await assertAccess(userId, { pageId: row ? row.pageId : MISSING_DRAWING_PAGE })
+        accessible = true
       } catch (error) {
         if (!(error instanceof HttpError) || error.status !== 404) throw error
-        attrs.drawingId = ''
-        record.attrs = attrs
-        return record
       }
+      if (!row || !accessible) return blankDiagram(record, attrs)
+      const full = await db
+        .select({ scene: drawing.scene, previewSvg: drawing.previewSvg })
+        .from(drawing)
+        .where(eq(drawing.id, row.id))
+        .limit(1)
+      const source = full[0]
+      if (!source) return blankDiagram(record, attrs)
       const id = newId()
       await db.insert(drawing).values({
         id,
         pageId,
-        scene: row.scene,
+        scene: source.scene,
         version: 1,
-        previewSvg: cleanPreviewSvg(row.previewSvg),
+        previewSvg: cleanPreviewSvg(source.previewSvg),
         updatedAt: new Date(),
       })
       seen.add(id)

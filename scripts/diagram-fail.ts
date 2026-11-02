@@ -925,14 +925,26 @@ async function recipeOutsider(base: string) {
     }),
   })
   expectLine('source_save_status', planted.status, 200)
+  const deniedBody = {
+    type: 'doc',
+    content: [{ type: 'diagram', attrs: { drawingId: created.id } }],
+  }
+  const unknownId = crypto.randomUUID()
+  const unknownBody = {
+    type: 'doc',
+    content: [{ type: 'diagram', attrs: { drawingId: unknownId } }],
+  }
   const dest = await createPage(outsider.id, { spaceId: outsiderSpace, title: 'Mine' })
   const saved = await savePage(outsider.id, {
     pageId: dest.id,
     title: 'Mine',
-    body: {
-      type: 'doc',
-      content: [{ type: 'diagram', attrs: { drawingId: created.id } }],
-    },
+    body: deniedBody,
+  })
+  const destUnknown = await createPage(outsider.id, { spaceId: outsiderSpace, title: 'Mine' })
+  const savedUnknown = await savePage(outsider.id, {
+    pageId: destUnknown.id,
+    title: 'Mine',
+    body: unknownBody,
   })
   const fetched = await drawingRequest(base, 'GET', `/api/drawings?pageId=${dest.id}`, {
     cookie: outsider.cookie,
@@ -944,10 +956,17 @@ async function recipeOutsider(base: string) {
     false,
   )
   const token = await createToken(base, outsider.cookie, 'outsider')
+  const deniedRead = await mcp(base, token, 'get_page', { page_id: dest.id })
+  const unknownRead = await mcp(base, token, 'get_page', { page_id: destUnknown.id })
   const createdPage = await mcp(base, token, 'create_page', {
     space_id: outsiderSpace,
     title: 'Via agent',
     body: `[Drawing](atlas://drawing/${encodeURIComponent(created.id)})`,
+  })
+  const createdUnknown = await mcp(base, token, 'create_page', {
+    space_id: outsiderSpace,
+    title: 'Via agent',
+    body: `[Drawing](atlas://drawing/${encodeURIComponent(unknownId)})`,
   })
   expectLine('mcp_status', createdPage.status, 200)
   const mcpPageId = createdPage.data.id ?? ''
@@ -961,6 +980,63 @@ async function recipeOutsider(base: string) {
     'mcp_response_leaks',
     responseLeaks(JSON.stringify(createdPage.data), created.id) ||
       responseLeaks(mcpFetched.text, created.id),
+    false,
+  )
+  const plain = await mcp(base, token, 'create_page', {
+    space_id: outsiderSpace,
+    title: 'Edit',
+    body: 'plain',
+  })
+  const updated = await mcp(base, token, 'update_page', {
+    page_id: plain.data.id ?? '',
+    body: `[Drawing](atlas://drawing/${encodeURIComponent(created.id)})`,
+    updated_at: plain.data.updated_at ?? '',
+  })
+  const plainUnknown = await mcp(base, token, 'create_page', {
+    space_id: outsiderSpace,
+    title: 'Edit',
+    body: 'plain',
+  })
+  const updatedUnknown = await mcp(base, token, 'update_page', {
+    page_id: plainUnknown.data.id ?? '',
+    body: `[Drawing](atlas://drawing/${encodeURIComponent(unknownId)})`,
+    updated_at: plainUnknown.data.updated_at ?? '',
+  })
+  expectLine('mcp_update_status', updated.status === 200 && updatedUnknown.status === 200, true)
+  expectLine('mcp_update_copied', (await copiedForeignRows(created.id)) > 0, false)
+  expectLine(
+    'mcp_update_response_leaks',
+    responseLeaks(JSON.stringify(updated.data), created.id) ||
+      responseLeaks(JSON.stringify(updatedUnknown.data), created.id),
+    false,
+  )
+  const savedBodySame = JSON.stringify(saved.body) === JSON.stringify(savedUnknown.body)
+  const readSame = (deniedRead.data.body ?? '') === (unknownRead.data.body ?? '')
+  const createSame = (createdPage.data.body ?? '') === (createdUnknown.data.body ?? '')
+  const updateSame = (updated.data.body ?? '') === (updatedUnknown.data.body ?? '')
+  expectLine(
+    'unknown_matches_denied',
+    savedBodySame && readSame && createSame && updateSame,
+    true,
+  )
+  await archivePage(owner.id, source.id)
+  const archivedDest = await createPage(outsider.id, { spaceId: outsiderSpace, title: 'After archive' })
+  const archivedSaved = await savePage(outsider.id, {
+    pageId: archivedDest.id,
+    title: 'After archive',
+    body: deniedBody,
+  })
+  const archivedFetched = await drawingRequest(
+    base,
+    'GET',
+    `/api/drawings?pageId=${archivedDest.id}`,
+    { cookie: outsider.cookie },
+  )
+  expectLine('archived_copied', (await copiedForeignRows(created.id)) > 0, false)
+  expectLine(
+    'archived_response_leaks',
+    responseLeaks(JSON.stringify(archivedSaved), created.id) ||
+      responseLeaks(archivedFetched.text, created.id),
     false,
   )
   const rows = await getSql()<{ id: string }[]>`
