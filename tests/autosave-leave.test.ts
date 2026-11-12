@@ -73,7 +73,7 @@ describe('in-progress save before leaving the editor', () => {
     expect(via.calls).toEqual(['sync', 'beacon', 'fetch'])
   })
 
-  it('flushes a body at the 64 KB cap and skips a larger one', () => {
+  it('flushes a body at the 64 KB cap and still syncs a larger one', () => {
     const shell = {
       pageId: 'page-1',
       title: '',
@@ -103,8 +103,8 @@ describe('in-progress save before leaving the editor', () => {
       syncPost: () => true,
       beacon: () => true,
     })
-    expect(deliverPageSave(over, skipped)).toBe('skipped')
-    expect(skipped.calls).toEqual([])
+    expect(deliverPageSave(over, skipped)).toBe('sync')
+    expect(skipped.calls).toEqual(['sync'])
   })
 })
 

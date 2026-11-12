@@ -14,8 +14,9 @@ export type PageSaveTransport = {
 
 const SAVE_URL = '/api/pages/save'
 
-// sendBeacon and keepalive fetch cap out near 64 KB. A larger document skips
-// this unload flush and stays on the debounced save.
+// sendBeacon and keepalive fetch cap out near 64 KB. The synchronous save
+// does not, so a larger document still tries that, then skips the other two
+// and stays on the debounced save.
 export const UNLOAD_FLUSH_MAX_BYTES = 64 * 1024
 
 export function deliverPageSave(
@@ -23,13 +24,13 @@ export function deliverPageSave(
   transport: PageSaveTransport,
 ) {
   const body = JSON.stringify(payload)
-  if (new TextEncoder().encode(body).length > UNLOAD_FLUSH_MAX_BYTES) {
-    return 'skipped' as const
-  }
   try {
     if (transport.syncPost(SAVE_URL, body)) return 'sync' as const
   } catch {
     // Page dismissal can reject a synchronous request.
+  }
+  if (new TextEncoder().encode(body).length > UNLOAD_FLUSH_MAX_BYTES) {
+    return 'skipped' as const
   }
   if (transport.beacon(SAVE_URL, body)) return 'beacon' as const
   transport.fetchKeepalive(SAVE_URL, body)
