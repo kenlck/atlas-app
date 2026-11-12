@@ -166,7 +166,7 @@ async function recipeBody() {
     'body_only_visible',
     hits.length === 1 &&
       hits[0]?.id === created.id &&
-      hits[0]?.group === 'content',
+      hits[0].group === 'content',
   )
 }
 

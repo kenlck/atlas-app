@@ -1,8 +1,13 @@
-import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
+import { NodeViewWrapper } from '@tiptap/react'
+import type { NodeViewProps } from '@tiptap/react'
 import { useEffect, useRef, useState } from 'react'
 import type { ComponentType } from 'react'
 import { createPortal } from 'react-dom'
 import { cloneDiagramFn } from '#/server/fns'
+
+function isCancelled(flag: { current: boolean }) {
+  return flag.current
+}
 
 type EditorProps = {
   drawingId: string
@@ -41,19 +46,19 @@ export function DiagramView({ node, updateAttributes, editor, getPos }: NodeView
   updateRef.current = updateAttributes
 
   useEffect(() => {
-    let cancelled = false
+    const cancel = { current: false }
     setPhase('loading')
     setPreview(null)
     const run = async () => {
       if (!drawingId || !pageId) {
-        if (!cancelled) setPhase('unavailable')
+        if (!cancel.current) setPhase('unavailable')
         return
       }
       const response = await fetch(
         `/api/drawings?drawingId=${encodeURIComponent(drawingId)}`,
         { credentials: 'include' },
       )
-      if (cancelled) return
+      if (cancel.current) return
       if (!response.ok) {
         setPhase('unavailable')
         return
@@ -68,9 +73,9 @@ export function DiagramView({ node, updateAttributes, editor, getPos }: NodeView
       if (data.pageId !== pageId || extra) {
         try {
           const created = await cloneDiagramFn({ data: { pageId, drawingId } })
-          if (cancelled) return
-          const readPos = getPosRef.current
-          const at = typeof readPos === 'function' ? readPos() : pos
+          if (isCancelled(cancel)) return
+          const readPosNow = getPosRef.current
+          const at = typeof readPosNow === 'function' ? readPosNow() : pos
           if (typeof at === 'number') {
             editor.commands.command(({ tr }) => {
               const current = tr.doc.nodeAt(at)
@@ -85,7 +90,7 @@ export function DiagramView({ node, updateAttributes, editor, getPos }: NodeView
             updateRef.current({ drawingId: created.id })
           }
         } catch {
-          if (!cancelled) setPhase('unavailable')
+          if (!isCancelled(cancel)) setPhase('unavailable')
         }
         return
       }
@@ -95,7 +100,7 @@ export function DiagramView({ node, updateAttributes, editor, getPos }: NodeView
     }
     void run()
     return () => {
-      cancelled = true
+      cancel.current = true
     }
   }, [drawingId, pageId, editor])
 

@@ -18,7 +18,7 @@ export function WhiteboardCanvas({
       <Excalidraw
         initialData={{
           elements: elements as never,
-          appState: appState as never,
+          appState: appState,
         }}
         viewModeEnabled={viewMode}
         UIOptions={{

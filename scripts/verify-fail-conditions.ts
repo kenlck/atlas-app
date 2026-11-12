@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { handleResetPassword, resetAdminRateLimit } from '../src/lib/admin-reset'
 import { handleAuthRequest } from '../src/lib/auth-guard'
 import { getDb } from '../src/lib/db'
-import { HttpError } from '../src/lib/http'
+import type { HttpError } from '../src/lib/http'
 import { createPage, getPageView } from '../src/lib/pages'
 import { account, adminAudit, session, user } from '../src/lib/schema'
 import { handlePageSave } from '../src/lib/page-save-request'
@@ -88,7 +88,7 @@ async function fail5f() {
   if (!body.temporaryPassword) fail('fail5f: missing temporary password')
   const rows = await getDb().select().from(user).where(eq(user.id, person.user.id))
   if (rows[0]?.mustChangePassword !== true) fail('fail5f: not locked')
-  if (rows[0]?.updatedAt.getTime() !== before[0]?.updatedAt.getTime()) fail('fail5f: updatedAt changed')
+  if (rows[0].updatedAt.getTime() !== before[0]?.updatedAt.getTime()) fail('fail5f: updatedAt changed')
   const sessions = await getDb().select().from(session).where(eq(session.userId, person.user.id))
   if (sessions.length !== 0) fail('fail5f: sessions remain')
   const accounts = await getDb().select().from(account).where(eq(account.userId, person.user.id))

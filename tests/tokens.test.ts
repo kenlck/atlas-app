@@ -12,7 +12,7 @@ import {
 } from '../src/lib/api-tokens'
 import type { Json } from '../src/lib/body-text'
 import { getDb } from '../src/lib/db'
-import { HttpError } from '../src/lib/http'
+import type { HttpError } from '../src/lib/http'
 import { tiptapToMarkdown } from '../src/lib/markdown-body'
 import { handleMcp } from '../src/lib/mcp'
 import {

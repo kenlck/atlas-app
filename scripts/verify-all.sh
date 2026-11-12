@@ -374,6 +374,7 @@ run_step postgres prepare_database
 run_step install pnpm install --frozen-lockfile
 run_step migrate migrate_schema
 run_step typecheck pnpm typecheck
+run_step lint pnpm lint
 run_step test pnpm test
 run_step test-db-guard ./scripts/verify-fail-conditions.sh test-db-guard
 require_step_log test-db-guard "test_db_guard_remote_refused=true" "test_db_guard_multihost_refused=true" "test_db_guard_double_at_refused=true" "test_db_guard_encoded_multihost_refused=true" "test_db_guard_ipv6_local=true" "test_db_guard_encoded_local=true" "result=pass"

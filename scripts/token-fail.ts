@@ -132,8 +132,8 @@ async function mcp(base: string, token: string | null, body: unknown) {
   return { status: response.status, text }
 }
 
-function toolText(text: string, secret: string) {
-  return text.split(secret).join('[redacted]')
+function toolText(text: string, sensitive: string) {
+  return text.split(sensitive).join('[redacted]')
 }
 
 async function revoked(base: string) {
@@ -280,7 +280,7 @@ function tokenInLogs(token: string) {
   if (!container) fail('ATLAS_CONTAINER is required')
   const result = spawnSync('docker', ['logs', container], { encoding: 'utf8' })
   if (result.status !== 0) fail('docker_logs_failed')
-  const logs = `${result.stdout ?? ''}${result.stderr ?? ''}`
+  const logs = `${result.stdout}${result.stderr}`
   return logs.includes(token)
 }
 
@@ -554,7 +554,7 @@ function ephemeralPort() {
   })
 }
 
-async function resetThroughSameImage(email: string, secret: string) {
+async function resetThroughSameImage(email: string, adminSecret: string) {
   const running = process.env.ATLAS_CONTAINER
   if (!running) fail('ATLAS_CONTAINER is required')
   if (!process.env.DATABASE_URL) fail('DATABASE_URL is required')
@@ -564,8 +564,8 @@ async function resetThroughSameImage(email: string, secret: string) {
     { encoding: 'utf8' },
   )
   if (inspected.status !== 0) fail('image_inspect_failed')
-  const image = (inspected.stdout ?? '').trim()
-  if (!image.startsWith('atlas-app')) fail('image_unexpected')
+  const imageName = inspected.stdout.trim()
+  if (!imageName.startsWith('atlas-app')) fail('image_unexpected')
   let port = 0
   for (let attempt = 0; attempt < 5; attempt += 1) {
     port = await ephemeralPort()
@@ -597,7 +597,7 @@ async function resetThroughSameImage(email: string, secret: string) {
       'HOST=127.0.0.1',
       '-e',
       `PORT=${port}`,
-      image,
+      imageName,
     ],
     { encoding: 'utf8' },
   )
@@ -623,7 +623,7 @@ async function resetThroughSameImage(email: string, secret: string) {
     return await fetch(`${origin}/api/admin/reset-password`, {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${secret}`,
+        authorization: `Bearer ${adminSecret}`,
         'content-type': 'application/json',
       },
       body: JSON.stringify({ email }),
@@ -635,8 +635,8 @@ async function resetThroughSameImage(email: string, secret: string) {
 }
 
 async function reset(base: string) {
-  const secret = process.env.ADMIN_API_SECRET
-  if (!secret) fail('ADMIN_API_SECRET is required')
+  const adminSecret = process.env.ADMIN_API_SECRET
+  if (!adminSecret) fail('ADMIN_API_SECRET is required')
   const user = await signUp(base, 'Reset')
   const created = await createToken(base, user.cookie, 'reset')
   const before = await mcp(base, created.token, {
@@ -645,7 +645,7 @@ async function reset(base: string) {
     method: 'tools/list',
   })
   console.log(`before_reset_status=${before.status}`)
-  const response = await resetThroughSameImage(user.email, secret)
+  const response = await resetThroughSameImage(user.email, adminSecret)
   const resetText = await response.text()
   console.log(`reset_status=${response.status}`)
   if (response.status !== 200) fail('reset_failed')
@@ -1505,7 +1505,7 @@ async function image(base: string) {
     { encoding: 'utf8' },
   )
   if (result.status !== 0) fail('docker_ps_failed')
-  const lines = (result.stdout ?? '')
+  const lines = result.stdout
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)

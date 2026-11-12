@@ -105,7 +105,7 @@ export async function captureTableDateStates(page: Page, shot: Shot) {
   await table.locator('tbody tr').nth(2).locator('td, th').nth(1).click({ modifiers: ['Shift'] })
   await page.waitForFunction(() => {
     const button = [...document.querySelectorAll('button')].find(
-      (item) => item.textContent?.trim() === 'Merge cells',
+      (item) => item.textContent.trim() === 'Merge cells',
     )
     return Boolean(button && !button.disabled)
   })

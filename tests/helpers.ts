@@ -12,7 +12,8 @@ export async function createUser(name = 'Test User', email?: string) {
   const result = await getAuth().api.signUpEmail({
     body: { name, email: address, password },
   })
-  if (!result.user) {
+  const user = result.user as typeof result.user | undefined
+  if (!user) {
     throw new Error('sign-up failed')
   }
   const db = getDb()
@@ -20,11 +21,11 @@ export async function createUser(name = 'Test User', email?: string) {
     .select()
     .from(space)
     .where(
-      and(eq(space.kind, 'personal'), eq(space.ownerUserId, result.user.id)),
+      and(eq(space.kind, 'personal'), eq(space.ownerUserId, user.id)),
     )
     .limit(1)
   if (!spaces[0]) {
     throw new Error('personal space missing')
   }
-  return { user: result.user, password, space: spaces[0] }
+  return { user, password, space: spaces[0] }
 }

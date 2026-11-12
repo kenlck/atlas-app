@@ -1,5 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm'
-import { authenticateBearer, type TokenScope } from './api-tokens'
+import { authenticateBearer } from './api-tokens'
+import type { TokenScope } from './api-tokens'
 import { assertAccess } from './access'
 import { getDb } from './db'
 import {
@@ -11,8 +12,8 @@ import {
   plainElements,
   sceneFromStored,
   sceneRejection,
-  type DrawingScene,
 } from './drawing'
+import type { DrawingScene } from './drawing'
 import { HttpError, notFound } from './http'
 import { saveOriginAllowed } from './page-save-request'
 import { refreshDocText } from './pages'
@@ -84,7 +85,7 @@ function oneId(pageId: unknown, drawingId: unknown) {
   const drawingOk = typeof drawingId === 'string' && drawingId.length > 0
   if (pageOk === drawingOk) return null
   return pageOk
-    ? { pageId: pageId as string, drawingId: null }
+    ? { pageId: pageId, drawingId: null }
     : { pageId: null, drawingId: drawingId as string }
 }
 

@@ -1,4 +1,5 @@
-import { chromium, type Page } from 'playwright'
+import { chromium } from 'playwright'
+import type { Page } from 'playwright'
 import { assertLocalBaseUrl, submitAuthForm } from './verify-local.ts'
 
 const BASE_URL = assertLocalBaseUrl(
@@ -63,7 +64,7 @@ async function main() {
       const chips = [...(root?.querySelectorAll('.date-chip') ?? [])].map(
         (chip) => ({
           date: chip.getAttribute('data-date') ?? '',
-          label: (chip.textContent ?? '').replace(/\s+/g, ' ').trim(),
+          label: chip.textContent.replace(/\s+/g, ' ').trim(),
         }),
       )
       return { text, chips }

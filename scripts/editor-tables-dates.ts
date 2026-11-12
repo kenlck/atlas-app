@@ -1,4 +1,5 @@
-import { chromium, type BrowserContext, type Page } from 'playwright'
+import { chromium } from 'playwright'
+import type { BrowserContext, Page } from 'playwright'
 import { excelClipboard, sheetsClipboard } from './clipboard-fixtures.ts'
 import { assertLocalBaseUrl, clickNewDoc, submitAuthForm } from './verify-local.ts'
 
@@ -242,7 +243,7 @@ async function readChip(page: Page, index: number) {
   const chip = page.locator('.date-chip').nth(index)
   await chip.waitFor()
   const date = await chip.getAttribute('data-date')
-  const label = ((await chip.innerText()) ?? '').trim()
+  const label = (await chip.innerText()).trim()
   return { date, label }
 }
 

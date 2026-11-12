@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, max, sql } from 'drizzle-orm'
 import { assertAccess } from './access'
-import { emptyDoc, tiptapToText, type Json } from './body-text'
+import { emptyDoc, tiptapToText } from './body-text'
+import type { Json } from './body-text'
 import { diagramIds } from './diagram'
 import { getDb } from './db'
 import {
@@ -8,13 +9,14 @@ import {
   drawingLabelText,
   emptyScene,
   sceneFromStored,
-  type DrawingScene,
 } from './drawing'
+import type { DrawingScene } from './drawing'
 import { HttpError, notFound } from './http'
 import { newId } from './ids'
 import { mentionChipText, peopleForBody } from './mentions'
 import type { MentionPerson } from './mentions'
-import { drawing, page, space, user, type Page, type Space } from './schema'
+import { drawing, page, space, user } from './schema'
+import type { Page, Space } from './schema'
 
 export type PageKind = 'doc' | 'whiteboard'
 
@@ -156,7 +158,7 @@ export async function getPageView(
   userId: string,
   pageId: string,
 ): Promise<PageView> {
-  const { space, page: row } = await assertAccess(userId, { pageId })
+  const { space: spaceRow, page: row } = await assertAccess(userId, { pageId })
   if (!row) notFound()
   const db = getDb()
   const authors = await db
@@ -185,12 +187,12 @@ export async function getPageView(
     body: row.body as Json,
     position: row.position,
     updatedAt: row.updatedAt.toISOString(),
-    updatedByName: authors[0]?.name ?? space.name,
+    updatedByName: authors[0]?.name ?? spaceRow.name,
     breadcrumbs: await breadcrumbsFor(row),
     people:
       row.kind === 'whiteboard'
         ? []
-        : await peopleForBody(space, row.body as Json),
+        : await peopleForBody(spaceRow, row.body as Json),
     drawing: board
       ? {
           id: board.id,
@@ -229,7 +231,7 @@ export async function createPage(
       parentId: input.parentId ?? null,
       kind,
       title,
-      body: emptyDoc as object,
+      body: emptyDoc,
       bodyText: '',
       position,
       createdBy: userId,
@@ -318,11 +320,11 @@ async function adoptDiagrams(db: DrawingDb, userId: string, pageId: string, body
       for (const item of value) next.push(await walk(item))
       return next
     }
-    const record = { ...(value as { [key: string]: Json }) }
+    const record = { ...value }
     if (record.type === 'diagram') {
       const attrs =
         record.attrs && typeof record.attrs === 'object' && !Array.isArray(record.attrs)
-          ? { ...(record.attrs as { [key: string]: Json }) }
+          ? { ...record.attrs }
           : {}
       const current = typeof attrs.drawingId === 'string' ? attrs.drawingId : ''
       if (!current) return value

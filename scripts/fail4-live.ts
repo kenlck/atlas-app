@@ -1,4 +1,5 @@
-import { chromium, type Page, type Request } from 'playwright'
+import { chromium } from 'playwright'
+import type { Page, Request } from 'playwright'
 import { assertLocalBaseUrl, clickNewDoc, submitAuthForm } from './verify-local.ts'
 
 const BASE_URL = assertLocalBaseUrl(
@@ -68,13 +69,13 @@ async function main() {
     deviceScaleFactor: 1,
   })
   let armed = false
-  let move: { url: string; body: string } | null = null
+  const observed: { move: { url: string; body: string } | null } = { move: null }
   page.on('request', (request: Request) => {
     if (!armed || request.method() !== 'POST') return
     if (!request.url().includes('_serverFn')) return
     const body = request.postData() ?? ''
     if (!body.includes('"pageId"') || !body.includes('"parentId"')) return
-    move = { url: request.url(), body }
+    observed.move = { url: request.url(), body }
   })
 
   await page.goto(`${BASE_URL}/sign-up`, { waitUntil: 'networkidle' })
@@ -104,8 +105,8 @@ async function main() {
   await page.getByRole('link', { name: /▾\s*Parent/ }).waitFor()
   armed = false
   console.log('nested_child_under_parent=true')
-  if (!move) throw new Error('move request was not observed')
-  const captured: { url: string; body: string } = move
+  if (!observed.move) throw new Error('move request was not observed')
+  const captured = observed.move
 
   async function replay(label: string, body: string) {
     const response = await page.request.post(captured.url, {

@@ -1,7 +1,8 @@
 import { and, eq } from 'drizzle-orm'
 import { getDb } from './db'
 import { notFound } from './http'
-import { page, space, teamMember, type Page, type Space } from './schema'
+import { page, space, teamMember } from './schema'
+import type { Page, Space } from './schema'
 
 export type SpaceRole = 'personal' | 'owner' | 'member'
 
@@ -44,11 +45,8 @@ async function hasArchivedAncestor(row: Page) {
     }
     seen.add(current.id)
     current = await loadPage(current.parentId)
-    if (!current) {
-      return true
-    }
   }
-  return false
+  return true
 }
 
 export async function assertAccess(

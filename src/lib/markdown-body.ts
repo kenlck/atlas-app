@@ -297,7 +297,7 @@ function emitBlocks(nodes: Node[]): string[] {
 export function tiptapToMarkdown(value: Json) {
   const node = asNode(value)
   if (!node || node.type !== 'doc') return ''
-  return emitBlocks(nodesOf(node.content as Json | undefined)).join('\n\n')
+  return emitBlocks(nodesOf(node.content)).join('\n\n')
 }
 
 function withMark(nodes: Node[], mark: Mark): Node[] {
@@ -781,6 +781,6 @@ export function markdownToTiptap(markdown: string): Json {
   const content = parseBlocks(markdown)
   return {
     type: 'doc',
-    content: content.length ? (content as Json[]) : [{ type: 'paragraph' }],
+    content: content.length ? content : [{ type: 'paragraph' }],
   }
 }

@@ -12,8 +12,8 @@ import {
   closeDatePicker,
   getDatePickerRequest,
   subscribeDatePicker,
-  type DatePickerRequest,
 } from '#/lib/date-picker-store'
+import type { DatePickerRequest } from '#/lib/date-picker-store'
 
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
 

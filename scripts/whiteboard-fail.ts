@@ -1,12 +1,13 @@
-import { chromium, type Page } from 'playwright'
+import { chromium } from 'playwright'
+import type { Page } from 'playwright'
 import { closeDb, getSql } from '../src/lib/db'
 import { canonicalElements } from '../src/lib/drawing'
 import {
   archivePage,
   createPage,
   listPageTree,
-  type TreeNode,
 } from '../src/lib/pages'
+import type { TreeNode } from '../src/lib/pages'
 import { assertLocalBaseUrl, assertLocalDatabaseUrl, submitAuthForm } from './verify-local.ts'
 
 const PASSWORD = 'whiteboard-recipe-pass'
@@ -721,7 +722,12 @@ async function recipeChunk(base: string) {
   await page.waitForLoadState('networkidle')
   await settle()
   expectLine('board_excalidraw_requests', hits.length - docHits > 0, true)
-  const ui = (await page.evaluate(`(() => {
+  const ui = await page.evaluate<{
+    library: boolean
+    collab: boolean
+    image: boolean
+    watermark: boolean
+  }>(`(() => {
     const shown = (selector) => {
       const node = document.querySelector(selector)
       if (!node) return false
@@ -735,12 +741,7 @@ async function recipeChunk(base: string) {
       image: shown('.excalidraw [aria-label="Image"]') || shown('.excalidraw [title="Image"]'),
       watermark: text.includes('watermark') || text.includes('unlicensed'),
     }
-  })()`)) as {
-    library: boolean
-    collab: boolean
-    image: boolean
-    watermark: boolean
-  }
+  })()`)
   expectLine('watermark', ui.watermark ? 'present' : 'absent', 'absent')
   expectLine('library_visible', ui.library, false)
   expectLine('collab_visible', ui.collab, false)

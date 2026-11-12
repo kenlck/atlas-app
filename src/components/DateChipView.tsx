@@ -1,5 +1,7 @@
-import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
-import { useEffect, useRef, type KeyboardEvent } from 'react'
+import { NodeViewWrapper } from '@tiptap/react'
+import type { NodeViewProps } from '@tiptap/react'
+import { useEffect, useRef } from 'react'
+import type { KeyboardEvent } from 'react'
 import { formatDateLabel } from '#/lib/date-label'
 import { closeDatePicker, getDatePickerRequest, openDatePicker } from '#/lib/date-picker-store'
 

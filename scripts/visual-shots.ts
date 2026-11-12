@@ -1,7 +1,8 @@
 import { execSync } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { chromium, type Page, type Request } from 'playwright'
+import { chromium } from 'playwright'
+import type { Page, Request } from 'playwright'
 import { captureTableDateStates } from './table-date-states.ts'
 import {
   assertLocalBaseUrl,
@@ -219,7 +220,7 @@ async function createNamedPage(page: Page, title: string) {
 async function logTitleLabel(page: Page, width: number) {
   const info = await page.evaluate(() => {
     const labels = Array.from(document.querySelectorAll('label')).map((el) =>
-      (el.textContent ?? '').trim(),
+      el.textContent.trim(),
     )
     return { labels, hasTitleWord: /\bTITLE\b/.test(document.body.innerText) }
   })
@@ -510,7 +511,7 @@ async function main() {
     await page.getByRole('button', { name: 'Try again' }).waitFor()
     const pageError = await page.evaluate(() => ({
       topBar: Boolean(document.querySelector('.top')),
-      copy: document.querySelector('.nf .empty')?.textContent?.trim() ?? '',
+      copy: document.querySelector('.nf .empty')?.textContent.trim() ?? '',
       tryAgain: Boolean(document.querySelector('.nf .btn.secondary')),
     }))
     console.log(`page_error ${JSON.stringify(pageError)}`)
@@ -540,7 +541,7 @@ async function main() {
     await page.locator('.tool button.on:has(b)').waitFor()
     await shot(page, 1280, 'editor', 'bold-active')
     const selectionPaint = await page.evaluate(() => {
-      const root = document.querySelector('.ProseMirror') as HTMLElement | null
+      const root = document.querySelector<HTMLElement>('.ProseMirror')
       root?.focus()
       document.execCommand('selectAll')
       const el =
@@ -580,7 +581,7 @@ async function main() {
       .evaluate((el) => {
         const style = getComputedStyle(el)
         return {
-          text: (el.textContent ?? '').trim(),
+          text: el.textContent.trim(),
           className: el.className,
           background: style.backgroundColor,
           color: style.color,

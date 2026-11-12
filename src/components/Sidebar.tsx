@@ -52,8 +52,8 @@ export function Sidebar({
 }) {
   const [shortcut, setShortcut] = useState('Ctrl K')
   useEffect(() => {
-    const platform = navigator.platform ?? ''
-    const agent = navigator.userAgent ?? ''
+    const platform = navigator.platform
+    const agent = navigator.userAgent
     if (/Mac|iPhone|iPad|iPod/.test(platform) || /Mac OS X/.test(agent)) {
       setShortcut('⌘K')
     }

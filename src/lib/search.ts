@@ -120,7 +120,7 @@ export async function searchVisiblePages(
       spaceName: row.space_name,
       updatedAt: isoTime(row.updated_at),
       group: titleMatch ? 'title' : 'content',
-      snippet: titleMatch ? '' : snippetAround(row.body_text ?? '', trimmed),
+      snippet: titleMatch ? '' : snippetAround(row.body_text, trimmed),
     }
   })
 }

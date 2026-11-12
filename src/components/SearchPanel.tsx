@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 import type { SearchHit } from '#/lib/search'
 import { searchPagesFn } from '#/server/fns'
 

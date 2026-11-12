@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
-import { expect, test, type Request } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import type { Request } from '@playwright/test'
 import { captureTableDateStates } from '../../scripts/table-date-states.ts'
 import { clickNewDoc, submitAuthForm } from '../../scripts/verify-local.ts'
 

@@ -161,13 +161,13 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
   }
 
   useEffect(() => {
-    let cancelled = false
+    const cancel = { current: false }
     void (async () => {
       const response = await fetch(
         `/api/drawings?drawingId=${encodeURIComponent(drawingId)}`,
         { credentials: 'include' },
       )
-      if (cancelled) return
+      if (cancel.current) return
       if (!response.ok) return
       const data = (await response.json()) as {
         pageId?: string
@@ -188,7 +188,7 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
       setReady(true)
     })()
     return () => {
-      cancelled = true
+      cancel.current = true
     }
   }, [drawingId, pageId])
 

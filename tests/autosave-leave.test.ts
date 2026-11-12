@@ -7,8 +7,8 @@ import {
 import {
   deliverPageSave,
   UNLOAD_FLUSH_MAX_BYTES,
-  type PageSaveTransport,
 } from '../src/lib/page-save-keepalive'
+import type { PageSaveTransport } from '../src/lib/page-save-keepalive'
 
 const payload = {
   pageId: 'page-1',

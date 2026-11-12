@@ -121,7 +121,8 @@ async function main() {
     const result = await getAuth().api.signUpEmail({
       body: { name: 'Bearer Check', email, password },
     })
-    signedUp = Boolean(result.user?.id)
+    const user = result.user as typeof result.user | undefined
+    signedUp = Boolean(user?.id)
   } catch (error) {
     fail(redact(error instanceof Error ? error.message : 'sign-up failed'))
   }
