@@ -312,20 +312,30 @@ recipe_5d() {
 }
 
 recipe_5f() {
-  local work
+  local work container
   work=$(mktemp -d)
   chmod 700 "$work"
+  container="${ATLAS_CONTAINER:-}"
   trap "rm -rf '$work'" EXIT
   prepare_trace "$work"
   VERIFY_TRACE_DIR="$work" pnpm exec tsx scripts/http-evidence.ts fail5f
-  local audit_ok=0
+  if [[ -z "$container" ]]; then
+    echo "ATLAS_CONTAINER is required"
+    return 1
+  fi
+  echo "CMD docker logs $container"
+  docker logs "$container" > "$work/app.log" 2>&1
+  echo "log_lines=$(wc -l < "$work/app.log" | tr -d ' ')"
+  local logs_ok=0 audit_ok=0
   set +e
+  grep_absent "$work" "$work/app.log" logs
+  logs_ok=$?
   grep_absent "$work" "$work/audit_row" audit
   audit_ok=$?
   set -e
   rm -rf "$work"
   trap - EXIT
-  return "$audit_ok"
+  [[ "$logs_ok" -eq 0 && "$audit_ok" -eq 0 ]]
 }
 
 recipe_5g() {
@@ -424,6 +434,7 @@ recipe_5h() {
   trap - EXIT
 }
 
+# Issue #10 item 6. PR #9 fail-condition row 6: migrate, then run, from the image.
 recipe_6() {
   local work pg_port app_port
   work=$(mktemp -d)
@@ -640,8 +651,9 @@ recipe_8() {
     pnpm exec tsx scripts/verify-client-ip.ts
 }
 
-# Issue #10 item 2. Bad bearers fill one IP's bucket. A valid bearer from
-# another IP still resets, and a successful reset does not consume the bucket.
+# Issue #10 item 2. Five bad bearers from one IP return 401 and the sixth
+# returns 429. A valid bearer on that same IP still resets. Successes do
+# not consume the bucket.
 # An inherited DATABASE_URL is not passed to the checker.
 recipe_10() {
   if [[ -z "${DATABASE_URL:-}" ]]; then
@@ -876,6 +888,12 @@ recipe_10_3() {
   pnpm exec tsx scripts/move-cycle.ts
 }
 
+recipe_10_4() {
+  require_database_url
+  echo "CMD pnpm exec tsx scripts/save-origin.ts"
+  pnpm exec tsx scripts/save-origin.ts
+}
+
 recipe_healthcheck() {
   local headers body code location_count
   headers=$(mktemp)
@@ -979,6 +997,7 @@ case "${1:-}" in
   8-13) run_recipe recipe_diagram outsider ;;
   test-db-guard) run_recipe recipe_test_db_guard ;;
   10-3) run_recipe recipe_10_3 ;;
+  10-4) run_recipe recipe_10_4 ;;
   all)
     echo "START $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     echo "all runs in-process checks and vitest, which drops the public schema"
@@ -987,7 +1006,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|8-1|8-2|8-3|8-4|8-5|8-6|8-7|8-8|8-9|8-10|8-11|8-12|8-13|test-db-guard|10-3|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|8-1|8-2|8-3|8-4|8-5|8-6|8-7|8-8|8-9|8-10|8-11|8-12|8-13|test-db-guard|10-3|10-4|all]" >&2
     exit 2
     ;;
 esac

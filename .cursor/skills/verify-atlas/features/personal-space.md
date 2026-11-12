@@ -30,7 +30,7 @@ Preconditions:
 - **Subpage.** On that page, choose `Create page`. The new row's parent is the page that was open, the breadcrumb shows that parent, and the sidebar lists the child under it.
 - **Nest.** Create `Parent`, then `Child`. Right-click `Child`, choose `Move`, choose `Parent`. The tree shows a `▾ Parent` link.
 - **Other person.** Run `./scripts/verify-fail-conditions.sh 1`. The log shows `404` for the open, the save, and the space, `content_unchanged=true`, and `B_tree_contains_A_title=false`.
-- **Cycle and archive.** Run `./scripts/verify-fail-conditions.sh 4`. The log shows `move_under_child_status=400`, `move_under_self_status=400`, and `child_after_archive_status=404`.
+- **Cycle and archive.** Run `./scripts/verify-fail-conditions.sh 4`. The log shows `move_under_child_status=400`, `move_under_self_status=400`, and `child_after_archive_status=404`. Run `./scripts/verify-fail-conditions.sh 10-3` for a move under a descendant. The log shows `grandchild_rows_unchanged=true`, `self_rows_unchanged=true`, `cycle_walk_within_500ms=true`, and `cycle_rows_unchanged=true`.
 
 ## Gotchas
 

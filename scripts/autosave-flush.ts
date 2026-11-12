@@ -41,6 +41,66 @@ async function main() {
   const pageUrl = page.url()
 
   await page.waitForTimeout(200)
+  // Block synchronous XHR so this reload uses sendBeacon or keepalive fetch.
+  // Browsers send Origin on both. The save route rejects a missing Origin.
+  const saves: Array<{ origin: string; status: number }> = []
+  page.on('console', (message) => {
+    const text = message.text()
+    if (text === 'atlas-flush beacon') console.log('unload_transport=beacon')
+    if (text === 'atlas-flush keepalive') console.log('unload_transport=keepalive')
+  })
+  await page.evaluate(() => {
+    const proto = XMLHttpRequest.prototype
+    const open = proto.open
+    proto.open = function (
+      this: XMLHttpRequest & { __atlasSync?: boolean },
+      method: string,
+      url: string | URL,
+      async?: boolean,
+    ) {
+      this.__atlasSync = async === false
+      return open.call(this, method, url, async ?? true)
+    }
+    const send = proto.send
+    proto.send = function (
+      this: XMLHttpRequest & { __atlasSync?: boolean },
+      body?: Document | XMLHttpRequestBodyInit | null,
+    ) {
+      if (this.__atlasSync) throw new Error('synchronous XHR blocked')
+      return send.call(this, body)
+    }
+    const beacon = navigator.sendBeacon.bind(navigator)
+    navigator.sendBeacon = (url, data) => {
+      console.log('atlas-flush beacon')
+      return beacon(url, data)
+    }
+    const origFetch = window.fetch.bind(window)
+    window.fetch = (input, init) => {
+      if (init?.keepalive) console.log('atlas-flush keepalive')
+      return origFetch(input, init)
+    }
+  })
+  const client = await page.context().newCDPSession(page)
+  await client.send('Network.enable')
+  const saveIds = new Set<string>()
+  const origins = new Map<string, string>()
+  const statuses = new Map<string, number>()
+  client.on('Network.requestWillBeSent', (event) => {
+    if (event.request.url.includes('/api/pages/save')) saveIds.add(event.requestId)
+  })
+  client.on('Network.requestWillBeSentExtraInfo', (event) => {
+    const headers = event.headers
+    origins.set(event.requestId, headers.Origin || headers.origin || '')
+  })
+  client.on('Network.responseReceived', (event) => {
+    if (event.response.url.includes('/api/pages/save')) {
+      statuses.set(event.requestId, event.response.status)
+    }
+  })
+  client.on('Network.responseReceivedExtraInfo', (event) => {
+    if (typeof event.statusCode === 'number') statuses.set(event.requestId, event.statusCode)
+  })
+  console.log('unload_sync_xhr=blocked')
   await page.reload({ waitUntil: 'networkidle' })
   let afterReload = ''
   for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -49,9 +109,27 @@ async function main() {
     if (afterReload === typed) break
     await page.reload({ waitUntil: 'networkidle' })
   }
+  for (const id of saveIds) {
+    saves.push({
+      origin: origins.get(id) ?? '',
+      status: statuses.get(id) ?? 0,
+    })
+  }
+  const baseOrigin = new URL(BASE_URL).origin
+  const originMatches =
+    saves.length > 0 && saves.every((save) => save.origin === baseOrigin)
+  const rejected = saves.some((save) => save.status === 403 || save.status === 400)
+  const saveAccepted = originMatches && !rejected
+  console.log(`unload_save_count=${saves.length}`)
+  console.log(`unload_save_status=${saves.map((save) => save.status).join(',')}`)
+  console.log(`unload_origin_matches=${originMatches}`)
+  console.log(`unload_save_accepted=${saveAccepted}`)
   console.log(`typed=${typed}`)
   console.log(`after_reload_200ms=${afterReload}`)
   console.log(`reload_exact_match=${afterReload === typed}`)
+  if (!saveAccepted) {
+    throw new Error('unload flush did not send Origin and get accepted')
+  }
   if (afterReload !== typed) {
     throw new Error('reload within 800ms lost the typed text')
   }
