@@ -99,10 +99,6 @@ async function main() {
     fail(`bad tokens from one ip expected 401 x5 then 429, got ${bad.join(',')}`)
   }
 
-  const limited = (await call(adminSecret, 'nobody-limited@example.com', BAD_IP)).status
-  console.log(`limited_ip_valid_status=${limited}`)
-  if (limited !== 429) fail(`valid token on a limited ip expected 429, got ${limited}`)
-
   process.env.DATABASE_URL = testUrl
   if (process.env.ATLAS_DB_MIGRATED !== '1') {
     const sql = postgres(testUrl, { ...postgresPoolOptions(testUrl), max: 1 })
@@ -130,6 +126,17 @@ async function main() {
     fail(redact(error instanceof Error ? error.message : 'sign-up failed'))
   }
   if (!signedUp) fail('sign-up failed')
+
+  const limited = await call(adminSecret, email, BAD_IP)
+  console.log(`limited_ip_valid_status=${limited.status}`)
+  console.log(`limited_ip_password_len=${limited.passwordLen}`)
+  if (limited.status !== 200 || limited.passwordLen < 8) {
+    fail(`valid token on a limited ip expected 200, got ${limited.status}`)
+  }
+
+  const stillBad = (await call(WRONG_BEARER, email, BAD_IP)).status
+  console.log(`limited_ip_still_bad=${stillBad}`)
+  if (stillBad !== 429) fail(`bad token on a limited ip expected 429, got ${stillBad}`)
 
   const other = await call(adminSecret, email, OTHER_IP)
   console.log(`other_ip_status=${other.status}`)

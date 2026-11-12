@@ -75,14 +75,15 @@ export async function handleResetPassword(
 
   const ip = adminCallerIp(request, fallbackIp)
   const token = bearerToken(request)
-  // Compare the bearer before touching the limiter. A bad token from another
-  // address cannot fill this IP's bucket, and a success does not count.
+  // Bearer is compared before the limiter. Only a mismatch counts: five from
+  // one IP in 15 minutes return 401, and later mismatches return 429. A match
+  // is not limited, and a success does not count, so bad-token spam cannot
+  // lock out a valid admin.
   if (!constantTimeEqual(token, secret)) {
     if (overFailureLimit(ip)) return json({ error: 'Too many requests' }, 429)
     recordFailure(ip)
     return json({ error: 'Unauthorized' }, 401)
   }
-  if (overFailureLimit(ip)) return json({ error: 'Too many requests' }, 429)
 
   let email = ''
   try {
@@ -91,11 +92,9 @@ export async function handleResetPassword(
       email = body.email.trim().toLowerCase()
     }
   } catch {
-    recordFailure(ip)
     return json({ error: 'Bad request' }, 400)
   }
   if (!email) {
-    recordFailure(ip)
     return json({ error: 'Bad request' }, 400)
   }
 
@@ -103,7 +102,6 @@ export async function handleResetPassword(
   const users = await db.select().from(user).where(eq(user.email, email)).limit(1)
   const target = users[0]
   if (!target) {
-    recordFailure(ip)
     return json({ error: 'Not found' }, 404)
   }
 

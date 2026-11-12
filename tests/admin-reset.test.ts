@@ -100,16 +100,22 @@ describe('admin reset', () => {
     expect(unlocked[0]?.mustChangePassword).toBe(false)
   })
 
-  it('rate limits the endpoint', async () => {
+  it('limits bad bearers without locking out a valid bearer', async () => {
     process.env.ADMIN_API_SECRET = LOCAL_SECRET
+    const person = await createUser('Limited Admin')
     const socket = '198.51.100.20'
-    let last = 200
+    const wrong = 'x'.repeat(32)
+    const statuses: number[] = []
     for (let i = 0; i < 6; i += 1) {
-      last = (
-        await handleResetPassword(request(LOCAL_SECRET, `missing${i}@example.com`, `203.0.113.${i}`), socket)
-      ).status
+      statuses.push(
+        (await handleResetPassword(request(wrong, person.user.email, `203.0.113.${i}`), socket)).status,
+      )
     }
-    expect(last).toBe(429)
+    expect(statuses).toEqual([401, 401, 401, 401, 401, 429])
+    const ok = await handleResetPassword(request(LOCAL_SECRET, person.user.email), socket)
+    expect(ok.status).toBe(200)
+    const stillBad = await handleResetPassword(request(wrong, person.user.email), socket)
+    expect(stillBad.status).toBe(429)
   })
 
   it('ignores rotating X-Forwarded-For unless trusted-proxy mode is on', async () => {
