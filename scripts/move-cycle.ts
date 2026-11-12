@@ -29,6 +29,34 @@ async function parentKey(spaceId: string) {
   return ['A', 'B', 'C'].map((title) => byTitle.get(title) ?? null)
 }
 
+async function rowState(spaceId: string) {
+  const rows = await getDb()
+    .select({
+      id: page.id,
+      title: page.title,
+      parentId: page.parentId,
+      position: page.position,
+      body: page.body,
+      updatedBy: page.updatedBy,
+      updatedAt: page.updatedAt,
+    })
+    .from(page)
+    .where(eq(page.spaceId, spaceId))
+  return JSON.stringify(
+    rows
+      .map((row) => ({
+        id: row.id,
+        title: row.title,
+        parentId: row.parentId,
+        position: row.position,
+        body: row.body,
+        updatedBy: row.updatedBy,
+        updatedAt: row.updatedAt.toISOString(),
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  )
+}
+
 async function expectRefusal(userId: string, pageId: string, parentId: string) {
   try {
     await movePage(userId, { pageId, parentId })
@@ -57,21 +85,23 @@ async function main() {
   if (before[0] !== null || before[1] !== a.id || before[2] !== b.id) {
     fail('tree was not A > B > C')
   }
+  const beforeRows = await rowState(spaceId)
 
   await expectRefusal(userId, a.id, c.id)
-  const afterGrandchild = JSON.stringify(await parentKey(spaceId))
-  const unchanged = afterGrandchild === JSON.stringify(before)
+  const afterGrandchild = await rowState(spaceId)
+  const unchanged = afterGrandchild === beforeRows
   console.log('grandchild_status=400')
   console.log('grandchild_error_clear=true')
   console.log(`parents_unchanged=${unchanged}`)
+  console.log(`grandchild_rows_unchanged=${unchanged}`)
   if (!unchanged) fail('grandchild move wrote')
 
   await expectRefusal(userId, a.id, a.id)
-  const afterSelf =
-    JSON.stringify(await parentKey(spaceId)) === JSON.stringify(before)
+  const afterSelf = (await rowState(spaceId)) === beforeRows
   console.log('self_status=400')
   console.log('self_error_clear=true')
   console.log(`self_unchanged=${afterSelf}`)
+  console.log(`self_rows_unchanged=${afterSelf}`)
   if (!afterSelf) fail('self move wrote')
 
   const moved = await movePage(userId, { pageId: c.id, parentId: a.id })
@@ -94,6 +124,7 @@ async function main() {
     fail('cycle was not written')
   }
   const outside = await createPage(userId, { spaceId, title: 'D' })
+  const beforeWalk = await rowState(spaceId)
   const started = Date.now()
   const outcome = await Promise.race([
     getDb()
@@ -120,10 +151,13 @@ async function main() {
     outcome.hit === false &&
     ms <= WALK_MS &&
     !statementTimeout
+  const walkUnchanged = (await rowState(spaceId)) === beforeWalk
   console.log(`cycle_walk_ms=${ms}`)
   console.log(`cycle_walk_within_500ms=${within}`)
   console.log(`statement_timeout=${statementTimeout}`)
+  console.log(`cycle_rows_unchanged=${walkUnchanged}`)
   if (!within) fail('descendant walk did not return within 500ms')
+  if (!walkUnchanged) fail('cycle walk wrote')
   await closeDb()
 }
 

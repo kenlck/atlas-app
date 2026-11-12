@@ -6,7 +6,7 @@ After a person types, a reload shows the same text. When the save returns 500, t
 
 - `reload` saves text and shows that same text after a reload.
 - `retry` shows the Retry banner when the save server function returns 500, and keeps the typed text.
-- `flush` keeps text when the person reloads or leaves during the 800ms debounce.
+- `flush` keeps text when the person reloads or leaves during the 800ms debounce. The unload request to `POST /api/pages/save` sends `Origin`. A body over 64 KB skips that flush and stays on the debounced save.
 
 ## How to get to it (user POV)
 
@@ -21,7 +21,7 @@ Preconditions:
 - Doctor reports `sign_in_status=200`.
 - The page route can load. The 500 is produced in the browser with `page.route`, not by stopping the server.
 
-- **Reload and Retry.** Run `./scripts/verify-fail-conditions.sh 3`. The log shows `reload_exact_match=true`, `retry_banner=Couldn't save. Retry`, `text_kept=true`, and a second exact match from the flush script.
+- **Reload and Retry.** Run `./scripts/verify-fail-conditions.sh 3`. The log shows `reload_exact_match=true`, `retry_banner=Couldn't save. Retry`, `text_kept=true`, and a second exact match from the flush script. `pnpm autosave-flush` also shows `unload_origin_matches=true` and `unload_save_accepted=true`. A body over 64 KB is the unit test `flushes a body at the 64 KB cap and skips a larger one` in `tests/autosave-leave.test.ts`.
 - **Screenshot of the banner.** Run `pnpm visual-shots`. `artifacts/<head sha>/1280-page-autosave-retry.png` is the banner. The recipe log is the pass condition. The PNG is the picture of it.
 
 ## Gotchas

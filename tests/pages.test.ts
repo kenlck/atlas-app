@@ -50,6 +50,10 @@ describe('pages', () => {
     expect(tree.tree).toHaveLength(1)
     expect(tree.tree[0]?.children[0]?.id).toBe(child.id)
 
+    const beforeMove = (
+      await getDb().select().from(page).where(eq(page.spaceId, owner.space.id))
+    ).sort((a, b) => a.id.localeCompare(b.id))
+
     await expect(
       movePage(owner.user.id, { pageId: parent.id, parentId: child.id }),
     ).rejects.toMatchObject({ status: 400 } satisfies Partial<HttpError>)
@@ -57,6 +61,11 @@ describe('pages', () => {
     await expect(
       movePage(owner.user.id, { pageId: parent.id, parentId: parent.id }),
     ).rejects.toMatchObject({ status: 400 })
+
+    const afterMove = (
+      await getDb().select().from(page).where(eq(page.spaceId, owner.space.id))
+    ).sort((a, b) => a.id.localeCompare(b.id))
+    expect(afterMove).toEqual(beforeMove)
 
     await archivePage(owner.user.id, parent.id)
     const after = await listPageTree(owner.user.id, owner.space.id)

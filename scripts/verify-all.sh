@@ -385,6 +385,7 @@ run_step visual-shots pnpm visual-shots
 run_step calendar-view pnpm calendar-view
 require_step_log calendar-view "month_grid=visible" "agenda_at_1280=hidden" "month_crossing_bar=true" "agenda_at_390=visible" "calendar_view=pass"
 run_step autosave-flush pnpm autosave-flush
+require_step_log autosave-flush "reload_exact_match=true" "navigate_exact_match=true" "unload_origin_matches=true" "unload_save_accepted=true"
 run_step tokens node scripts/lint-tokens.mjs
 run_step docker-build build_image
 run_step psql ensure_psql
@@ -437,6 +438,7 @@ run_step fail5h ./scripts/verify-fail-conditions.sh 5h
 run_step fail5c ./scripts/verify-fail-conditions.sh 5c
 run_step fail5d ./scripts/verify-fail-conditions.sh 5d
 run_step fail5f ./scripts/verify-fail-conditions.sh 5f
+require_step_log fail5f "secret_not_in_logs=true" "temp_not_in_logs=true" "new_not_in_logs=true" "secret_not_in_audit=true" "temp_not_in_audit=true" "new_not_in_audit=true"
 run_step fail5g ./scripts/verify-fail-conditions.sh 5g
 run_step forgot-password ./scripts/verify-fail-conditions.sh forgot-password
 run_step design-lock ./scripts/verify-fail-conditions.sh design-lock
@@ -454,11 +456,13 @@ require_step_log fail7a "ADMIN_API_SECRET is required" "names_ADMIN_API_SECRET=t
 run_step fail8 ./scripts/verify-fail-conditions.sh 8
 require_step_log fail8 "resolved=proxy" "auth_statuses=401,401,401,429"
 run_step fail10 ./scripts/verify-fail-conditions.sh 10
-require_step_log fail10 "inherited_database_url=ignored" "database_url_visible=false" "bad_statuses=401,401,401,401,401,429" "limited_ip_valid_status=429" "other_ip_status=200" "success_statuses=200,200,200,200,200,200" "success_does_not_consume=true" "after_success_bad=401"
+require_step_log fail10 "inherited_database_url=ignored" "database_url_visible=false" "bad_statuses=401,401,401,401,401,429" "limited_ip_valid_status=200" "limited_ip_still_bad=429" "other_ip_status=200" "success_statuses=200,200,200,200,200,200" "success_does_not_consume=true" "after_success_bad=401"
 run_step fail9 ./scripts/verify-fail-conditions.sh 9
 require_step_log fail9 "cross_origin_status=403"
 run_step fail9a ./scripts/verify-fail-conditions.sh 9a
 require_step_log fail9a "malformed_status=400"
+run_step fail10-4 ./scripts/verify-fail-conditions.sh 10-4
+require_step_log fail10-4 "missing_origin_status=403" "missing_origin_unchanged=true" "mismatched_origin_status=403" "mismatched_origin_unchanged=true" "malformed_status=400" "malformed_unchanged=true" "matching_origin_status=204" "matching_origin_accepted=true"
 run_step fail5-1 ./scripts/verify-fail-conditions.sh 5-1
 require_step_log fail5-1 "non_member_calendar_status=404" "non_member_create_status=404" "non_member_update_status=404" "non_member_delete_status=404" "other_team_event_visible=false"
 run_step fail5-2 ./scripts/verify-fail-conditions.sh 5-2
@@ -534,7 +538,7 @@ require_step_log fail8-12 "svg_in_drawing_row=true" "served_svg=true" "outsider_
 run_step fail8-13 ./scripts/verify-fail-conditions.sh 8-13
 require_step_log fail8-13 "node_copied=false" "node_response_leaks=false" "mcp_copied=false" "mcp_response_leaks=false" "unknown_matches_denied=true" "mcp_update_copied=false" "mcp_update_response_leaks=false" "archived_copied=false" "archived_response_leaks=false" "source_only=true" "result=pass"
 run_step fail10-3 ./scripts/verify-fail-conditions.sh 10-3
-require_step_log fail10-3 "grandchild_status=400" "grandchild_error_clear=true" "parents_unchanged=true" "self_status=400" "self_error_clear=true" "self_unchanged=true" "valid_status=200" "valid_parent_updated=true" "cycle_walk_within_500ms=true" "statement_timeout=false"
+require_step_log fail10-3 "grandchild_status=400" "grandchild_error_clear=true" "parents_unchanged=true" "grandchild_rows_unchanged=true" "self_status=400" "self_error_clear=true" "self_unchanged=true" "self_rows_unchanged=true" "valid_status=200" "valid_parent_updated=true" "cycle_walk_within_500ms=true" "statement_timeout=false" "cycle_rows_unchanged=true"
 run_step fail13 ./scripts/verify-fail-conditions.sh 13
 require_step_log fail13 "sidebar_untitled=true" "sidebar_active=true" "sidebar_empty=false" "document_loads_after_create=0"
 run_step fail20 ./scripts/verify-fail-conditions.sh 20

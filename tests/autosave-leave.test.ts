@@ -6,6 +6,7 @@ import {
 } from '../src/lib/editor-flush'
 import {
   deliverPageSave,
+  UNLOAD_FLUSH_MAX_BYTES,
   type PageSaveTransport,
 } from '../src/lib/page-save-keepalive'
 
@@ -70,6 +71,40 @@ describe('in-progress save before leaving the editor', () => {
     })
     expect(deliverPageSave(payload, via)).toBe('fetch')
     expect(via.calls).toEqual(['sync', 'beacon', 'fetch'])
+  })
+
+  it('flushes a body at the 64 KB cap and still syncs a larger one', () => {
+    const shell = {
+      pageId: 'page-1',
+      title: '',
+      body: { type: 'doc', content: [{ type: 'paragraph' }] },
+    }
+    const empty = new TextEncoder().encode(JSON.stringify(shell)).length
+    const atCap = {
+      pageId: shell.pageId,
+      title: 'a'.repeat(UNLOAD_FLUSH_MAX_BYTES - empty),
+      body: shell.body,
+    }
+    const over = {
+      pageId: shell.pageId,
+      title: 'a'.repeat(UNLOAD_FLUSH_MAX_BYTES - empty + 1),
+      body: shell.body,
+    }
+    expect(new TextEncoder().encode(JSON.stringify(atCap)).length).toBe(
+      UNLOAD_FLUSH_MAX_BYTES,
+    )
+    expect(new TextEncoder().encode(JSON.stringify(over)).length).toBe(
+      UNLOAD_FLUSH_MAX_BYTES + 1,
+    )
+    const allowed = transport({ syncPost: () => true })
+    expect(deliverPageSave(atCap, allowed)).toBe('sync')
+    expect(allowed.calls).toEqual(['sync'])
+    const skipped = transport({
+      syncPost: () => true,
+      beacon: () => true,
+    })
+    expect(deliverPageSave(over, skipped)).toBe('sync')
+    expect(skipped.calls).toEqual(['sync'])
   })
 })
 

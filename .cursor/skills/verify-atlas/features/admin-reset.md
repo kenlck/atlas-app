@@ -10,7 +10,7 @@
 - `logs` leaves the secret, the temporary password, and the new password out of the container log and out of every `admin_audit` column.
 - `reset` ignores a caller-supplied password, returns a temporary password once, stores a scrypt hash, and leaves other user fields unchanged.
 - `locked` signs in to `/set-password` first, then returns 403 from a GET server function, a mutating server function, the save API, and `update-user`.
-- `limited` returns 429 on the sixth wrong bearer even when each request sends a different `X-Forwarded-For`.
+- `limited` returns 429 on the sixth wrong bearer from one IP, even when each request sends a different `X-Forwarded-For`. A valid bearer from that IP still resets. Successes do not count.
 
 ## How to get to it (user POV)
 
@@ -32,10 +32,10 @@ Preconditions:
 - **Wrong bearer.** Run `./scripts/verify-fail-conditions.sh 5b`. The log shows `401` for the missing, short, and long bearers, `bearer_bodies_match=true`, and `constant_time_unit_test` naming `tests/admin-reset.test.ts`.
 - **Sessions.** Run `./scripts/verify-fail-conditions.sh 5c`. The log shows `session_count=0` and `sessions_ended=true`.
 - **Logs and audit.** Run `./scripts/verify-fail-conditions.sh 5d`. The log shows `secret_not_in_logs=true`, `temp_not_in_logs=true`, `new_not_in_logs=true`, and the same three `*_not_in_audit=true`.
-- **Supplied password.** Run `./scripts/verify-fail-conditions.sh 5f`. The log shows `supplied_password_field=ignored`, `supplied_password_verifies=false`, `second_temporary_differs=true`, `password_hash_shape=true`, `user_fields_unchanged=true`, `audit_rows=2`, and `*_not_in_audit=true`.
+- **Supplied password.** Run `./scripts/verify-fail-conditions.sh 5f`. The log shows `supplied_password_field=ignored`, `supplied_password_verifies=false`, `second_temporary_differs=true`, `password_hash_shape=true`, `user_fields_unchanged=true`, `audit_rows=2`, `*_not_in_audit=true`, and `secret_not_in_logs=true`, `temp_not_in_logs=true`, `new_not_in_logs=true` from `docker logs` of `ATLAS_CONTAINER`.
 - **Lock.** Run `./scripts/verify-fail-conditions.sh 5g`. The log shows `first_path=/set-password` before any other navigation, `locked_get_server_fn=403`, `locked_post_server_fn=403`, `403` for the save API and `update-user`, and `name_after_update_user=Lock Name`.
 - **Forgot password.** Run `./scripts/verify-fail-conditions.sh forgot-password`. The log prints the note and `form_count=0`.
-- **Rate limit.** Run `./scripts/verify-fail-conditions.sh 5h`. The log shows `attempt_1` through `attempt_5` as `401` and `attempt_6=429`.
+- **Rate limit.** Run `./scripts/verify-fail-conditions.sh 5h`. The log shows `attempt_1` through `attempt_5` as `401` and `attempt_6=429`. Run `./scripts/verify-fail-conditions.sh 10` for the bearer-first check. The log shows `bad_statuses=401,401,401,401,401,429`, `limited_ip_valid_status=200`, and `limited_ip_still_bad=429`.
 
 ## Gotchas
 
