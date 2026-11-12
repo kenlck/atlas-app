@@ -6,11 +6,23 @@ import {
 
 function seroval(message: string, stack: string) {
   return JSON.stringify({
-    t: 13,
-    i: 1,
-    s: 0,
-    m: message,
-    p: { k: ['stack'], v: [{ t: 1, s: stack }] },
+    t: 10,
+    i: 0,
+    p: {
+      k: ['error'],
+      v: [
+        {
+          t: 25,
+          i: 1,
+          s: {
+            message: { t: 1, s: message },
+            stack: { t: 1, s: stack },
+          },
+          c: '$TSR/Error',
+        },
+      ],
+    },
+    o: 0,
   })
 }
 
