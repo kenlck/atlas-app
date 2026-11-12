@@ -164,10 +164,9 @@ async function renameCurrent(page: Page, title: string) {
   const input = page.locator('#page-title')
   await input.waitFor()
   await page
-    .locator('.col .skel')
-    .first()
+    .locator('.doc > .col')
+    .filter({ has: page.locator('.skel') })
     .waitFor({ state: 'hidden' })
-    .catch(() => undefined)
   const saved = page.waitForResponse(
     (response) => {
       if (!response.ok() || response.request().method() !== 'POST') return false
@@ -386,7 +385,10 @@ async function main() {
     await page.locator('#password').fill('short')
     await waitForClient(page)
     await page.getByRole('button', { name: 'Create account' }).click()
-    await page.locator('.err').first().waitFor()
+    await page.getByText('Enter a valid email.', { exact: true }).waitFor()
+    await page
+      .getByText('Use at least 8 characters.', { exact: true })
+      .waitFor()
     await shot(page, 1280, 'sign-up', 'validation')
     const signupHint = await page.locator('.hint').count()
     const signupErrors = await page.locator('.err').allTextContents()
@@ -473,7 +475,10 @@ async function main() {
 
     mode = 'hold-page'
     await page.locator('.tree a.it').filter({ hasText: 'Two' }).click()
-    await page.locator('.col .skel').first().waitFor()
+    await page
+      .locator('.doc > .col')
+      .filter({ has: page.locator('.skel') })
+      .waitFor()
     await shot(page, 1280, 'page', 'loading')
     mode = 'pass'
     releaseHeld()
@@ -483,11 +488,17 @@ async function main() {
     await page.getByRole('heading', { name: 'Sign in' }).waitFor()
     mode = 'hold-tree'
     await signIn(page, email, password)
-    await page.locator('.tree .skel').first().waitFor()
+    await page
+      .locator('.side .tree')
+      .filter({ has: page.locator('.skel') })
+      .waitFor()
     await shot(page, 1280, 'space', 'loading')
     mode = 'pass'
     releaseHeld()
-    await page.locator('.tree a.it').first().waitFor()
+    await page
+      .locator('.tree a.it')
+      .filter({ has: page.getByText('One', { exact: true }) })
+      .waitFor()
 
     mode = 'fail-tree'
     await signOut(page)

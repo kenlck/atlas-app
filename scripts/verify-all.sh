@@ -380,6 +380,14 @@ run_step test-db-guard ./scripts/verify-fail-conditions.sh test-db-guard
 require_step_log test-db-guard "test_db_guard_remote_refused=true" "test_db_guard_multihost_refused=true" "test_db_guard_double_at_refused=true" "test_db_guard_encoded_multihost_refused=true" "test_db_guard_ipv6_local=true" "test_db_guard_encoded_local=true" "result=pass"
 run_step build pnpm build
 run_step playwright-install pnpm exec playwright install --with-deps chromium
+run_step fc1 ./scripts/verify-fail-conditions.sh fc1
+require_step_log fc1 "fc1_main_accepts_planted=true" "fc1_head_rejects_planted=true" "fc1_head_accepts_cycle=true" "fc1_head_rejects_loose=true" "fc1=pass"
+run_step fc2 ./scripts/verify-fail-conditions.sh fc2
+require_step_log fc2 "fc2_main_has_first=true" "fc2_main_first_silent=true" "fc2_head_first_absent=true" "fc2_multi_match_fails=true" "fc2_exact_text_passes=true" "fc2=pass"
+run_step fc3 ./scripts/verify-fail-conditions.sh fc3
+require_step_log fc3 "fc3_main_misses_planted=true" "fc3_head_catches_planted=true" "fc3_head_catches_audit=true" "fc3_clean_passes=true" "verify_password_not_in_logs=false" "verify_password_not_in_logs=true" "verify_password_not_in_audit=false" "verify_password_not_in_audit=true" "fc3=pass"
+run_step fc4 ./scripts/verify-fail-conditions.sh fc4
+require_step_log fc4 "fc4_fc1_planted_bad=fail" "fc4_fc1_head=pass" "fc4_fc2_planted_bad=fail" "fc4_fc2_head=pass" "fc4_fc3_planted_bad=fail" "fc4_fc3_head=pass" "fc4=pass"
 start_server || exit 1
 run_step server-ready wait_for_sign_in
 run_step visual-shots pnpm visual-shots
@@ -432,6 +440,7 @@ run_step fail1 ./scripts/verify-fail-conditions.sh 1
 run_step fail2 ./scripts/verify-fail-conditions.sh 2
 run_step fail3 ./scripts/verify-fail-conditions.sh 3
 run_step fail4 ./scripts/verify-fail-conditions.sh 4
+require_step_log fail4 "move_under_child_status=400" "move_under_child_message=Cannot move a page under itself or a descendant" "move_under_child_message_exact=true" "move_under_self_status=400" "move_under_self_message=Cannot move a page under itself or a descendant" "move_under_self_message_exact=true"
 run_step fail5a ./scripts/verify-fail-conditions.sh 5a
 run_step fail5e ./scripts/verify-fail-conditions.sh 5e
 run_step fail5b ./scripts/verify-fail-conditions.sh 5b
@@ -439,7 +448,7 @@ run_step fail5h ./scripts/verify-fail-conditions.sh 5h
 run_step fail5c ./scripts/verify-fail-conditions.sh 5c
 run_step fail5d ./scripts/verify-fail-conditions.sh 5d
 run_step fail5f ./scripts/verify-fail-conditions.sh 5f
-require_step_log fail5f "secret_not_in_logs=true" "temp_not_in_logs=true" "new_not_in_logs=true" "secret_not_in_audit=true" "temp_not_in_audit=true" "new_not_in_audit=true"
+require_step_log fail5f "secret_not_in_logs=true" "temp_not_in_logs=true" "new_not_in_logs=true" "verify_password_not_in_logs=true" "secret_not_in_audit=true" "temp_not_in_audit=true" "new_not_in_audit=true" "verify_password_not_in_audit=true"
 run_step fail5g ./scripts/verify-fail-conditions.sh 5g
 run_step forgot-password ./scripts/verify-fail-conditions.sh forgot-password
 run_step design-lock ./scripts/verify-fail-conditions.sh design-lock

@@ -1,6 +1,15 @@
 import { chromium } from 'playwright'
 import type { Page, Request } from 'playwright'
-import { assertLocalBaseUrl, clickNewDoc, submitAuthForm } from './verify-local.ts'
+import {
+  CYCLE_REPLAY_MESSAGE,
+  exactReplayAccepts,
+  replayErrorMessage,
+} from './replay-message.ts'
+import {
+  assertLocalBaseUrl,
+  clickNewDoc,
+  submitAuthForm,
+} from './verify-local.ts'
 
 const BASE_URL = assertLocalBaseUrl(
   process.env.BASE_URL ?? 'http://127.0.0.1:3010',
@@ -117,10 +126,12 @@ async function main() {
         'x-tsr-serverFn': 'true',
       },
     })
-    const text = (await response.text()).slice(0, 240)
+    const text = await response.text()
+    const message = replayErrorMessage(text) ?? ''
     console.log(`${label}_status=${response.status()}`)
-    console.log(`${label}_body=${text}`)
-    if (response.status() !== 400)
+    console.log(`${label}_message=${message}`)
+    console.log(`${label}_message_exact=${message === CYCLE_REPLAY_MESSAGE}`)
+    if (!exactReplayAccepts(response.status(), text))
       throw new Error(`${label} status ${response.status()}`)
   }
 

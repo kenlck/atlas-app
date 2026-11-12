@@ -143,7 +143,8 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
     Object.prototype.hasOwnProperty.call(window, '__TSR_ROUTER__'),
   )
   await page.getByRole('button', { name: 'Create account' }).click()
-  await page.locator('.err').first().waitFor()
+  await page.getByText('Enter a valid email.', { exact: true }).waitFor()
+  await page.getByText('Use at least 8 characters.', { exact: true }).waitFor()
   await shot('sign-up-error')
 
   await page.goto('/forgot-password', { waitUntil: 'networkidle' })
@@ -177,7 +178,10 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
   await pageLink.waitFor()
   mode = 'hold-page'
   await pageLink.click()
-  await page.locator('.col .skel').first().waitFor()
+  await page
+    .locator('.doc > .col')
+    .filter({ has: page.locator('.skel') })
+    .waitFor()
   await shot('page-loading')
   mode = 'pass'
   release()
@@ -222,11 +226,17 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
   await page.locator('#email').fill(EMAIL)
   await page.locator('#password').fill(PASSWORD)
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.locator('.tree .skel').first().waitFor()
+  await page
+    .locator('.side .tree')
+    .filter({ has: page.locator('.skel') })
+    .waitFor()
   await shot('space-loading')
   mode = 'pass'
   release()
-  await page.locator('.tree a.it').first().waitFor()
+  await page
+    .locator('.tree a.it')
+    .filter({ has: page.getByText('Hello Atlas', { exact: true }) })
+    .waitFor()
   await browserContext.close()
 
   const reset = await request.post(`${BASE}/api/admin/reset-password`, {

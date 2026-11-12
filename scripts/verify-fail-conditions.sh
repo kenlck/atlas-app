@@ -238,7 +238,8 @@ grep_absent() {
     "temp_not_in_${suffix}:temp_password" \
     "new_not_in_${suffix}:new_password" \
     "temp2_not_in_${suffix}:temp_password_2" \
-    "supplied_not_in_${suffix}:supplied_password"
+    "supplied_not_in_${suffix}:supplied_password" \
+    "verify_password_not_in_${suffix}:verify_password"
   do
     label="${pair%%:*}"
     file="$work/${pair#*:}"
@@ -894,6 +895,137 @@ recipe_10_4() {
   pnpm exec tsx scripts/save-origin.ts
 }
 
+recipe_fc1() {
+  pnpm exec tsx scripts/fc1-replay-message.ts
+}
+
+recipe_fc2() {
+  pnpm exec tsx scripts/fc2-locators.ts
+}
+
+recipe_fc3() {
+  local work
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  python3 - "$work" << 'PY'
+import os
+import secrets
+from pathlib import Path
+import sys
+
+work = Path(sys.argv[1])
+password = os.environ.get("VERIFY_PASSWORD") or "evidence-password-ok"
+needles = {
+    "admin_secret": secrets.token_hex(16),
+    "temp_password": secrets.token_hex(16),
+    "new_password": secrets.token_hex(16),
+}
+for name, value in needles.items():
+    if value in password or password in value:
+        raise SystemExit(1)
+    (work / name).write_text(value)
+(work / "verify_password").write_text(password)
+(work / "planted.log").write_text("boot\n" + password + "\nready\n")
+(work / "clean.log").write_text("boot\nready\n")
+for path in work.iterdir():
+    path.chmod(0o600)
+PY
+  if grep -F -q -f "$work/verify_password" "$work/planted.log"; then
+    echo "fc3_planted_present=true"
+  else
+    echo "fc3_planted_present=false"
+    rm -rf "$work"
+    return 1
+  fi
+  if grep -F -q -f "$work/verify_password" "$work/clean.log"; then
+    echo "fc3_clean_has_password=true"
+    rm -rf "$work"
+    return 1
+  fi
+  local main_misses=true
+  if grep -F -q -f "$work/admin_secret" "$work/planted.log" \
+    || grep -F -q -f "$work/temp_password" "$work/planted.log" \
+    || grep -F -q -f "$work/new_password" "$work/planted.log"; then
+    main_misses=false
+  fi
+  echo "fc3_main_misses_planted=${main_misses}"
+  local planted_logs=0 planted_audit=0 clean_logs=0 clean_audit=0
+  set +e
+  grep_absent "$work" "$work/planted.log" logs
+  planted_logs=$?
+  grep_absent "$work" "$work/planted.log" audit
+  planted_audit=$?
+  grep_absent "$work" "$work/clean.log" logs
+  clean_logs=$?
+  grep_absent "$work" "$work/clean.log" audit
+  clean_audit=$?
+  set -e
+  rm -rf "$work"
+  local catches_logs=false catches_audit=false clean_passes=false
+  if [[ "$planted_logs" -ne 0 ]]; then
+    catches_logs=true
+  fi
+  if [[ "$planted_audit" -ne 0 ]]; then
+    catches_audit=true
+  fi
+  if [[ "$clean_logs" -eq 0 && "$clean_audit" -eq 0 ]]; then
+    clean_passes=true
+  fi
+  echo "fc3_head_catches_planted=${catches_logs}"
+  echo "fc3_head_catches_audit=${catches_audit}"
+  echo "fc3_clean_passes=${clean_passes}"
+  if [[ "$main_misses" == true && "$catches_logs" == true && "$catches_audit" == true && "$clean_passes" == true ]]; then
+    echo "fc3=pass"
+    return 0
+  fi
+  echo "fc3=fail"
+  return 1
+}
+
+recipe_fc4() {
+  local sha root ok needle file
+  sha=$(git rev-parse HEAD)
+  root="artifacts/${sha}/logs"
+  ok=0
+  local -a needles=(
+    "fc1:fc1_main_accepts_planted=true"
+    "fc1:fc1_head_rejects_planted=true"
+    "fc1:fc1_head_accepts_cycle=true"
+    "fc1:fc1=pass"
+    "fc2:fc2_main_has_first=true"
+    "fc2:fc2_main_first_silent=true"
+    "fc2:fc2_head_first_absent=true"
+    "fc2:fc2_multi_match_fails=true"
+    "fc2:fc2=pass"
+    "fc3:fc3_main_misses_planted=true"
+    "fc3:fc3_head_catches_planted=true"
+    "fc3:fc3_head_catches_audit=true"
+    "fc3:fc3_clean_passes=true"
+    "fc3:fc3=pass"
+  )
+  for needle in "${needles[@]}"; do
+    file="${needle%%:*}"
+    needle="${needle#*:}"
+    if [[ -f "$root/${file}.log" ]] && grep -F -q -- "$needle" "$root/${file}.log"; then
+      echo "fc4_saw=${file}:${needle}"
+    else
+      echo "fc4_missing=${file}:${needle}"
+      ok=1
+    fi
+  done
+  if [[ "$ok" -ne 0 ]]; then
+    echo "fc4=fail"
+    return 1
+  fi
+  echo "fc4_fc1_planted_bad=fail"
+  echo "fc4_fc1_head=pass"
+  echo "fc4_fc2_planted_bad=fail"
+  echo "fc4_fc2_head=pass"
+  echo "fc4_fc3_planted_bad=fail"
+  echo "fc4_fc3_head=pass"
+  echo "fc4=pass"
+}
+
 recipe_healthcheck() {
   local headers body code location_count
   headers=$(mktemp)
@@ -996,6 +1128,10 @@ case "${1:-}" in
   8-12) run_recipe recipe_diagram serve ;;
   8-13) run_recipe recipe_diagram outsider ;;
   test-db-guard) run_recipe recipe_test_db_guard ;;
+  fc1) run_recipe recipe_fc1 ;;
+  fc2) run_recipe recipe_fc2 ;;
+  fc3) run_recipe recipe_fc3 ;;
+  fc4) run_recipe recipe_fc4 ;;
   10-3) run_recipe recipe_10_3 ;;
   10-4) run_recipe recipe_10_4 ;;
   all)
@@ -1006,7 +1142,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|8-1|8-2|8-3|8-4|8-5|8-6|8-7|8-8|8-9|8-10|8-11|8-12|8-13|test-db-guard|10-3|10-4|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|8-1|8-2|8-3|8-4|8-5|8-6|8-7|8-8|8-9|8-10|8-11|8-12|8-13|test-db-guard|fc1|fc2|fc3|fc4|10-3|10-4|all]" >&2
     exit 2
     ;;
 esac
