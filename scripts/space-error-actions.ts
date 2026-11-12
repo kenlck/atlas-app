@@ -1,4 +1,5 @@
-import { chromium, type Page, type Request } from 'playwright'
+import { chromium } from 'playwright'
+import type { Page, Request } from 'playwright'
 import { assertLocalBaseUrl, clickNewDoc, submitAuthForm } from './verify-local.ts'
 
 const BASE_URL = assertLocalBaseUrl(process.env.BASE_URL ?? 'http://127.0.0.1:3000')
@@ -58,7 +59,7 @@ async function fire(
   page.on('request', onRequest)
   const invokeError = await page
     .evaluate(
-      async ({ action, pageId }) => {
+      async ({ action: invoked, pageId: invokedPageId }) => {
         const aside = document.querySelector('aside.side')
         if (!aside) throw new Error('sidebar missing')
         const key = Object.keys(aside).find((name) => name.startsWith('__reactFiber'))
@@ -81,18 +82,18 @@ async function fire(
         }
         if (!props) throw new Error('action props missing')
         const call = props[
-          action === 'create'
+          invoked === 'create'
             ? 'onCreate'
-            : action === 'rename'
+            : invoked === 'rename'
               ? 'onRename'
-              : action === 'archive'
+              : invoked === 'archive'
                 ? 'onArchive'
                 : 'onMove'
         ] as (...args: unknown[]) => unknown
-        if (action === 'create') await call(null)
-        if (action === 'rename') await call(pageId, 'Renamed from error')
-        if (action === 'archive') await call(pageId)
-        if (action === 'move') call(pageId)
+        if (invoked === 'create') await call(null)
+        if (invoked === 'rename') await call(invokedPageId, 'Renamed from error')
+        if (invoked === 'archive') await call(invokedPageId)
+        if (invoked === 'move') call(invokedPageId)
       },
       { action, pageId },
     )

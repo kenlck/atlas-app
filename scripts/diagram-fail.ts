@@ -1,4 +1,5 @@
-import { chromium, type Page } from 'playwright'
+import { chromium } from 'playwright'
+import type { Page } from 'playwright'
 import { closeDb, getSql } from '../src/lib/db'
 import { diagramIds } from '../src/lib/diagram'
 import { canonicalElements } from '../src/lib/drawing'
@@ -718,7 +719,11 @@ async function recipeLazy(base: string) {
   await page.locator('.diagram-screen .excalidraw').waitFor({ timeout: 30_000 })
   await settle()
   expectLine('after_edit_excalidraw_requests', hits.length - before > 0, true)
-  const ui = (await page.evaluate(`(() => {
+  const ui = await page.evaluate<{
+    library: boolean
+    collab: boolean
+    image: boolean
+  }>(`(() => {
     const shown = (selector) => {
       const node = document.querySelector(selector)
       if (!node) return false
@@ -730,7 +735,7 @@ async function recipeLazy(base: string) {
       collab: shown('[data-testid="collab-button"]'),
       image: shown('.excalidraw [aria-label="Image"]') || shown('.excalidraw [title="Image"]'),
     }
-  })()`)) as { library: boolean; collab: boolean; image: boolean }
+  })()`)
   expectLine('library_visible', ui.library, false)
   expectLine('collab_visible', ui.collab, false)
   expectLine('image_tool_visible', ui.image, false)

@@ -5,8 +5,8 @@ import {
   localInputToInstant,
   parseMonth,
   shiftMonth,
-  type CalendarEventJson,
 } from '#/lib/calendar-time'
+import type { CalendarEventJson } from '#/lib/calendar-time'
 import { formatMonthYear, todayIso } from '#/lib/date-label'
 
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']

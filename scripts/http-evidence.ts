@@ -4,7 +4,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { chromium, type BrowserContext, type Page } from 'playwright'
+import { chromium } from 'playwright'
+import type { BrowserContext, Page } from 'playwright'
 import {
   assertLocalBaseUrl,
   assertLocalDatabaseUrl,
@@ -463,7 +464,6 @@ async function fail1(dir: string) {
       '-H',
       `origin: ${BASE_URL}`,
     ]
-    if (method !== 'GET') args.push('-X', method)
     args.push(target)
     await dumpCurl(`B replays ${method} server function`, args)
     console.log(

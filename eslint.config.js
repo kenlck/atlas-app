@@ -5,6 +5,15 @@ import { tanstackConfig } from '@tanstack/eslint-config'
 export default [
   ...tanstackConfig,
   {
+    files: ['**/*.{js,ts,tsx}'],
+    languageOptions: {
+      parserOptions: {
+        project: './tsconfig.eslint.json',
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
     rules: {
       'import/no-cycle': 'off',
       'import/order': 'off',

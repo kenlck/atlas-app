@@ -66,7 +66,7 @@ export function sceneRejection(input: {
 }): 'files' | 'image' | null {
   if (input.files != null) {
     if (typeof input.files !== 'object' || Array.isArray(input.files)) return 'files'
-    if (Object.keys(input.files as Record<string, unknown>).length > 0) return 'files'
+    if (Object.keys(input.files).length > 0) return 'files'
   }
   for (const element of input.elements) {
     if (!element || typeof element !== 'object' || Array.isArray(element)) continue

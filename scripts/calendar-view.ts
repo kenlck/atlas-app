@@ -1,7 +1,8 @@
 import { execSync } from 'node:child_process'
 import { copyFile, mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { chromium, type Page } from 'playwright'
+import { chromium } from 'playwright'
+import type { Page } from 'playwright'
 import { assertLocalBaseUrl, submitAuthForm } from './verify-local.ts'
 
 const base = assertLocalBaseUrl(process.env.BASE_URL ?? '')

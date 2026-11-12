@@ -19,10 +19,9 @@ import {
   deliverPageSave,
 } from '#/lib/page-save-keepalive'
 import { relativeTime } from '#/lib/relative-time'
-import { savePageFn } from '#/server/fns'
+import { savePageFn, createDiagramFn } from '#/server/fns'
 import { DateChip } from '#/lib/date-chip'
 import { createDiagramExtension } from '#/lib/diagram-node'
-import { createDiagramFn } from '#/server/fns'
 import { TableCursor } from '#/lib/table-cursor'
 import { useSpaceOutlet } from './AppFrame'
 import { NewPageMenu } from './NewPageMenu'

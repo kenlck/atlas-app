@@ -5,8 +5,8 @@ import {
   formatClock,
   lastDateOfMonth,
   parseMonth,
-  type CalendarEventJson,
 } from './calendar-time'
+import type { CalendarEventJson } from './calendar-time'
 
 export type BarSegment = {
   eventId: string

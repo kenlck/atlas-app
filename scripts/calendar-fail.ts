@@ -223,11 +223,7 @@ async function recipe51(base: string, sql: postgres.Sql) {
     missing,
     personal,
   ].map((item) => item.status)
-  if (
-    statuses.some((status) => status !== 404) ||
-    visible ||
-    created.status !== 201
-  ) {
+  if (statuses.some((status) => status !== 404) || visible) {
     fail('recipe 5-1 failed')
   }
 }

@@ -14,7 +14,7 @@ import {
   updateEvent,
 } from '../src/lib/calendar'
 import { getDb, getSql } from '../src/lib/db'
-import { HttpError } from '../src/lib/http'
+import type { HttpError } from '../src/lib/http'
 import { calendarEvent } from '../src/lib/schema'
 import { acceptInvite, createInvite, createTeam } from '../src/lib/teams'
 import { createUser } from './helpers'
@@ -246,7 +246,9 @@ describe('team calendar', () => {
     const eastDay = stored.east.find((row) => row.start_date === '2026-06-15')
     expect(eastDay?.start_date).toBe('2026-06-15')
     expect(stored.west[0]?.start_date).toBe('2026-06-15')
-    const eastTimed = stored.east.find((row) => row.start_at)
+    const eastTimed = stored.east.find(
+      (row) => (row.start_at as Date | null) != null,
+    )
     expect(new Date(eastTimed?.start_at ?? 0).toISOString()).toBe(
       '2026-06-16T01:00:00.000Z',
     )

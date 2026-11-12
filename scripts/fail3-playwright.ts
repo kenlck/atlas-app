@@ -1,4 +1,5 @@
-import { chromium, type Request } from 'playwright'
+import { chromium } from 'playwright'
+import type { Request } from 'playwright'
 import { assertLocalBaseUrl, clickNewDoc, submitAuthForm } from './verify-local.ts'
 
 const BASE_URL = assertLocalBaseUrl(

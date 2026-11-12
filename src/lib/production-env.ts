@@ -9,7 +9,9 @@ const REQUIRED_IN_PRODUCTION = [
 export function assertProductionEnv() {
   // globalThis keeps this a runtime read. Nitro replaces process.env.NODE_ENV
   // with the literal "production" and would otherwise drop the guard.
-  const nodeEnv = globalThis.process?.env?.NODE_ENV
+  const nodeEnv = (
+    globalThis as { process?: { env?: { NODE_ENV?: string } } }
+  ).process?.env?.NODE_ENV
   if (nodeEnv !== 'production') return
   for (const name of REQUIRED_IN_PRODUCTION) {
     const value = process.env[name]

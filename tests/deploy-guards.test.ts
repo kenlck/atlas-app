@@ -33,7 +33,7 @@ function boot(overrides: Record<string, string | undefined>, unset: string[] = [
 }
 
 function outputOf(result: ReturnType<typeof boot>) {
-  return `${result.stdout ?? ''}${result.stderr ?? ''}`
+  return `${result.stdout}${result.stderr}`
 }
 
 describe('production boot', () => {
@@ -143,7 +143,7 @@ describe('client ip', () => {
       timeout: 30000,
       env,
     })
-    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
+    const output = `${result.stdout}${result.stderr}`
     expect(result.status, output).toBe(0)
     expect(output).toContain('header=spoof, real-client, proxy')
     expect(output).toContain('resolved=proxy')

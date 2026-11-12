@@ -1,15 +1,15 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { getDb } from '../src/lib/db'
-import { HttpError } from '../src/lib/http'
+import type { HttpError } from '../src/lib/http'
 import {
   archivePage,
   createPage,
   getPageView,
   listPageTree,
   movePage,
-  type TreeNode,
 } from '../src/lib/pages'
+import type { TreeNode } from '../src/lib/pages'
 import { page } from '../src/lib/schema'
 import { createUser } from './helpers'
 

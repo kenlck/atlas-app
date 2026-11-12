@@ -52,7 +52,7 @@ export function dateAttribute(value: unknown) {
   return value
 }
 
-export function findDayButton<T extends { getAttribute(name: string): string | null }>(
+export function findDayButton<T extends { getAttribute: (name: string) => string | null }>(
   buttons: Iterable<T>,
   iso: string,
 ) {

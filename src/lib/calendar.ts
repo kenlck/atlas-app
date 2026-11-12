@@ -8,8 +8,8 @@ import {
   monthBounds,
   parseInstant,
   parseMonth,
-  type CalendarEventJson,
 } from './calendar-time'
+import type { CalendarEventJson } from './calendar-time'
 import { getDb } from './db'
 import { HttpError, notFound } from './http'
 import { newId } from './ids'

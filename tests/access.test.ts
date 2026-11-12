@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { assertAccess } from '../src/lib/access'
-import { HttpError } from '../src/lib/http'
+import type { HttpError } from '../src/lib/http'
 import { createPage } from '../src/lib/pages'
 import { createUser } from './helpers'
 

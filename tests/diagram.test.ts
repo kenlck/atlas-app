@@ -151,7 +151,8 @@ describe('diagram blocks', () => {
     expect(copy[0]?.pageId).toBe(doc.id)
     expect(canonicalElements(scene())).toBe(
       canonicalElements(
-        ((copy[0]?.scene as { elements?: unknown[] })?.elements ?? []),
+        ((copy[0]?.scene as { elements?: unknown[] } | undefined)?.elements ??
+          []),
       ),
     )
 
