@@ -929,6 +929,7 @@ async function fail5c(dir: string) {
 }
 
 async function fail5d(dir: string) {
+  await writeTrace('verify_password', PASSWORD)
   const { browser, email, userId } = await createLockedUser('Lock Name')
   const before = await userSnapshot(userId)
   await browser.close()
@@ -953,6 +954,7 @@ async function fail5d(dir: string) {
 }
 
 async function fail5f(dir: string) {
+  await writeTrace('verify_password', PASSWORD)
   const supplied = randomPassword()
   await writeTrace('supplied_password', supplied)
   const { browser, email, userId } = await createLockedUser('Lock Name')
@@ -1001,6 +1003,7 @@ async function fail5f(dir: string) {
 }
 
 async function fail5g(dir: string) {
+  await writeTrace('verify_password', PASSWORD)
   const { browser, context, email, userId } = await createLockedUser(
     'Lock Name',
   )
