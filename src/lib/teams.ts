@@ -99,6 +99,20 @@ export async function lookupAccount(
   return { id: found.id, name: found.name, email: found.email }
 }
 
+export const ALREADY_INVITED = 'Already invited'
+
+function postgresErrorCode(error: unknown) {
+  const seen = new Set<unknown>()
+  let current: unknown = error
+  while (current && typeof current === 'object' && !seen.has(current)) {
+    seen.add(current)
+    const code = (current as { code?: unknown }).code
+    if (typeof code === 'string' && /^\d{5}$/.test(code)) return code
+    current = (current as { cause?: unknown }).cause
+  }
+  return null
+}
+
 export async function createInvite(
   actorId: string,
   teamId: string,
@@ -106,42 +120,58 @@ export async function createInvite(
 ) {
   await assertTeamOwner(actorId, teamId)
   const db = getDb()
-  const people = await db
-    .select({ id: user.id })
-    .from(user)
-    .where(eq(user.id, inviteeUserId))
-    .limit(1)
-  if (!people[0]) notFound()
-  const existingMember = await db
-    .select({ userId: teamMember.userId })
-    .from(teamMember)
-    .where(
-      and(eq(teamMember.teamId, teamId), eq(teamMember.userId, inviteeUserId)),
-    )
-    .limit(1)
-  if (existingMember[0]) throw new HttpError(409, 'Already a member')
-  const pending = await db
-    .select({ id: teamInvite.id })
-    .from(teamInvite)
-    .where(
-      and(
-        eq(teamInvite.teamId, teamId),
-        eq(teamInvite.inviteeUserId, inviteeUserId),
-        eq(teamInvite.status, 'pending'),
-      ),
-    )
-    .limit(1)
-  if (pending[0]) return { id: pending[0].id, teamId, inviteeUserId }
-  const id = newId()
-  await db.insert(teamInvite).values({
-    id,
-    teamId,
-    inviteeUserId,
-    invitedBy: actorId,
-    status: 'pending',
-    createdAt: new Date(),
-  })
-  return { id, teamId, inviteeUserId }
+  try {
+    return await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext(${teamId}), hashtext(${inviteeUserId}))`,
+      )
+      const people = await tx
+        .select({ id: user.id })
+        .from(user)
+        .where(eq(user.id, inviteeUserId))
+        .limit(1)
+      if (!people[0]) notFound()
+      const existingMember = await tx
+        .select({ userId: teamMember.userId })
+        .from(teamMember)
+        .where(
+          and(
+            eq(teamMember.teamId, teamId),
+            eq(teamMember.userId, inviteeUserId),
+          ),
+        )
+        .limit(1)
+      if (existingMember[0]) throw new HttpError(409, 'Already a member')
+      const pending = await tx
+        .select({ id: teamInvite.id })
+        .from(teamInvite)
+        .where(
+          and(
+            eq(teamInvite.teamId, teamId),
+            eq(teamInvite.inviteeUserId, inviteeUserId),
+            eq(teamInvite.status, 'pending'),
+          ),
+        )
+        .limit(1)
+      if (pending[0]) throw new HttpError(409, ALREADY_INVITED)
+      const id = newId()
+      await tx.insert(teamInvite).values({
+        id,
+        teamId,
+        inviteeUserId,
+        invitedBy: actorId,
+        status: 'pending',
+        createdAt: new Date(),
+      })
+      return { id, teamId, inviteeUserId }
+    })
+  } catch (error) {
+    if (error instanceof HttpError) throw error
+    if (postgresErrorCode(error) === '23505') {
+      throw new HttpError(409, ALREADY_INVITED)
+    }
+    throw error
+  }
 }
 
 export async function acceptInvite(userId: string, inviteId: string) {
@@ -347,7 +377,7 @@ export async function listInvitations(
     })
     .from(teamInvite)
     .innerJoin(team, eq(team.id, teamInvite.teamId))
-    .innerJoin(inviter, eq(inviter.id, teamInvite.invitedBy))
+    .leftJoin(inviter, eq(inviter.id, teamInvite.invitedBy))
     .where(
       and(
         eq(teamInvite.inviteeUserId, userId),
@@ -355,5 +385,10 @@ export async function listInvitations(
       ),
     )
     .orderBy(asc(teamInvite.createdAt))
-  return rows
+  return rows.map((row) => ({
+    id: row.id,
+    teamId: row.teamId,
+    teamName: row.teamName,
+    invitedByName: row.invitedByName ?? 'A former member',
+  }))
 }

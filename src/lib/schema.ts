@@ -114,9 +114,10 @@ export const teamInvite = pgTable(
     inviteeUserId: text('invitee_user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
-    invitedBy: text('invited_by')
-      .notNull()
-      .references(() => user.id),
+    // Deleting the sender keeps the invite and clears invited_by.
+    invitedBy: text('invited_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
     status: inviteStatus('status').notNull().default('pending'),
     createdAt: timestamp('created_at').notNull(),
   },

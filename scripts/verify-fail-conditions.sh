@@ -895,6 +895,36 @@ recipe_10_4() {
   pnpm exec tsx scripts/save-origin.ts
 }
 
+recipe_18() {
+  local name=$1
+  local work planted head
+  work=$(mktemp -d)
+  planted=0
+  head=0
+  pnpm exec tsx scripts/issue18-fail.ts "$name" planted >"$work/planted.out" 2>&1 || planted=$?
+  pnpm exec tsx scripts/issue18-fail.ts "$name" >"$work/head.out" 2>&1 || head=$?
+  cat "$work/planted.out"
+  cat "$work/head.out"
+  echo "18_${name}_planted_exit=${planted}"
+  echo "18_${name}_head_exit=${head}"
+  rm -rf "$work"
+  if [[ "$planted" -ne 0 && "$head" -eq 0 ]]; then
+    echo "18_${name}=pass"
+    return 0
+  fi
+  echo "18_${name}=fail"
+  return 1
+}
+
+recipe_18_fc1() { recipe_18 fc1; }
+recipe_18_fc2() { recipe_18 fc2; }
+recipe_18_fc3() { recipe_18 fc3; }
+recipe_18_fc4() { recipe_18 fc4; }
+recipe_18_fc5() { recipe_18 fc5; }
+recipe_18_fc6() { recipe_18 fc6; }
+recipe_18_fc7() { recipe_18 fc7; }
+recipe_18_fc8() { recipe_18 fc8; }
+
 recipe_fc1() {
   pnpm exec tsx scripts/fc1-replay-message.ts
 }
@@ -1153,6 +1183,14 @@ case "${1:-}" in
   8-12) run_recipe recipe_diagram serve ;;
   8-13) run_recipe recipe_diagram outsider ;;
   test-db-guard) run_recipe recipe_test_db_guard ;;
+  18-fc1) run_recipe recipe_18_fc1 ;;
+  18-fc2) run_recipe recipe_18_fc2 ;;
+  18-fc3) run_recipe recipe_18_fc3 ;;
+  18-fc4) run_recipe recipe_18_fc4 ;;
+  18-fc5) run_recipe recipe_18_fc5 ;;
+  18-fc6) run_recipe recipe_18_fc6 ;;
+  18-fc7) run_recipe recipe_18_fc7 ;;
+  18-fc8) run_recipe recipe_18_fc8 ;;
   fc1) run_recipe recipe_fc1 ;;
   fc2) run_recipe recipe_fc2 ;;
   fc3) run_recipe recipe_fc3 ;;

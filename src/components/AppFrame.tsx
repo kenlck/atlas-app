@@ -62,6 +62,7 @@ export function AppFrame({
   const [drawer, setDrawer] = useState(false)
   const [moving, setMoving] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const createTeamTrigger = useRef<HTMLElement | null>(null)
   const navigate = useNavigate()
@@ -98,12 +99,14 @@ export function AppFrame({
       window.open(location.href, '_blank', 'noopener')
       return
     }
-    void flushEditor().then(() =>
-      navigate({
-        to: '/s/$spaceId/p/$pageId',
-        params: { spaceId: hit.spaceId, pageId: hit.id },
-      }),
-    )
+    void flushEditor()
+      .then(() =>
+        navigate({
+          to: '/s/$spaceId/p/$pageId',
+          params: { spaceId: hit.spaceId, pageId: hit.id },
+        }),
+      )
+      .catch(() => undefined)
   }
 
   const refresh = () => {
@@ -114,7 +117,13 @@ export function AppFrame({
     parentId: string | null,
     kind: 'doc' | 'whiteboard' = 'doc',
   ) => {
-    await flushEditor()
+    setCreateError(null)
+    try {
+      await flushEditor()
+    } catch {
+      setCreateError("Couldn't save. The new page was not created.")
+      return
+    }
     const created = await createPageFn({ data: { spaceId, parentId, kind } })
     setDrawer(false)
     // The tree loader is already on screen, so a normal invalidate refetches in
@@ -169,99 +178,106 @@ export function AppFrame({
   }
 
   return (
-    <div className="app">
-      {drawer ? (
-        <div className="scrim" onClick={() => setDrawer(false)} />
-      ) : null}
-      <Sidebar
-        open={drawer}
-        spaceId={spaceId}
-        spaceName={spaceName}
-        userName={userName}
-        tree={tree}
-        activeId={params.pageId}
-        loading={loading}
-        error={error}
-        onRetry={onRetry}
-        onCreate={guard((parentId, kind) => {
-          void create(parentId, kind ?? 'doc')
-        })}
-        onRename={guard((pageId, title) => {
-          void rename(pageId, title)
-        })}
-        onMove={guard((pageId) => setMoving(pageId))}
-        onArchive={guard((pageId) => {
-          void archive(pageId)
-        })}
-        spaces={spaces}
-        role={role}
-        pendingInvites={pendingInvites}
-        onOpenSearch={() => {
-          setDrawer(false)
-          setSearchOpen(true)
-        }}
-        onCreateTeam={() => {
-          const active = document.activeElement
-          const trigger =
-            active instanceof HTMLElement
-              ? (active
-                  .closest('.switcher-wrap')
-                  ?.querySelector<HTMLElement>('.sw') ?? active)
-              : null
-          createTeamTrigger.current = trigger
-          setDrawer(false)
-          setCreating(true)
-        }}
-        onNavigate={() => setDrawer(false)}
-      />
-      <div className="main" style={{ position: 'relative' }}>
-        <button
-          className="menu-btn"
-          type="button"
-          aria-label="Open pages"
-          onClick={() => setDrawer(true)}
-        >
-          ☰
-        </button>
-        {error ? (
-          <>
-            <div className="top">
-              <b>Pages</b>
-            </div>
-            <div className="nf">
-              <h1>Couldn't load this space.</h1>
-              <p className="empty">Something went wrong.</p>
-              {onRetry ? (
-                <button
-                  type="button"
-                  className="btn secondary"
-                  onClick={onRetry}
-                >
-                  Try again
-                </button>
-              ) : null}
-            </div>
-          </>
-        ) : (
-          <SpaceOutletContext.Provider value={spaceOutlet}>
-            <Outlet />
-          </SpaceOutletContext.Provider>
-        )}
-      </div>
-      {moving ? (
-        <MoveDialog
+    <>
+      <div className="app" inert={creating ? true : undefined}>
+        {drawer ? (
+          <div className="scrim" onClick={() => setDrawer(false)} />
+        ) : null}
+        <Sidebar
+          open={drawer}
+          spaceId={spaceId}
+          spaceName={spaceName}
+          userName={userName}
           tree={tree}
-          pageId={moving}
-          onCancel={() => setMoving(null)}
-          onMove={(parentId) => void move(parentId)}
+          activeId={params.pageId}
+          loading={loading}
+          error={error}
+          onRetry={onRetry}
+          onCreate={guard((parentId, kind) => {
+            void create(parentId, kind ?? 'doc')
+          })}
+          onRename={guard((pageId, title) => {
+            void rename(pageId, title)
+          })}
+          onMove={guard((pageId) => setMoving(pageId))}
+          onArchive={guard((pageId) => {
+            void archive(pageId)
+          })}
+          spaces={spaces}
+          role={role}
+          pendingInvites={pendingInvites}
+          onOpenSearch={() => {
+            setDrawer(false)
+            setSearchOpen(true)
+          }}
+          onCreateTeam={() => {
+            const active = document.activeElement
+            const trigger =
+              active instanceof HTMLElement
+                ? (active
+                    .closest('.switcher-wrap')
+                    ?.querySelector<HTMLElement>('.sw') ?? active)
+                : null
+            createTeamTrigger.current = trigger
+            setDrawer(false)
+            setCreating(true)
+          }}
+          onNavigate={() => setDrawer(false)}
         />
-      ) : null}
-      {searchOpen ? (
-        <SearchPanel
-          onClose={() => setSearchOpen(false)}
-          onOpen={openSearchHit}
-        />
-      ) : null}
+        <div className="main" style={{ position: 'relative' }}>
+          {createError ? (
+            <div className="retry" role="alert">
+              {createError}
+            </div>
+          ) : null}
+          <button
+            className="menu-btn"
+            type="button"
+            aria-label="Open pages"
+            onClick={() => setDrawer(true)}
+          >
+            ☰
+          </button>
+          {error ? (
+            <>
+              <div className="top">
+                <b>Pages</b>
+              </div>
+              <div className="nf space-error">
+                <h1>Couldn't load this space.</h1>
+                <p className="empty">Something went wrong.</p>
+                {onRetry ? (
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    onClick={onRetry}
+                  >
+                    Try again
+                  </button>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <SpaceOutletContext.Provider value={spaceOutlet}>
+              <Outlet />
+            </SpaceOutletContext.Provider>
+          )}
+        </div>
+        {moving ? (
+          <MoveDialog
+            tree={tree}
+            pageId={moving}
+            onCancel={() => setMoving(null)}
+            onMove={(parentId) => void move(parentId)}
+          />
+        ) : null}
+        {searchOpen ? (
+          <SearchPanel
+            onClose={() => setSearchOpen(false)}
+            onOpen={openSearchHit}
+          />
+        ) : null}
+      </div>
       {creating ? (
         <CreateTeamDialog
           onCancel={() => {
@@ -281,6 +297,6 @@ export function AppFrame({
           }}
         />
       ) : null}
-    </div>
+    </>
   )
 }

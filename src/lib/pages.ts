@@ -15,7 +15,7 @@ import { HttpError, notFound } from './http'
 import { newId } from './ids'
 import { mentionChipText, peopleForBody } from './mentions'
 import type { MentionPerson } from './mentions'
-import { drawing, page, space, user } from './schema'
+import { drawing, page, space, teamMember, user } from './schema'
 import type { Page, Space } from './schema'
 
 export type PageKind = 'doc' | 'whiteboard'
@@ -288,14 +288,55 @@ async function labelsForBody(db: DrawingDb, body: Json) {
     .join('\n')
 }
 
-async function indexedBodyText(spaceRow: Space, body: Json) {
+async function indexedBodyText(db: DrawingDb, spaceRow: Space, body: Json) {
   const people = await peopleForBody(spaceRow, body)
   const labels = new Map(
     people.map((person) => [person.id, mentionChipText(person)]),
   )
   const text = tiptapToText(body, (id) => labels.get(id) ?? 'Unknown person')
-  const drawings = await labelsForBody(getDb(), body)
+  const drawings = await labelsForBody(db, body)
   return [text, drawings].filter(Boolean).join('\n')
+}
+
+type PageTx = Parameters<
+  Parameters<ReturnType<typeof getDb>['transaction']>[0]
+>[0]
+
+async function lockWritablePage(tx: PageTx, userId: string, pageId: string) {
+  const rows = await tx
+    .select()
+    .from(page)
+    .where(eq(page.id, pageId))
+    .limit(1)
+    .for('update')
+  const row = rows[0]
+  if (!row || row.archivedAt) notFound()
+  const spaces = await tx
+    .select()
+    .from(space)
+    .where(eq(space.id, row.spaceId))
+    .limit(1)
+  const spaceRow = spaces[0]
+  if (!spaceRow) notFound()
+  if (spaceRow.kind === 'personal') {
+    if (spaceRow.ownerUserId !== userId) notFound()
+  } else if (spaceRow.teamId) {
+    const members = await tx
+      .select({ userId: teamMember.userId })
+      .from(teamMember)
+      .where(
+        and(
+          eq(teamMember.teamId, spaceRow.teamId),
+          eq(teamMember.userId, userId),
+        ),
+      )
+      .limit(1)
+      .for('update')
+    if (!members[0]) notFound()
+  } else {
+    notFound()
+  }
+  return { page: row, space: spaceRow }
 }
 
 // A block keeps a drawing id only when that row already belongs to this page
@@ -305,13 +346,21 @@ async function indexedBodyText(spaceRow: Space, body: Json) {
 // tell those two cases apart. Scene and preview load only after access passes.
 const MISSING_DRAWING_PAGE = 'missing-drawing-page'
 
-function blankDiagram(record: { [key: string]: Json }, attrs: { [key: string]: Json }) {
+function blankDiagram(
+  record: { [key: string]: Json },
+  attrs: { [key: string]: Json },
+) {
   attrs.drawingId = ''
   record.attrs = attrs
   return record
 }
 
-async function adoptDiagrams(db: DrawingDb, userId: string, pageId: string, body: Json) {
+async function adoptDiagrams(
+  db: DrawingDb,
+  userId: string,
+  pageId: string,
+  body: Json,
+) {
   const seen = new Set<string>()
   const walk = async (value: Json): Promise<Json> => {
     if (!value || typeof value !== 'object') return value
@@ -323,7 +372,9 @@ async function adoptDiagrams(db: DrawingDb, userId: string, pageId: string, body
     const record = { ...value }
     if (record.type === 'diagram') {
       const attrs =
-        record.attrs && typeof record.attrs === 'object' && !Array.isArray(record.attrs)
+        record.attrs &&
+        typeof record.attrs === 'object' &&
+        !Array.isArray(record.attrs)
           ? { ...record.attrs }
           : {}
       const current = typeof attrs.drawingId === 'string' ? attrs.drawingId : ''
@@ -340,7 +391,9 @@ async function adoptDiagrams(db: DrawingDb, userId: string, pageId: string, body
       }
       let accessible = false
       try {
-        await assertAccess(userId, { pageId: row ? row.pageId : MISSING_DRAWING_PAGE })
+        await assertAccess(userId, {
+          pageId: row ? row.pageId : MISSING_DRAWING_PAGE,
+        })
         accessible = true
       } catch (error) {
         if (!(error instanceof HttpError) || error.status !== 404) throw error
@@ -387,12 +440,15 @@ async function writeDocBody(
 ) {
   const db = getDb()
   await db.transaction(async (tx) => {
+    const locked = await lockWritablePage(tx, userId, pageId)
     const adopted = await adoptDiagrams(tx, userId, pageId, body)
+    const bodyText = await indexedBodyText(tx, locked.space, adopted)
     const rows = await tx
       .update(page)
       .set({
         title,
         body: adopted,
+        bodyText,
         updatedBy: userId,
         updatedAt: new Date(),
         ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
@@ -405,12 +461,6 @@ async function writeDocBody(
       .returning({ id: page.id })
     if (rows.length === 0) throw new HttpError(409, 'Conflict')
   })
-  const access = await assertAccess(userId, { pageId })
-  const stored = access.page?.body as Json
-  await db
-    .update(page)
-    .set({ bodyText: await indexedBodyText(access.space, stored) })
-    .where(eq(page.id, pageId))
 }
 
 export async function savePage(
@@ -421,10 +471,13 @@ export async function savePage(
   const title = input.title.trim() || 'Untitled'
   const db = getDb()
   if (access.page?.kind === 'whiteboard') {
-    await db
-      .update(page)
-      .set({ title, updatedBy: userId, updatedAt: new Date() })
-      .where(eq(page.id, input.pageId))
+    await db.transaction(async (tx) => {
+      await lockWritablePage(tx, userId, input.pageId)
+      await tx
+        .update(page)
+        .set({ title, updatedBy: userId, updatedAt: new Date() })
+        .where(eq(page.id, input.pageId))
+    })
     return getPageView(userId, input.pageId)
   }
   await writeDocBody(userId, input.pageId, title, input.body, null, null)
@@ -519,7 +572,14 @@ export async function createPageForToken(
     parentId: input.parentId,
     title: input.title,
   })
-  await writeDocBody(userId, created.id, created.title, input.body, tokenId, null)
+  await writeDocBody(
+    userId,
+    created.id,
+    created.title,
+    input.body,
+    tokenId,
+    null,
+  )
   return getPageView(userId, created.id)
 }
 
@@ -532,7 +592,9 @@ export async function updatePageForToken(
   const row = access.page
   if (!row) notFound()
   const expected =
-    typeof input.updatedAt === 'string' ? Date.parse(input.updatedAt) : Number.NaN
+    typeof input.updatedAt === 'string'
+      ? Date.parse(input.updatedAt)
+      : Number.NaN
   if (!Number.isFinite(expected) || row.updatedAt.getTime() !== expected) {
     throw new HttpError(409, 'Conflict')
   }
@@ -540,17 +602,20 @@ export async function updatePageForToken(
   if (row.kind === 'whiteboard') {
     if (input.title === undefined) return getPageView(userId, row.id)
     const title = input.title.trim() || 'Untitled'
-    const written = await db
-      .update(page)
-      .set({
-        title,
-        updatedBy: userId,
-        updatedAt: new Date(),
-        updatedViaTokenId: tokenId,
-      })
-      .where(and(eq(page.id, row.id), eq(page.updatedAt, row.updatedAt)))
-      .returning({ id: page.id })
-    if (written.length === 0) throw new HttpError(409, 'Conflict')
+    await db.transaction(async (tx) => {
+      await lockWritablePage(tx, userId, row.id)
+      const written = await tx
+        .update(page)
+        .set({
+          title,
+          updatedBy: userId,
+          updatedAt: new Date(),
+          updatedViaTokenId: tokenId,
+        })
+        .where(and(eq(page.id, row.id), eq(page.updatedAt, row.updatedAt)))
+        .returning({ id: page.id })
+      if (written.length === 0) throw new HttpError(409, 'Conflict')
+    })
     return getPageView(userId, row.id)
   }
   const title =
@@ -570,7 +635,11 @@ export async function refreshDocText(
   await getDb()
     .update(page)
     .set({
-      bodyText: await indexedBodyText(access.space, access.page.body as Json),
+      bodyText: await indexedBodyText(
+        getDb(),
+        access.space,
+        access.page.body as Json,
+      ),
       updatedBy: userId,
       updatedAt: new Date(),
       ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
@@ -629,7 +698,14 @@ export async function duplicatePage(userId: string, pageId: string) {
     parentId: row.parentId,
     title: row.title,
   })
-  await writeDocBody(userId, created.id, row.title, row.body as Json, null, null)
+  await writeDocBody(
+    userId,
+    created.id,
+    row.title,
+    row.body as Json,
+    null,
+    null,
+  )
   return getPageView(userId, created.id)
 }
 

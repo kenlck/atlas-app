@@ -401,6 +401,22 @@ run_step psql ensure_psql
 run_step verify-migrate migrate_image
 run_step verify-start start_image
 run_step healthcheck ./scripts/verify-fail-conditions.sh healthcheck
+run_step 18-fc1 ./scripts/verify-fail-conditions.sh 18-fc1
+require_step_log 18-fc1 "fc1_planted_sqlstate=23505" "fc1_planted_http_409=0" "fc1_head_status=409" "fc1_head_message=Already invited" "fc1_head_rows=1" "fc1_ui_alert=Already invited" "fc1_ui_card_kept=true" "18_fc1_planted_exit=1" "18_fc1_head_exit=0" "18_fc1=pass"
+run_step 18-fc2 ./scripts/verify-fail-conditions.sh 18-fc2
+require_step_log 18-fc2 "fc2_planted_stored=true" "fc2_head_stored=false" "fc2_head_status=404" "18_fc2_planted_exit=1" "18_fc2_head_exit=0" "18_fc2=pass"
+run_step 18-fc3 ./scripts/verify-fail-conditions.sh 18-fc3
+require_step_log 18-fc3 "fc3_planted_sqlstate=23503" "fc3_planted_deleted=false" "fc3_head_deleted=true" "fc3_head_invite_kept=true" "fc3_head_invited_by=null" "fc3_head_on_delete=n" "fc3_rule=set null" "18_fc3_planted_exit=1" "18_fc3_head_exit=0" "18_fc3=pass"
+run_step 18-fc4 ./scripts/verify-fail-conditions.sh 18-fc4
+require_step_log 18-fc4 "fc4_planted_status=409" "fc4_planted_error_count=0" "fc4_planted_row=Invited" "fc4_send_status=409" "fc4_send_alert=Already invited" "fc4_send_card_kept=true" "fc4_remove_status=500" "fc4_remove_row_kept=true" "fc4_remove_alert=true" "fc4_delete_status=409" "fc4_delete_stayed=true" "fc4_delete_alert=true" "18_fc4_planted_exit=1" "18_fc4_head_exit=0" "18_fc4=pass"
+run_step 18-fc5 ./scripts/verify-fail-conditions.sh 18-fc5
+require_step_log 18-fc5 "fc5_planted_created=true" "fc5_head_created=false" "fc5_head_within_5s=true" "fc5_fail_prompt=true" "fc5_fail_text_kept=true" "fc5_fail_url_kept=true" "fc5_hang_timed_out=true" "fc5_hang_text_kept=true" "fc5_hang_url_kept=true" "18_fc5_planted_exit=1" "18_fc5_head_exit=0" "18_fc5=pass"
+run_step 18-fc6 ./scripts/verify-fail-conditions.sh 18-fc6
+require_step_log 18-fc6 "fc6_planted_tab_reached_background=true" "fc6_head_background_inert=true" "fc6_head_tab_left_dialog=false" "18_fc6_planted_exit=1" "18_fc6_head_exit=0" "18_fc6=pass"
+run_step 18-fc7 ./scripts/verify-fail-conditions.sh 18-fc7
+require_step_log 18-fc7 "fc7_planted_left_aligned=false" "fc7_planted_caret_matches_muted=false" "fc7_head_left_aligned=true" "fc7_head_text_align=left" "fc7_head_caret_matches_muted=true" "18_fc7_planted_exit=1" "18_fc7_head_exit=0" "18_fc7=pass"
+run_step 18-fc8 ./scripts/verify-fail-conditions.sh 18-fc8
+require_step_log 18-fc8 "fc8_planted_steps=0" "fc8_head_missing=" "fc8_head_recipe_missing=" "18_fc8_planted_exit=1" "18_fc8_head_exit=0" "18_fc8=pass"
 require_step_log healthcheck "healthcheck_status=200" "healthcheck_location=absent"
 run_step token-revoked ./scripts/verify-fail-conditions.sh token-revoked
 require_step_log token-revoked "before_revoke_status=200" "revoked_status=401"

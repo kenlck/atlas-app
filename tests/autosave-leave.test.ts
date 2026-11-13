@@ -161,4 +161,32 @@ describe('save the open page before creating another one', () => {
     await flushEditor()
     expect(order).toEqual(['save-start', 'save-end', 'create'])
   })
+
+  it('stops a hung flush within five seconds so create does not continue', async () => {
+    const unregister = registerEditorFlush(() => new Promise(() => undefined))
+    const started = Date.now()
+    let continued = false
+    await expect(
+      flushEditor(80).then(() => {
+        continued = true
+      }),
+    ).rejects.toThrow('Save timed out')
+    expect(continued).toBe(false)
+    expect(Date.now() - started).toBeLessThan(5000)
+    unregister()
+  })
+
+  it('rejects a failed flush so create does not continue', async () => {
+    const unregister = registerEditorFlush(async () => {
+      throw new Error('save failed')
+    })
+    let continued = false
+    await expect(
+      flushEditor().then(() => {
+        continued = true
+      }),
+    ).rejects.toThrow('save failed')
+    expect(continued).toBe(false)
+    unregister()
+  })
 })
