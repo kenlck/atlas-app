@@ -444,6 +444,27 @@ function isServerFn(request: Request) {
   return request.url().includes('/_serverFn/')
 }
 
+function requestText(request: Request) {
+  return `${decodeURIComponent(request.url())} ${request.postData() ?? ''}`
+}
+
+function isSaveRequest(request: Request) {
+  if (serverFnExport(request.url()).includes('savePageFn')) return true
+  const text = requestText(request)
+  return text.includes('"body"') && text.includes('"pageId"')
+}
+
+function isPageTreeUrl(href: string) {
+  if (!href.includes('/_serverFn/')) return false
+  if (serverFnExport(href).includes('fetchPageTree')) return true
+  const text = decodeURIComponent(href)
+  return (
+    text.includes('"spaceId"') &&
+    !text.includes('"pageId"') &&
+    !text.includes('"screen"')
+  )
+}
+
 function serverFnExport(url: string) {
   const id = new URL(url).pathname.split('/').pop() ?? ''
   try {
@@ -541,22 +562,31 @@ async function fc4Head() {
     console.log(`fc4_send_card_kept=${cardKept}`)
 
     await page.route(
-      (url) => {
-        const name = serverFnExport(url.href)
-        return (
-          (fault === 'remove' && name.includes('removeMemberFn')) ||
-          (fault === 'delete' && name.includes('deleteTeamFn'))
-        )
-      },
+      (url) => url.pathname.includes('/_serverFn/'),
       async (route) => {
-        const name = serverFnExport(route.request().url())
-        await route.fulfill({
-          status: name.includes('removeMemberFn') ? 500 : 409,
-          contentType: 'text/plain',
-          body: name.includes('removeMemberFn')
-            ? 'Internal Server Error'
-            : 'Conflict',
-        })
+        const request = route.request()
+        const body = request.postData() ?? ''
+        const name = serverFnExport(request.url())
+        const remove =
+          fault === 'remove' &&
+          request.method() === 'POST' &&
+          (name.includes('removeMemberFn') || body.includes(member.user.id))
+        const wipe =
+          fault === 'delete' &&
+          request.method() === 'POST' &&
+          (name.includes('deleteTeamFn') ||
+            (body.includes(created.id) &&
+              !body.includes(member.user.id) &&
+              !body.includes(outsider.user.id)))
+        if (remove || wipe) {
+          await route.fulfill({
+            status: remove ? 500 : 409,
+            contentType: 'text/plain',
+            body: remove ? 'Internal Server Error' : 'Conflict',
+          })
+          return
+        }
+        await route.continue()
       },
     )
     fault = 'remove'
@@ -659,9 +689,12 @@ async function fc5Head() {
   const releaseHung: Array<() => void> = []
   try {
     await page.route(
-      (url) =>
-        mode !== 'pass' && serverFnExport(url.href).includes('savePageFn'),
+      (url) => mode !== 'pass' && url.pathname.includes('/_serverFn/'),
       async (route) => {
+        if (!isSaveRequest(route.request())) {
+          await route.continue()
+          return
+        }
         if (mode === 'hang') {
           await new Promise<void>((resolve) => {
             releaseHung.push(resolve)
@@ -867,13 +900,8 @@ async function fc7Head() {
   const session = await browser()
   const page = await session.newPage({ viewport: { width: 1280, height: 800 } })
   try {
-    const seen: string[] = []
     await page.route(
-      (url) => {
-        const name = serverFnExport(url.href)
-        if (name) seen.push(name)
-        return name.includes('fetchPageTree')
-      },
+      (url) => isPageTreeUrl(url.href),
       async (route) => {
         await route.fulfill({
           status: 500,
@@ -895,7 +923,6 @@ async function fc7Head() {
       ).__TSR_ROUTER__
       if (router) await router.invalidate()
     })
-    console.log(`fc7_fns=${[...new Set(seen)].join(',')}`)
     await page
       .getByRole('heading', { name: "Couldn't load this space." })
       .waitFor()
