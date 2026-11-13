@@ -782,7 +782,7 @@ describe('teams', () => {
     const hold = await getSql().reserve()
     try {
       await hold`begin`
-      await hold`select id from page where id = ${made.id} for update`
+      await hold`select user_id from team_member where team_id = ${created.id} and user_id = ${member.user.id} for update`
       const saving = savePage(member.user.id, {
         pageId: made.id,
         title: 'In flight',
@@ -800,7 +800,7 @@ describe('teams', () => {
           where datname = current_database()
             and wait_event_type = 'Lock'
             and state = 'active'
-            and query like 'select "id", "space_id"%'
+            and query like 'select "user_id" from "team_member"%'
         `
         if (Number(locks[0]?.n) > 0) {
           waiting = true
@@ -809,7 +809,7 @@ describe('teams', () => {
         await new Promise((resolve) => setTimeout(resolve, 40))
       }
       expect(waiting).toBe(true)
-      await removeMember(owner.user.id, created.id, member.user.id)
+      await hold`delete from team_member where team_id = ${created.id} and user_id = ${member.user.id}`
       await hold`commit`
       const result = await saving
       expect(result).toMatchObject({ status: 404, message: 'Not found' })

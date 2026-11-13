@@ -284,6 +284,23 @@ async function fc1Ui(
   }
 }
 
+async function waitForMemberLock() {
+  const started = Date.now()
+  while (Date.now() - started < 5000) {
+    const locks = await getSql()`
+      select count(*)::int as n
+      from pg_stat_activity
+      where datname = current_database()
+        and wait_event_type = 'Lock'
+        and state = 'active'
+        and query like 'select "user_id" from "team_member"%'
+    `
+    if (Number(locks[0]?.n) > 0) return true
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  }
+  return false
+}
+
 async function waitForPageLock() {
   const started = Date.now()
   while (Date.now() - started < 5000) {
@@ -325,6 +342,33 @@ async function inFlight(
       return { waiting, pending: await pending }
     }
     await removeMember(ownerId, teamId, memberId)
+    await hold`commit`
+    return { waiting, pending: await pending }
+  } finally {
+    await hold`rollback`.catch(() => undefined)
+    hold.release()
+  }
+}
+
+async function removeDuringMemberWait(
+  memberId: string,
+  teamId: string,
+  write: () => Promise<unknown>,
+) {
+  const hold = await getSql().reserve()
+  try {
+    await hold`begin`
+    await hold`select user_id from team_member where team_id = ${teamId} and user_id = ${memberId} for update`
+    const pending = write().then(
+      (value) => ({ ok: true as const, value }),
+      (error: unknown) => ({ ok: false as const, error }),
+    )
+    const waiting = await waitForMemberLock()
+    if (!waiting) {
+      await hold`rollback`
+      return { waiting, pending: await pending }
+    }
+    await hold`delete from team_member where team_id = ${teamId} and user_id = ${memberId}`
     await hold`commit`
     return { waiting, pending: await pending }
   } finally {
@@ -377,11 +421,9 @@ async function fc2Planted() {
   const title = stored[0]?.title ?? ''
   const absent = await setupSaveRace()
   const absentDoc = { type: 'doc', content: [{ type: 'paragraph' }] }
-  const absentResult = await inFlight(
+  const absentResult = await removeDuringMemberWait(
     absent.member.user.id,
-    absent.owner.user.id,
     absent.created.id,
-    absent.made.id,
     () =>
       savePage(absent.member.user.id, {
         pageId: absent.made.id,
@@ -404,19 +446,14 @@ async function fc2Planted() {
 }
 
 async function fc2Head() {
-  const { owner, member, created, made } = await setupSaveRace()
+  const { member, created, made } = await setupSaveRace()
   const doc = { type: 'doc', content: [{ type: 'paragraph' }] }
-  const result = await inFlight(
-    member.user.id,
-    owner.user.id,
-    created.id,
-    made.id,
-    () =>
-      savePage(member.user.id, {
-        pageId: made.id,
-        title: 'In flight',
-        body: doc,
-      }),
+  const result = await removeDuringMemberWait(member.user.id, created.id, () =>
+    savePage(member.user.id, {
+      pageId: made.id,
+      title: 'In flight',
+      body: doc,
+    }),
   )
   const status =
     !result.pending.ok && result.pending.error instanceof HttpError

@@ -16,7 +16,7 @@ import { newId } from './ids'
 import { mentionChipText, peopleForBody } from './mentions'
 import type { MentionPerson } from './mentions'
 import { drawing, page, space, teamMember, user } from './schema'
-import type { Page, Space } from './schema'
+import type { Page } from './schema'
 
 export type PageKind = 'doc' | 'whiteboard'
 
@@ -288,8 +288,11 @@ async function labelsForBody(db: DrawingDb, body: Json) {
     .join('\n')
 }
 
-async function indexedBodyText(db: DrawingDb, spaceRow: Space, body: Json) {
-  const people = await peopleForBody(spaceRow, body)
+async function indexedBodyText(
+  db: DrawingDb,
+  body: Json,
+  people: MentionPerson[],
+) {
   const labels = new Map(
     people.map((person) => [person.id, mentionChipText(person)]),
   )
@@ -298,23 +301,41 @@ async function indexedBodyText(db: DrawingDb, spaceRow: Space, body: Json) {
   return [text, drawings].filter(Boolean).join('\n')
 }
 
+async function peopleForSavedBody(pageId: string, body: Json) {
+  const db = getDb()
+  const rows = await db
+    .select({ spaceId: page.spaceId })
+    .from(page)
+    .where(eq(page.id, pageId))
+    .limit(1)
+  const spaceId = rows[0]?.spaceId
+  if (!spaceId) return []
+  const spaces = await db
+    .select()
+    .from(space)
+    .where(eq(space.id, spaceId))
+    .limit(1)
+  const spaceRow = spaces[0]
+  if (!spaceRow) return []
+  return peopleForBody(spaceRow, body)
+}
+
 type PageTx = Parameters<
   Parameters<ReturnType<typeof getDb>['transaction']>[0]
 >[0]
 
 async function lockWritablePage(tx: PageTx, userId: string, pageId: string) {
-  const rows = await tx
-    .select()
+  const preview = await tx
+    .select({ spaceId: page.spaceId })
     .from(page)
     .where(eq(page.id, pageId))
     .limit(1)
-    .for('update')
-  const row = rows[0]
-  if (!row || row.archivedAt) notFound()
+  const spaceId = preview[0]?.spaceId
+  if (!spaceId) notFound()
   const spaces = await tx
     .select()
     .from(space)
-    .where(eq(space.id, row.spaceId))
+    .where(eq(space.id, spaceId))
     .limit(1)
   const spaceRow = spaces[0]
   if (!spaceRow) notFound()
@@ -331,11 +352,19 @@ async function lockWritablePage(tx: PageTx, userId: string, pageId: string) {
         ),
       )
       .limit(1)
-      .for('update')
+      .for('key share')
     if (!members[0]) notFound()
   } else {
     notFound()
   }
+  const rows = await tx
+    .select()
+    .from(page)
+    .where(eq(page.id, pageId))
+    .limit(1)
+    .for('update')
+  const row = rows[0]
+  if (!row || row.archivedAt || row.spaceId !== spaceId) notFound()
   return { page: row, space: spaceRow }
 }
 
@@ -439,10 +468,11 @@ async function writeDocBody(
   expectedUpdatedAt: Date | null,
 ) {
   const db = getDb()
+  const people = await peopleForSavedBody(pageId, body)
   await db.transaction(async (tx) => {
-    const locked = await lockWritablePage(tx, userId, pageId)
+    await lockWritablePage(tx, userId, pageId)
     const adopted = await adoptDiagrams(tx, userId, pageId, body)
-    const bodyText = await indexedBodyText(tx, locked.space, adopted)
+    const bodyText = await indexedBodyText(tx, adopted, people)
     const rows = await tx
       .update(page)
       .set({
@@ -632,14 +662,12 @@ export async function refreshDocText(
 ) {
   const access = await assertAccess(userId, { pageId })
   if (!access.page || access.page.kind !== 'doc') return
+  const body = access.page.body as Json
+  const people = await peopleForBody(access.space, body)
   await getDb()
     .update(page)
     .set({
-      bodyText: await indexedBodyText(
-        getDb(),
-        access.space,
-        access.page.body as Json,
-      ),
+      bodyText: await indexedBodyText(getDb(), body, people),
       updatedBy: userId,
       updatedAt: new Date(),
       ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
