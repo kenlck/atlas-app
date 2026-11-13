@@ -7,6 +7,12 @@ import type { Page, Request } from 'playwright'
 import { assertAccess } from '../src/lib/access'
 import { closeDb, getDb, getSql } from '../src/lib/db'
 import { flushEditor, registerEditorFlush } from '../src/lib/editor-flush'
+import {
+  oldCreatePage,
+  oldFlushEditor,
+  oldFlushSave,
+  registerOldEditorFlush,
+} from './fixtures/issue18-old-flush.ts'
 import { HttpError } from '../src/lib/http'
 import { newId } from '../src/lib/ids'
 import { createPage, savePage } from '../src/lib/pages'
@@ -86,6 +92,10 @@ function normalizeColor(value: string) {
   return value.replace(/\s+/g, '')
 }
 
+function plantedExit(negative: boolean) {
+  return negative ? 1 : 0
+}
+
 async function browser() {
   return chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
 }
@@ -138,6 +148,34 @@ async function signIn(page: Page, email: string, password: string) {
   await page.waitForFunction(() => !location.pathname.startsWith('/sign-in'))
 }
 
+function fc1Negative(sqlstate: string, http409: number) {
+  return sqlstate === '23505' && http409 === 0
+}
+
+async function fc1UnconstrainedRace() {
+  const sql = getSql()
+  await sql`drop schema if exists planted_fc1 cascade`
+  await sql`create schema planted_fc1`
+  await sql`create table planted_fc1.invite (
+    id text primary key,
+    team_id text not null,
+    invitee text not null,
+    status text not null
+  )`
+  const once = () =>
+    sql`insert into planted_fc1.invite (id, team_id, invitee, status)
+      values (${newId()}, 'team', 'person', 'pending')`
+  const results = await Promise.allSettled([once(), once()])
+  const rejected = results.filter((item) => item.status === 'rejected')
+  const sqlstate =
+    rejected.map((item) => postgresCode(item.reason)).find(Boolean) ?? ''
+  const http409 = rejected.filter(
+    (item) => item.reason instanceof HttpError && item.reason.status === 409,
+  ).length
+  await sql`drop schema if exists planted_fc1 cascade`
+  return { sqlstate, http409 }
+}
+
 async function fc1Planted() {
   requireDatabase()
   const owner = await createUser('Owner')
@@ -167,13 +205,19 @@ async function fc1Planted() {
     .select({ id: teamInvite.id })
     .from(teamInvite)
     .where(eq(teamInvite.teamId, created.id))
+  const sqlstate = codes.find(Boolean) ?? ''
+  const absent = await fc1UnconstrainedRace()
   console.log(`fc1_planted_ok=${ok}`)
   console.log(`fc1_planted_rejected=${rejected.length}`)
-  console.log(`fc1_planted_sqlstate=${codes.find(Boolean) ?? ''}`)
+  console.log(`fc1_planted_sqlstate=${sqlstate}`)
   console.log(`fc1_planted_http_409=${http409}`)
   console.log(`fc1_planted_rows=${rows.length}`)
-  const negative = codes.includes('23505') && http409 === 0
-  return negative ? 1 : 1
+  console.log(`fc1_absent_sqlstate=${absent.sqlstate}`)
+  console.log(`fc1_absent_http_409=${absent.http409}`)
+  console.log(
+    `fc1_absent_exit=${plantedExit(fc1Negative(absent.sqlstate, absent.http409))}`,
+  )
+  return plantedExit(fc1Negative(sqlstate, http409))
 }
 
 async function fc1Head() {
@@ -331,10 +375,32 @@ async function fc2Planted() {
     .from(pageTable)
     .where(eq(pageTable.id, made.id))
   const title = stored[0]?.title ?? ''
+  const absent = await setupSaveRace()
+  const absentDoc = { type: 'doc', content: [{ type: 'paragraph' }] }
+  const absentResult = await inFlight(
+    absent.member.user.id,
+    absent.owner.user.id,
+    absent.created.id,
+    absent.made.id,
+    () =>
+      savePage(absent.member.user.id, {
+        pageId: absent.made.id,
+        title: 'In flight',
+        body: absentDoc,
+      }),
+  )
+  const absentStored = await getDb()
+    .select({ title: pageTable.title })
+    .from(pageTable)
+    .where(eq(pageTable.id, absent.made.id))
+  const absentTitle = absentStored[0]?.title ?? ''
   console.log(`fc2_planted_waiting=${result.waiting}`)
   console.log(`fc2_planted_stored=${title === 'In flight'}`)
   console.log(`fc2_planted_title=${title}`)
-  return title === 'In flight' ? 1 : 1
+  console.log(`fc2_absent_title=${absentTitle}`)
+  console.log(`fc2_absent_waiting=${absentResult.waiting}`)
+  console.log(`fc2_absent_exit=${plantedExit(absentTitle === 'In flight')}`)
+  return plantedExit(title === 'In flight')
 }
 
 async function fc2Head() {
@@ -368,16 +434,26 @@ async function fc2Head() {
   return result.waiting && title === 'Notes' && status === 404 ? 0 : 1
 }
 
-async function fc3Planted() {
-  requireDatabase()
+function fc3Negative(code: string, deleted: boolean) {
+  return code === '23503' && !deleted
+}
+
+async function fc3DeleteSender(onDelete: 'restrict' | 'set null') {
   const sql = getSql()
   await sql`drop schema if exists planted_fc3 cascade`
   await sql`create schema planted_fc3`
   await sql`create table planted_fc3.person (id text primary key)`
-  await sql`create table planted_fc3.invite (
-    id text primary key,
-    invited_by text not null references planted_fc3.person(id)
-  )`
+  if (onDelete === 'set null') {
+    await sql`create table planted_fc3.invite (
+      id text primary key,
+      invited_by text references planted_fc3.person(id) on delete set null
+    )`
+  } else {
+    await sql`create table planted_fc3.invite (
+      id text primary key,
+      invited_by text not null references planted_fc3.person(id)
+    )`
+  }
   await sql`insert into planted_fc3.person (id) values ('sender')`
   await sql`insert into planted_fc3.invite (id, invited_by) values ('invite', 'sender')`
   let code = ''
@@ -390,10 +466,22 @@ async function fc3Planted() {
   }
   const left = await sql`select count(*)::int as n from planted_fc3.invite`
   await sql`drop schema if exists planted_fc3 cascade`
-  console.log(`fc3_planted_sqlstate=${code}`)
-  console.log(`fc3_planted_deleted=${deleted}`)
-  console.log(`fc3_planted_invite_rows=${Number(left[0]?.n ?? 0)}`)
-  return code === '23503' && !deleted ? 1 : 1
+  return { code, deleted, rows: Number(left[0]?.n ?? 0) }
+}
+
+async function fc3Planted() {
+  requireDatabase()
+  const blocked = await fc3DeleteSender('restrict')
+  const cleared = await fc3DeleteSender('set null')
+  console.log(`fc3_planted_sqlstate=${blocked.code}`)
+  console.log(`fc3_planted_deleted=${blocked.deleted}`)
+  console.log(`fc3_planted_invite_rows=${blocked.rows}`)
+  console.log(`fc3_absent_sqlstate=${cleared.code}`)
+  console.log(`fc3_absent_deleted=${cleared.deleted}`)
+  console.log(
+    `fc3_absent_exit=${plantedExit(fc3Negative(cleared.code, cleared.deleted))}`,
+  )
+  return plantedExit(fc3Negative(blocked.code, blocked.deleted))
 }
 
 async function fc3Head() {
@@ -477,6 +565,46 @@ function serverFnExport(url: string) {
   }
 }
 
+function fc4Negative(status: number, errors: number, row: string) {
+  return status === 409 && errors === 0 && row === 'Invited'
+}
+
+async function fc4Send(page: Page, swallow: boolean) {
+  await page.setContent(`<!doctype html>
+    <button id="send">Send invite</button>
+    <div id="row">Person</div>
+    <script>
+      document.getElementById('send').addEventListener('click', () => {
+        fetch('http://127.0.0.1:9/invite').then((response) => {
+          if (!response.ok && !${swallow}) {
+            const alert = document.createElement('p')
+            alert.className = 'err'
+            alert.setAttribute('role', 'alert')
+            alert.textContent = 'Already invited'
+            document.body.appendChild(alert)
+            return
+          }
+          document.getElementById('row').textContent = 'Invited'
+        })
+      })
+    </script>`)
+  const response = page.waitForResponse((item) =>
+    item.url().includes('/invite'),
+  )
+  await page.locator('#send').click()
+  const status = (await response).status()
+  if (swallow) {
+    await page.waitForFunction(
+      () => document.getElementById('row')?.textContent === 'Invited',
+    )
+  } else {
+    await page.locator('[role="alert"]').waitFor()
+  }
+  const errors = await page.locator('.err, [role="alert"]').count()
+  const row = (await page.locator('#row').innerText()).trim()
+  return { status, errors, row }
+}
+
 async function fc4Planted() {
   const session = await browser()
   const page = await session.newPage()
@@ -488,30 +616,18 @@ async function fc4Planted() {
         body: 'Already invited',
       }),
     )
-    await page.setContent(`<!doctype html>
-      <button id="send">Send invite</button>
-      <div id="row">Person</div>
-      <script>
-        document.getElementById('send').addEventListener('click', () => {
-          fetch('http://127.0.0.1:9/invite').then(() => {
-            document.getElementById('row').textContent = 'Invited'
-          })
-        })
-      </script>`)
-    const response = page.waitForResponse((item) =>
-      item.url().includes('/invite'),
+    const hidden = await fc4Send(page, true)
+    const shown = await fc4Send(page, false)
+    console.log(`fc4_planted_status=${hidden.status}`)
+    console.log(`fc4_planted_error_count=${hidden.errors}`)
+    console.log(`fc4_planted_row=${hidden.row}`)
+    console.log(`fc4_absent_status=${shown.status}`)
+    console.log(`fc4_absent_error_count=${shown.errors}`)
+    console.log(`fc4_absent_row=${shown.row}`)
+    console.log(
+      `fc4_absent_exit=${plantedExit(fc4Negative(shown.status, shown.errors, shown.row))}`,
     )
-    await page.locator('#send').click()
-    const status = (await response).status()
-    await page.waitForFunction(
-      () => document.getElementById('row')?.textContent === 'Invited',
-    )
-    const errors = await page.locator('.err, [role="alert"]').count()
-    const row = (await page.locator('#row').innerText()).trim()
-    console.log(`fc4_planted_status=${status}`)
-    console.log(`fc4_planted_error_count=${errors}`)
-    console.log(`fc4_planted_row=${row}`)
-    return status === 409 && errors === 0 && row === 'Invited' ? 1 : 1
+    return plantedExit(fc4Negative(hidden.status, hidden.errors, hidden.row))
   } finally {
     await session.close()
   }
@@ -649,15 +765,92 @@ async function fc4Head() {
   }
 }
 
-async function fc5Planted() {
+function fc5Negative(
+  created: boolean,
+  surfaced: boolean,
+  hangSettled: boolean,
+  hangElapsed: number,
+) {
+  return created && !surfaced && !hangSettled && hangElapsed >= 5000
+}
+
+async function fc5FailedFlush(oldPath: boolean) {
   let created = false
-  try {
-    await Promise.reject(new Error('save failed'))
-  } catch {
-    created = true
+  let surfaced = false
+  const save = () => Promise.reject(new Error('save failed'))
+  if (oldPath) {
+    registerOldEditorFlush(() => oldFlushSave(save))
+    try {
+      await oldCreatePage(async () => {
+        created = true
+      })
+    } catch {
+      surfaced = true
+    }
+    return { created, surfaced }
   }
-  console.log(`fc5_planted_created=${created}`)
-  return created ? 1 : 0
+  const unregister = registerEditorFlush(save)
+  try {
+    await flushEditor(80)
+    created = true
+  } catch {
+    surfaced = true
+  } finally {
+    unregister()
+  }
+  return { created, surfaced }
+}
+
+async function fc5HungFlush(oldPath: boolean) {
+  let settled = false
+  const started = Date.now()
+  const hang = () => new Promise<void>(() => undefined)
+  if (oldPath) {
+    registerOldEditorFlush(hang)
+    await Promise.race([
+      oldFlushEditor().then(
+        () => {
+          settled = true
+        },
+        () => {
+          settled = true
+        },
+      ),
+      new Promise((resolve) => setTimeout(resolve, 5100)),
+    ])
+    return { settled, elapsed: Date.now() - started }
+  }
+  const unregister = registerEditorFlush(hang)
+  try {
+    await flushEditor(80)
+    settled = true
+  } catch {
+    settled = true
+  } finally {
+    unregister()
+  }
+  return { settled, elapsed: Date.now() - started }
+}
+
+async function fc5Planted() {
+  const failed = await fc5FailedFlush(true)
+  const hung = await fc5HungFlush(true)
+  const absentFailed = await fc5FailedFlush(false)
+  const absentHung = await fc5HungFlush(false)
+  console.log(`fc5_planted_created=${failed.created}`)
+  console.log(`fc5_planted_fail_surfaced=${failed.surfaced}`)
+  console.log(`fc5_planted_hang_settled=${hung.settled}`)
+  console.log(`fc5_planted_hang_elapsed_ms=${hung.elapsed}`)
+  console.log(`fc5_absent_created=${absentFailed.created}`)
+  console.log(`fc5_absent_fail_surfaced=${absentFailed.surfaced}`)
+  console.log(`fc5_absent_hang_settled=${absentHung.settled}`)
+  console.log(`fc5_absent_hang_elapsed_ms=${absentHung.elapsed}`)
+  console.log(
+    `fc5_absent_exit=${plantedExit(fc5Negative(absentFailed.created, absentFailed.surfaced, absentHung.settled, absentHung.elapsed))}`,
+  )
+  return plantedExit(
+    fc5Negative(failed.created, failed.surfaced, hung.settled, hung.elapsed),
+  )
 }
 
 async function fc5Head() {
@@ -774,26 +967,34 @@ async function fc5Head() {
   }
 }
 
+async function fc6Tab(page: Page, inertBackground: boolean) {
+  const background = inertBackground ? '<div inert>' : '<div>'
+  await page.setContent(`<!doctype html>
+    <div role="dialog"><input id="team-name"><button id="cancel">Cancel</button></div>
+    ${background}<button id="behind">Behind</button></div>`)
+  await page.locator('#team-name').focus()
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Tab')
+  const id = await page.evaluate(() => document.activeElement?.id ?? '')
+  const inert = await page.evaluate(
+    () => document.querySelector('#behind')?.parentElement?.inert === true,
+  )
+  return { id, inert }
+}
+
 async function fc6Planted() {
   const session = await browser()
   const page = await session.newPage()
   try {
-    await page.setContent(`<!doctype html>
-      <div role="dialog"><input id="team-name"><button id="cancel">Cancel</button></div>
-      <button id="behind">Behind</button>`)
-    await page.locator('#team-name').focus()
-    await page.keyboard.press('Tab')
-    await page.keyboard.press('Tab')
-    const id = await page.evaluate(() => document.activeElement?.id ?? '')
-    const inert = await page.evaluate(
-      () =>
-        document.querySelector('[role="dialog"]')?.parentElement?.inert ===
-        true,
-    )
-    console.log(`fc6_planted_active=${id}`)
-    console.log(`fc6_planted_background_inert=${inert}`)
-    console.log(`fc6_planted_tab_reached_background=${id === 'behind'}`)
-    return id === 'behind' ? 1 : 1
+    const open = await fc6Tab(page, false)
+    const trapped = await fc6Tab(page, true)
+    console.log(`fc6_planted_active=${open.id}`)
+    console.log(`fc6_planted_background_inert=${open.inert}`)
+    console.log(`fc6_planted_tab_reached_background=${open.id === 'behind'}`)
+    console.log(`fc6_absent_active=${trapped.id}`)
+    console.log(`fc6_absent_background_inert=${trapped.inert}`)
+    console.log(`fc6_absent_exit=${plantedExit(trapped.id === 'behind')}`)
+    return plantedExit(open.id === 'behind')
   } finally {
     await session.close()
   }
@@ -861,30 +1062,51 @@ async function measureError(page: Page) {
   })
 }
 
+function fc7Negative(leftAligned: boolean, caretMatchesInk: boolean) {
+  return !leftAligned && caretMatchesInk
+}
+
+async function fc7Measure(page: Page, centered: boolean, caret: string) {
+  const block = centered
+    ? 'max-width:720px;margin:36px auto;text-align:center'
+    : 'max-width:720px;margin:36px 0;text-align:left'
+  await page.setContent(`<!doctype html>
+    <div class="main" style="position:relative;width:1000px">
+      <div class="space-error" style="${block}">Block</div>
+    </div>
+    <span class="sw"><span class="k" style="color:${caret}">v</span></span>`)
+  const measured = await measureError(page)
+  const leftAligned = measured.gap < 2 && measured.align === 'left'
+  return { measured, leftAligned }
+}
+
 async function fc7Planted() {
   const muted = tokenRgb('muted')
   const ink = tokenRgb('ink')
   const session = await browser()
   const page = await session.newPage({ viewport: { width: 1280, height: 800 } })
   try {
-    await page.setContent(`<!doctype html>
-      <div class="main" style="position:relative;width:1000px">
-        <div class="space-error" style="max-width:720px;margin:36px auto;text-align:center">Centered</div>
-      </div>
-      <span class="sw"><span class="k" style="color:${ink}">v</span></span>`)
-    const measured = await measureError(page)
-    const caretMatches = normalizeColor(measured.caret) === normalizeColor(ink)
-    const leftAligned = measured.gap < 2 && measured.align === 'left'
-    console.log(`fc7_planted_left_gap=${measured.gap}`)
-    console.log(`fc7_planted_text_align=${measured.align}`)
-    console.log(`fc7_planted_caret=${measured.caret}`)
+    const centered = await fc7Measure(page, true, ink)
+    const aligned = await fc7Measure(page, false, muted)
+    const caretMatchesInk =
+      normalizeColor(centered.measured.caret) === normalizeColor(ink)
+    const absentMatchesInk =
+      normalizeColor(aligned.measured.caret) === normalizeColor(ink)
+    console.log(`fc7_planted_left_gap=${centered.measured.gap}`)
+    console.log(`fc7_planted_text_align=${centered.measured.align}`)
+    console.log(`fc7_planted_caret=${centered.measured.caret}`)
     console.log(`fc7_planted_muted=${muted}`)
-    console.log(`fc7_planted_left_aligned=${leftAligned}`)
-    console.log(`fc7_planted_caret_matches_ink=${caretMatches}`)
+    console.log(`fc7_planted_left_aligned=${centered.leftAligned}`)
+    console.log(`fc7_planted_caret_matches_ink=${caretMatchesInk}`)
     console.log(
-      `fc7_planted_caret_matches_muted=${normalizeColor(measured.caret) === normalizeColor(muted)}`,
+      `fc7_planted_caret_matches_muted=${normalizeColor(centered.measured.caret) === normalizeColor(muted)}`,
     )
-    return !leftAligned && caretMatches ? 1 : 1
+    console.log(`fc7_absent_left_aligned=${aligned.leftAligned}`)
+    console.log(`fc7_absent_caret=${aligned.measured.caret}`)
+    console.log(
+      `fc7_absent_exit=${plantedExit(fc7Negative(aligned.leftAligned, absentMatchesInk))}`,
+    )
+    return plantedExit(fc7Negative(centered.leftAligned, caretMatchesInk))
   } finally {
     await session.close()
   }
@@ -952,14 +1174,21 @@ function stepNames(text: string) {
 }
 
 function fc8Planted() {
-  const text = readFileSync(
+  const missing = readFileSync(
     new URL('./fixtures/issue18-verify-all-missing.txt', import.meta.url),
     'utf8',
   )
-  const steps = stepNames(text)
+  const present = readFileSync(
+    new URL('./verify-all.sh', import.meta.url),
+    'utf8',
+  )
+  const steps = stepNames(missing)
+  const presentSteps = stepNames(present)
   console.log(`fc8_planted_steps=${steps.length}`)
   console.log(`fc8_planted_names=${steps.join(',')}`)
-  return steps.length === 0 ? 1 : 0
+  console.log(`fc8_absent_steps=${presentSteps.length}`)
+  console.log(`fc8_absent_exit=${plantedExit(presentSteps.length === 0)}`)
+  return plantedExit(steps.length === 0)
 }
 
 function fc8Head() {
