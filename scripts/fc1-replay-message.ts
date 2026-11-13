@@ -31,6 +31,12 @@ const planted = seroval('Bad request', `HttpError: ${cycle}\n    at main`)
 const good = seroval(cycle, `HttpError: ${cycle}\n    at movePage`)
 const looseStack = seroval('Bad request', cycle)
 
+if (process.argv[2] === 'planted') {
+  const accepted = exactReplayAccepts(400, planted)
+  console.log(`fc1_planted_accepted=${accepted}`)
+  process.exit(accepted ? 0 : 1)
+}
+
 const mainAcceptsPlanted = statusOnlyAcceptsReplay(400)
 const headRejectsPlanted = !exactReplayAccepts(400, planted)
 const headAcceptsCycle = exactReplayAccepts(400, good)

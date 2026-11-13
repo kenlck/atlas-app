@@ -383,11 +383,11 @@ run_step playwright-install pnpm exec playwright install --with-deps chromium
 run_step fc1 ./scripts/verify-fail-conditions.sh fc1
 require_step_log fc1 "fc1_main_accepts_planted=true" "fc1_head_rejects_planted=true" "fc1_head_accepts_cycle=true" "fc1_head_rejects_loose=true" "fc1=pass"
 run_step fc2 ./scripts/verify-fail-conditions.sh fc2
-require_step_log fc2 "fc2_main_has_first=true" "fc2_main_first_silent=true" "fc2_head_first_absent=true" "fc2_multi_match_fails=true" "fc2_exact_text_passes=true" "fc2=pass"
+require_step_log fc2 "fc2_planted_has_first=true" "fc2_planted_first_silent=true" "fc2_head_first_absent=true" "fc2_multi_match_fails=true" "fc2_exact_text_passes=true" "fc2=pass"
 run_step fc3 ./scripts/verify-fail-conditions.sh fc3
 require_step_log fc3 "fc3_main_misses_planted=true" "fc3_head_catches_planted=true" "fc3_head_catches_audit=true" "fc3_clean_passes=true" "verify_password_not_in_logs=false" "verify_password_not_in_logs=true" "verify_password_not_in_audit=false" "verify_password_not_in_audit=true" "fc3=pass"
 run_step fc4 ./scripts/verify-fail-conditions.sh fc4
-require_step_log fc4 "fc4_fc1_planted_bad=fail" "fc4_fc1_head=pass" "fc4_fc2_planted_bad=fail" "fc4_fc2_head=pass" "fc4_fc3_planted_bad=fail" "fc4_fc3_head=pass" "fc4=pass"
+require_step_log fc4 "fc1_planted_accepted=false" "fc4_fc1_planted_exit=1" "fc1=pass" "fc4_fc1_head_exit=0" "fc2_planted_has_first=true" "fc4_fc2_planted_exit=1" "fc2=pass" "fc4_fc2_head_exit=0" "fc3_planted_present=true" "verify_password_not_in_logs=false" "fc4_fc3_planted_exit=1" "fc3=pass" "fc4_fc3_head_exit=0" "fc4=pass"
 start_server || exit 1
 run_step server-ready wait_for_sign_in
 run_step visual-shots pnpm visual-shots

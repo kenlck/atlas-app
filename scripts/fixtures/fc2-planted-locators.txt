@@ -1,0 +1,13 @@
+# Planted locator sample from tests/visual/screens.spec.ts and scripts/visual-shots.ts at 197824b1.
+# FC2 counts these calls. It does not read origin/main.
+# screens.spec.ts
+page.locator('.err').first()
+page.locator('.col .skel').first()
+page.locator('.tree .skel').first()
+page.locator('.tree a.it').first()
+# visual-shots.ts
+page.locator('.col .skel').first()
+page.locator('.err').first()
+page.locator('.col .skel').first()
+page.locator('.tree .skel').first()
+page.locator('.tree a.it').first()

@@ -1,32 +1,34 @@
-import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { chromium } from 'playwright'
 
 const FILES = ['tests/visual/screens.spec.ts', 'scripts/visual-shots.ts']
+const PLANTED = 'scripts/fixtures/fc2-planted-locators.txt'
 const LOCATOR_END = /\.first\(\)|\.last\(\)/g
 
 function hits(text: string) {
   return text.match(LOCATOR_END)?.length ?? 0
 }
 
-function show(ref: string, file: string) {
-  return execFileSync('git', ['show', `${ref}:${file}`], { encoding: 'utf8' })
+const plantedText = readFileSync(PLANTED, 'utf8')
+const plantedHits = hits(plantedText)
+if (process.argv[2] === 'planted') {
+  const plantedHasFirst = plantedHits > 0
+  console.log(`fc2_planted_locator_hits=${plantedHits}`)
+  console.log(`fc2_planted_has_first=${plantedHasFirst}`)
+  process.exit(plantedHasFirst ? 1 : 0)
 }
 
 let headHits = 0
-let mainHits = 0
 for (const file of FILES) {
-  const head = readFileSync(file, 'utf8')
-  headHits += hits(head)
-  mainHits += hits(show('origin/main', file))
+  headHits += hits(readFileSync(file, 'utf8'))
 }
 
 const mutated = `${readFileSync(FILES[0] ?? '', 'utf8')}\npage.locator('.err').first()\n`
 const mutatedHits = hits(mutated)
 
-console.log(`fc2_main_locator_hits=${mainHits}`)
+console.log(`fc2_planted_locator_hits=${plantedHits}`)
 console.log(`fc2_head_locator_hits=${headHits}`)
-console.log(`fc2_main_has_first=${mainHits > 0}`)
+console.log(`fc2_planted_has_first=${plantedHits > 0}`)
 console.log(`fc2_head_first_absent=${headHits === 0}`)
 console.log(`fc2_mutated_hits=${mutatedHits}`)
 console.log(`fc2_mutated_detected=${mutatedHits > 0}`)
@@ -44,7 +46,7 @@ const exact = await page
   .count()
 let firstSilent = false
 try {
-  // Planted main behavior: .first() acts on one of two matches.
+  // Planted sample behavior: .first() acts on one of two matches.
   await page.locator('.err').first().waitFor({ timeout: 1000 })
   firstSilent = true
 } catch {
@@ -70,12 +72,12 @@ await browser.close()
 
 console.log(`fc2_unscoped_count=${unscoped}`)
 console.log(`fc2_exact_count=${exact}`)
-console.log(`fc2_main_first_silent=${firstSilent}`)
+console.log(`fc2_planted_first_silent=${firstSilent}`)
 console.log(`fc2_multi_match_fails=${multiFails}`)
 console.log(`fc2_exact_text_passes=${exactPasses}`)
 
 if (
-  mainHits === 0 ||
+  plantedHits === 0 ||
   headHits !== 0 ||
   mutatedHits === 0 ||
   unscoped < 2 ||

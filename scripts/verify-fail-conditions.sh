@@ -982,48 +982,73 @@ PY
   return 1
 }
 
-recipe_fc4() {
-  local sha root ok needle file
-  sha=$(git rev-parse HEAD)
-  root="artifacts/${sha}/logs"
-  ok=0
-  local -a needles=(
-    "fc1:fc1_main_accepts_planted=true"
-    "fc1:fc1_head_rejects_planted=true"
-    "fc1:fc1_head_accepts_cycle=true"
-    "fc1:fc1=pass"
-    "fc2:fc2_main_has_first=true"
-    "fc2:fc2_main_first_silent=true"
-    "fc2:fc2_head_first_absent=true"
-    "fc2:fc2_multi_match_fails=true"
-    "fc2:fc2=pass"
-    "fc3:fc3_main_misses_planted=true"
-    "fc3:fc3_head_catches_planted=true"
-    "fc3:fc3_head_catches_audit=true"
-    "fc3:fc3_clean_passes=true"
-    "fc3:fc3=pass"
-  )
-  for needle in "${needles[@]}"; do
-    file="${needle%%:*}"
-    needle="${needle#*:}"
-    if [[ -f "$root/${file}.log" ]] && grep -F -q -- "$needle" "$root/${file}.log"; then
-      echo "fc4_saw=${file}:${needle}"
-    else
-      echo "fc4_missing=${file}:${needle}"
-      ok=1
-    fi
-  done
-  if [[ "$ok" -ne 0 ]]; then
-    echo "fc4=fail"
-    return 1
+fc4_fc3_planted() {
+  local work code
+  work=$(mktemp -d)
+  chmod 700 "$work"
+  python3 - "$work" << 'PY'
+import os
+import secrets
+from pathlib import Path
+import sys
+
+work = Path(sys.argv[1])
+password = os.environ.get("VERIFY_PASSWORD") or "evidence-password-ok"
+needles = {
+    "admin_secret": secrets.token_hex(16),
+    "temp_password": secrets.token_hex(16),
+    "new_password": secrets.token_hex(16),
+}
+for name, value in needles.items():
+    if value in password or password in value:
+        raise SystemExit(1)
+    (work / name).write_text(value)
+(work / "verify_password").write_text(password)
+(work / "planted.log").write_text("boot\n" + password + "\nready\n")
+for path in work.iterdir():
+    path.chmod(0o600)
+PY
+  if ! grep -F -q -f "$work/verify_password" "$work/planted.log"; then
+    echo "fc3_planted_present=false"
+    rm -rf "$work"
+    return 0
   fi
-  echo "fc4_fc1_planted_bad=fail"
-  echo "fc4_fc1_head=pass"
-  echo "fc4_fc2_planted_bad=fail"
-  echo "fc4_fc2_head=pass"
-  echo "fc4_fc3_planted_bad=fail"
-  echo "fc4_fc3_head=pass"
-  echo "fc4=pass"
+  echo "fc3_planted_present=true"
+  code=0
+  grep_absent "$work" "$work/planted.log" logs || code=$?
+  rm -rf "$work"
+  return "$code"
+}
+
+recipe_fc4() {
+  local work fc1_planted fc1_head fc2_planted fc2_head fc3_planted fc3_head
+  work=$(mktemp -d)
+  fc1_planted=0
+  fc1_head=0
+  fc2_planted=0
+  fc2_head=0
+  fc3_planted=0
+  fc3_head=0
+  pnpm exec tsx scripts/fc1-replay-message.ts planted >"$work/fc1-planted.out" || fc1_planted=$?
+  pnpm exec tsx scripts/fc1-replay-message.ts >"$work/fc1-head.out" || fc1_head=$?
+  pnpm exec tsx scripts/fc2-locators.ts planted >"$work/fc2-planted.out" || fc2_planted=$?
+  pnpm exec tsx scripts/fc2-locators.ts >"$work/fc2-head.out" || fc2_head=$?
+  fc4_fc3_planted >"$work/fc3-planted.out" || fc3_planted=$?
+  recipe_fc3 >"$work/fc3-head.out" || fc3_head=$?
+  cat "$work/fc1-planted.out" "$work/fc1-head.out" "$work/fc2-planted.out" "$work/fc2-head.out" "$work/fc3-planted.out" "$work/fc3-head.out"
+  echo "fc4_fc1_planted_exit=${fc1_planted}"
+  echo "fc4_fc1_head_exit=${fc1_head}"
+  echo "fc4_fc2_planted_exit=${fc2_planted}"
+  echo "fc4_fc2_head_exit=${fc2_head}"
+  echo "fc4_fc3_planted_exit=${fc3_planted}"
+  echo "fc4_fc3_head_exit=${fc3_head}"
+  rm -rf "$work"
+  if [[ "$fc1_planted" -ne 0 && "$fc1_head" -eq 0 && "$fc2_planted" -ne 0 && "$fc2_head" -eq 0 && "$fc3_planted" -ne 0 && "$fc3_head" -eq 0 ]]; then
+    echo "fc4=pass"
+    return 0
+  fi
+  echo "fc4=fail"
+  return 1
 }
 
 recipe_healthcheck() {
