@@ -324,6 +324,10 @@ body {
   flex-shrink: 0;
 }
 
+.drag-handle {
+  cursor: grab;
+}
+
 .pen {
   width: 14px;
   height: 14px;

@@ -5,6 +5,7 @@ import {
   useRouter,
 } from '@tanstack/react-router'
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import type { SpaceRole } from '#/lib/access'
 import type { TreeNode } from '#/lib/pages'
 import type { SpaceSummary } from '#/lib/teams'
@@ -53,6 +54,52 @@ function countDescendants(node: TreeNode): number {
   )
 }
 
+function detach(
+  nodes: TreeNode[],
+  pageId: string,
+): { tree: TreeNode[]; node: TreeNode | null } {
+  let found: TreeNode | null = null
+  const tree = nodes.flatMap((node) => {
+    if (node.id === pageId) {
+      found = node
+      return []
+    }
+    const nested = detach(node.children, pageId)
+    if (nested.node) found = nested.node
+    return [{ ...node, children: nested.tree }]
+  })
+  return { tree, node: found }
+}
+
+function insertUnder(
+  nodes: TreeNode[],
+  parentId: string | null,
+  node: TreeNode,
+): TreeNode[] {
+  const next = { ...node, parentId }
+  if (!parentId) return [...nodes, next]
+  return nodes.map((item) =>
+    item.id === parentId
+      ? { ...item, children: [...item.children, next] }
+      : { ...item, children: insertUnder(item.children, parentId, node) },
+  )
+}
+
+function relocate(nodes: TreeNode[], pageId: string, parentId: string | null) {
+  const { tree, node } = detach(nodes, pageId)
+  if (!node) return nodes
+  return insertUnder(tree, parentId, node)
+}
+
+function treeStamp(nodes: TreeNode[]): string {
+  return nodes
+    .map(
+      (node) =>
+        `${node.id}:${node.parentId ?? ''}:${node.position}:${treeStamp(node.children)}`,
+    )
+    .join('|')
+}
+
 const SpaceOutletContext = createContext<SpaceOutlet | null>(null)
 
 export function useSpaceOutlet(): SpaceOutlet {
@@ -88,6 +135,9 @@ export function AppFrame({
 }) {
   const [drawer, setDrawer] = useState(false)
   const [moving, setMoving] = useState<string | null>(null)
+  const [placed, setPlaced] = useState<TreeNode[] | null>(null)
+  const stamp = treeStamp(tree)
+  const seenStamp = useRef(stamp)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<number | null>(null)
@@ -99,6 +149,14 @@ export function AppFrame({
   const navigate = useNavigate()
   const router = useRouter()
   const params = useParams({ strict: false })
+
+  useEffect(() => {
+    if (seenStamp.current === stamp) return
+    seenStamp.current = stamp
+    setPlaced(null)
+  }, [stamp])
+
+  const shown = placed ?? tree
 
   useEffect(() => {
     if (!drawer) return
@@ -227,11 +285,23 @@ export function AppFrame({
     refresh()
   }
 
-  const move = async (parentId: string | null) => {
+  const commitMove = async (pageId: string, parentId: string | null) => {
+    flushSync(() => {
+      setMoving(null)
+      setPlaced(relocate(shown, pageId, parentId))
+    })
+    try {
+      await movePageFn({ data: { pageId, parentId } })
+      refresh()
+    } catch {
+      setPlaced(null)
+      showToast("You can't move this page.")
+    }
+  }
+
+  const move = (parentId: string | null) => {
     if (!moving) return
-    await movePageFn({ data: { pageId: moving, parentId } })
-    setMoving(null)
-    refresh()
+    void commitMove(moving, parentId)
   }
 
   const blocked = Boolean(error)
@@ -274,7 +344,7 @@ export function AppFrame({
           spaceId={spaceId}
           spaceName={spaceName}
           userName={userName}
-          tree={tree}
+          tree={shown}
           activeId={params.pageId}
           loading={loading}
           error={error}
@@ -286,6 +356,9 @@ export function AppFrame({
             void rename(pageId, title)
           })}
           onMove={guard((pageId) => setMoving(pageId))}
+          onDropMove={guard((pageId, parentId) => {
+            void commitMove(pageId, parentId)
+          })}
           onArchive={guard((pageId) => {
             askDelete(pageId)
           })}
@@ -354,7 +427,7 @@ export function AppFrame({
         </div>
         {moving ? (
           <MoveDialog
-            tree={tree}
+            tree={shown}
             pageId={moving}
             onCancel={() => setMoving(null)}
             onMove={(parentId) => void move(parentId)}
@@ -362,9 +435,9 @@ export function AppFrame({
         ) : null}
         {deleting ? (
           <DeletePageDialog
-            title={findNode(tree, deleting)?.title ?? 'Untitled'}
+            title={findNode(shown, deleting)?.title ?? 'Untitled'}
             childCount={(() => {
-              const node = findNode(tree, deleting)
+              const node = findNode(shown, deleting)
               return node ? countDescendants(node) : 0
             })()}
             onCancel={() => setDeleting(null)}

@@ -122,6 +122,12 @@ Prefer the recipe script. It is the maintained check for issue 1.
 ./scripts/verify-fail-conditions.sh 37-fc9
 ./scripts/verify-fail-conditions.sh 37-fc10
 ./scripts/verify-fail-conditions.sh 37-fc11
+./scripts/verify-fail-conditions.sh 49-fc1
+./scripts/verify-fail-conditions.sh 49-fc2
+./scripts/verify-fail-conditions.sh 49-fc3
+./scripts/verify-fail-conditions.sh 49-fc4
+./scripts/verify-fail-conditions.sh 49-fc5
+./scripts/verify-fail-conditions.sh 49-fc6
 ```
 
 Each recipe prints `START <utc> sha=<head>` and `END <utc> sha=<head>`. A non-zero exit means that check failed. `5d` reads `docker logs` for its own container and greps the full `admin_audit` row. `5f` and `5g` grep that audit row for the secret, the temporary password, and the new password. `5f` also greps `docker logs` of `ATLAS_CONTAINER` for those values. `10-4` expects `missing_origin_status=403`, `mismatched_origin_status=403`, and `malformed_status=400`, each with the page row unchanged, and `matching_origin_status=204`. `5a`, `5e`, `5b`, `5c`, `5d`, `5h`, and `6` start their own containers from `ATLAS_IMAGE` (default `atlas-app`). `5h` uses a fresh process so the in-memory rate limit starts at zero. `5f` performs two resets on the shared app. `5g` performs one more. That stays under the limit of five. Recipe `5b` does not time requests. Constant-time comparison is the unit test `rejects a wrong secret, returns a temp password once, locks the user, and audits` in `tests/admin-reset.test.ts`.

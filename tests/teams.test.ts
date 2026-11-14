@@ -882,4 +882,68 @@ describe('teams', () => {
       status: 404,
     })
   })
+
+  it('lets only the creator, team owner, or personal owner move a page', async () => {
+    const owner = await createUser('Move Owner')
+    const member = await createUser('Move Member')
+    const created = await createTeam(owner.user.id, 'Move roles')
+    await acceptInvite(
+      member.user.id,
+      (await createInvite(owner.user.id, created.id, member.user.id)).id,
+    )
+    const theirs = await createPage(owner.user.id, {
+      spaceId: created.spaceId,
+      title: 'Theirs',
+    })
+    const child = await createPage(owner.user.id, {
+      spaceId: created.spaceId,
+      parentId: theirs.id,
+      title: 'Child',
+    })
+    const mine = await createPage(member.user.id, {
+      spaceId: created.spaceId,
+      title: 'Mine',
+    })
+    const nest = await createPage(member.user.id, {
+      spaceId: created.spaceId,
+      title: 'Nest',
+    })
+    await expect(
+      movePage(member.user.id, { pageId: theirs.id, parentId: mine.id }),
+    ).rejects.toMatchObject({ status: 403 })
+    expect((await getPageView(owner.user.id, theirs.id)).parentId).toBeNull()
+    expect((await getPageView(owner.user.id, child.id)).parentId).toBe(
+      theirs.id,
+    )
+
+    const before = await getDb()
+      .select({ position: pageTable.position })
+      .from(pageTable)
+      .where(eq(pageTable.id, mine.id))
+    await movePage(member.user.id, { pageId: mine.id, parentId: null })
+    const after = await getDb()
+      .select({ position: pageTable.position, parentId: pageTable.parentId })
+      .from(pageTable)
+      .where(eq(pageTable.id, mine.id))
+    expect(after[0]?.parentId).toBeNull()
+    expect(after[0]?.position).not.toBe(before[0]?.position)
+    await movePage(member.user.id, { pageId: mine.id, parentId: nest.id })
+    expect((await getPageView(member.user.id, mine.id)).parentId).toBe(nest.id)
+
+    await movePage(owner.user.id, { pageId: theirs.id, parentId: mine.id })
+    expect((await getPageView(owner.user.id, theirs.id)).parentId).toBe(mine.id)
+
+    const personal = await createPage(owner.user.id, {
+      spaceId: owner.space.id,
+      title: 'Personal',
+    })
+    const folder = await createPage(owner.user.id, {
+      spaceId: owner.space.id,
+      title: 'Folder',
+    })
+    await movePage(owner.user.id, { pageId: personal.id, parentId: folder.id })
+    expect((await getPageView(owner.user.id, personal.id)).parentId).toBe(
+      folder.id,
+    )
+  })
 })
