@@ -207,6 +207,13 @@ function assertScope(scope: TokenScope, name: string) {
   }
 }
 
+const REMOVED_PAGE_TOOLS = new Set([
+  'archive_page',
+  'delete_page',
+  'restore_page',
+  'unarchive_page',
+])
+
 async function callTool(
   userId: string,
   tokenId: string,
@@ -214,6 +221,7 @@ async function callTool(
   name: string,
   args: Record<string, unknown>,
 ) {
+  if (REMOVED_PAGE_TOOLS.has(name)) throw new HttpError(404, 'Not found')
   assertScope(scope, name)
   if (name === 'list_spaces') return listSpaces(userId)
   if (name === 'search_pages') {

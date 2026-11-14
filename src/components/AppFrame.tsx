@@ -17,6 +17,7 @@ import {
   renamePageFn,
 } from '#/server/fns'
 import { CreateTeamDialog } from './CreateTeamDialog'
+import { DeletePageDialog } from './DeletePageDialog'
 import { MoveDialog } from './MoveDialog'
 import { SearchPanel } from './SearchPanel'
 import { Sidebar } from './Sidebar'
@@ -26,6 +27,29 @@ export type SpaceOutlet = {
   createRoot: (kind?: 'doc' | 'whiteboard') => void
   claimFresh: (pageId: string) => boolean
   releaseFresh: (pageId: string) => void
+  requestDelete: (pageId: string) => void
+}
+
+function findNode(nodes: TreeNode[], pageId: string): TreeNode | null {
+  for (const node of nodes) {
+    if (node.id === pageId) return node
+    const nested = findNode(node.children, pageId)
+    if (nested) return nested
+  }
+  return null
+}
+
+function containsId(nodes: TreeNode[], pageId: string): boolean {
+  return nodes.some(
+    (node) => node.id === pageId || containsId(node.children, pageId),
+  )
+}
+
+function countDescendants(node: TreeNode): number {
+  return node.children.reduce(
+    (sum, child) => sum + 1 + countDescendants(child),
+    0,
+  )
 }
 
 const SpaceOutletContext = createContext<SpaceOutlet | null>(null)
@@ -63,6 +87,8 @@ export function AppFrame({
 }) {
   const [drawer, setDrawer] = useState(false)
   const [moving, setMoving] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [toast, setToast] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -155,13 +181,33 @@ export function AppFrame({
     refresh()
   }
 
-  const archive = async (pageId: string) => {
-    await archivePageFn({ data: { pageId } })
-    if (params.pageId === pageId) {
-      await navigate({ to: '/s/$spaceId', params: { spaceId } })
-    } else {
-      refresh()
+  const askDelete = (pageId: string) => {
+    setDeleting(pageId)
+  }
+
+  const confirmDelete = async () => {
+    if (!deleting) return
+    const node = findNode(tree, deleting)
+    const parentId = node?.parentId ?? null
+    const viewing = params.pageId
+    const affected =
+      viewing === deleting ||
+      (node != null && viewing != null && containsId(node.children, viewing))
+    await archivePageFn({ data: { pageId: deleting } })
+    setDeleting(null)
+    setToast(true)
+    window.setTimeout(() => setToast(false), 4000)
+    if (affected) {
+      if (parentId) {
+        await navigate({
+          to: '/s/$spaceId/p/$pageId',
+          params: { spaceId, pageId: parentId },
+        })
+      } else {
+        await navigate({ to: '/s/$spaceId', params: { spaceId } })
+      }
     }
+    refresh()
   }
 
   const move = async (parentId: string | null) => {
@@ -190,6 +236,10 @@ export function AppFrame({
     releaseFresh: (pageId) => {
       if (freshPageId.current === pageId) freshPageId.current = null
     },
+    requestDelete: (pageId) => {
+      if (blocked) return
+      askDelete(pageId)
+    },
   }
 
   return (
@@ -216,7 +266,7 @@ export function AppFrame({
           })}
           onMove={guard((pageId) => setMoving(pageId))}
           onArchive={guard((pageId) => {
-            void archive(pageId)
+            askDelete(pageId)
           })}
           spaces={spaces}
           role={role}
@@ -285,6 +335,22 @@ export function AppFrame({
             onCancel={() => setMoving(null)}
             onMove={(parentId) => void move(parentId)}
           />
+        ) : null}
+        {deleting ? (
+          <DeletePageDialog
+            title={findNode(tree, deleting)?.title ?? 'Untitled'}
+            childCount={(() => {
+              const node = findNode(tree, deleting)
+              return node ? countDescendants(node) : 0
+            })()}
+            onCancel={() => setDeleting(null)}
+            onConfirm={confirmDelete}
+          />
+        ) : null}
+        {toast ? (
+          <div className="toast" role="status">
+            Page deleted.
+          </div>
         ) : null}
         {searchOpen ? (
           <SearchPanel

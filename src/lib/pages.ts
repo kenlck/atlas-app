@@ -1,5 +1,6 @@
 import { and, eq, inArray, isNull, max, sql } from 'drizzle-orm'
 import { assertAccess } from './access'
+import type { SpaceRole } from './access'
 import { emptyDoc, tiptapToText } from './body-text'
 import type { Json } from './body-text'
 import { diagramIds } from './diagram'
@@ -26,6 +27,7 @@ export type TreeNode = {
   kind: PageKind
   parentId: string | null
   position: number
+  canDelete: boolean
   children: TreeNode[]
 }
 
@@ -39,6 +41,7 @@ export type PageView = {
   position: number
   updatedAt: string
   updatedByName: string
+  canDelete: boolean
   breadcrumbs: Array<{ id: string; title: string }>
   people: MentionPerson[]
   drawing: {
@@ -49,7 +52,15 @@ export type PageView = {
   } | null
 }
 
-function asTree(rows: Page[]): TreeNode[] {
+export function canDeletePage(
+  role: SpaceRole,
+  createdBy: string,
+  userId: string,
+) {
+  return role === 'personal' || role === 'owner' || createdBy === userId
+}
+
+function asTree(rows: Page[], userId: string, role: SpaceRole): TreeNode[] {
   const visible = rows.filter((row) => !row.archivedAt)
   const byParent = new Map<string | null, Page[]>()
   for (const row of visible) {
@@ -67,6 +78,7 @@ function asTree(rows: Page[]): TreeNode[] {
         kind: row.kind,
         parentId: row.parentId,
         position: row.position,
+        canDelete: canDeletePage(role, row.createdBy, userId),
         children: walk(row.id),
       }))
   return walk(null)
@@ -151,14 +163,20 @@ export async function listPageTree(userId: string, spaceId: string) {
   const access = await assertAccess(userId, { spaceId })
   const db = getDb()
   const rows = await db.select().from(page).where(eq(page.spaceId, spaceId))
-  return { space: access.space, tree: asTree(rows), role: access.role }
+  return {
+    space: access.space,
+    tree: asTree(rows, userId, access.role),
+    role: access.role,
+  }
 }
 
 export async function getPageView(
   userId: string,
   pageId: string,
 ): Promise<PageView> {
-  const { space: spaceRow, page: row } = await assertAccess(userId, { pageId })
+  const access = await assertAccess(userId, { pageId })
+  const spaceRow = access.space
+  const row = access.page
   if (!row) notFound()
   const db = getDb()
   const authors = await db
@@ -188,6 +206,7 @@ export async function getPageView(
     position: row.position,
     updatedAt: row.updatedAt.toISOString(),
     updatedByName: authors[0]?.name ?? spaceRow.name,
+    canDelete: canDeletePage(access.role, row.createdBy, userId),
     breadcrumbs: await breadcrumbsFor(row),
     people:
       row.kind === 'whiteboard'
@@ -324,7 +343,12 @@ type PageTx = Parameters<
   Parameters<ReturnType<typeof getDb>['transaction']>[0]
 >[0]
 
-async function lockWritablePage(tx: PageTx, userId: string, pageId: string) {
+async function lockWritablePage(
+  tx: PageTx,
+  userId: string,
+  pageId: string,
+  options?: { allowArchived?: boolean },
+) {
   const preview = await tx
     .select({ spaceId: page.spaceId })
     .from(page)
@@ -339,8 +363,10 @@ async function lockWritablePage(tx: PageTx, userId: string, pageId: string) {
     .limit(1)
   const spaceRow = spaces[0]
   if (!spaceRow) notFound()
+  let role: SpaceRole
   if (spaceRow.kind === 'personal') {
     if (spaceRow.ownerUserId !== userId) notFound()
+    role = 'personal'
   } else if (spaceRow.teamId) {
     const members = await tx
       .select({ userId: teamMember.userId })
@@ -354,6 +380,19 @@ async function lockWritablePage(tx: PageTx, userId: string, pageId: string) {
       .limit(1)
       .for('key share')
     if (!members[0]) notFound()
+    const roles = await tx
+      .select({ role: teamMember.role })
+      .from(teamMember)
+      .where(
+        and(
+          eq(teamMember.teamId, spaceRow.teamId),
+          eq(teamMember.userId, userId),
+        ),
+      )
+      .limit(1)
+    const memberRole = roles[0]?.role
+    if (!memberRole) notFound()
+    role = memberRole
   } else {
     notFound()
   }
@@ -364,8 +403,9 @@ async function lockWritablePage(tx: PageTx, userId: string, pageId: string) {
     .limit(1)
     .for('update')
   const row = rows[0]
-  if (!row || row.archivedAt || row.spaceId !== spaceId) notFound()
-  return { page: row, space: spaceRow }
+  if (!row || row.spaceId !== spaceId) notFound()
+  if (row.archivedAt && !options?.allowArchived) notFound()
+  return { page: row, space: spaceRow, role }
 }
 
 // A block keeps a drawing id only when that row already belongs to this page
@@ -578,12 +618,25 @@ export async function movePage(
 }
 
 export async function archivePage(userId: string, pageId: string) {
-  await assertAccess(userId, { pageId })
   const db = getDb()
-  await db
-    .update(page)
-    .set({ archivedAt: new Date(), updatedBy: userId, updatedAt: new Date() })
-    .where(eq(page.id, pageId))
+  await db.transaction(async (tx) => {
+    const locked = await lockWritablePage(tx, userId, pageId, {
+      allowArchived: true,
+    })
+    if (!canDeletePage(locked.role, locked.page.createdBy, userId)) {
+      if (locked.page.archivedAt) notFound()
+      throw new HttpError(403, 'Forbidden')
+    }
+    if (locked.page.archivedAt) return
+    await tx
+      .update(page)
+      .set({
+        archivedAt: new Date(),
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
+      .where(eq(page.id, pageId))
+  })
   return { ok: true as const }
 }
 

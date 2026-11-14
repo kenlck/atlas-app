@@ -409,6 +409,21 @@ body {
   color: var(--muted);
 }
 
+.diagram-block.is-deleted {
+  border-style: dashed;
+  border-color: var(--line);
+}
+
+.diagram-deleted {
+  margin: 0;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: var(--white);
+}
+
 .diagram-edit {
   margin: 0 8px 8px;
   border: 1px solid var(--line);
@@ -921,6 +936,100 @@ body {
   font: inherit;
   cursor: pointer;
   color: var(--ink);
+}
+
+.menu button.danger {
+  color: var(--error);
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}
+
+.row-more,
+.page-menu-btn {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 4px;
+  font: inherit;
+  line-height: 1;
+}
+
+.row-more {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  z-index: 1;
+}
+
+.page-menu .menu {
+  right: 0;
+  top: 32px;
+}
+
+.delete-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.delete-modal .scrim {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(28, 25, 23, 0.32);
+}
+
+.delete-modal .card {
+  position: relative;
+  z-index: 61;
+  width: 380px;
+  max-width: calc(100% - 32px);
+  margin: 96px auto 0;
+}
+
+.delete-copy {
+  margin: 8px 0 0;
+  color: var(--ink);
+}
+
+.delete-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.delete-actions .btn {
+  margin-top: 0;
+  width: auto;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 70;
+  background: var(--ink);
+  color: var(--white);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+@media (max-width: 390px) {
+  .delete-modal .card {
+    width: calc(100% - 32px);
+    margin-top: 16px;
+  }
 }
 
 .menu button:hover,

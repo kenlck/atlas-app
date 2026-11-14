@@ -823,4 +823,63 @@ describe('teams', () => {
       hold.release()
     }
   })
+
+  it('lets the creator, team owner, and personal owner delete, and refuses other members', async () => {
+    const owner = await createUser('Owner')
+    const member = await createUser('Member')
+    const created = await createTeam(owner.user.id, 'Delete roles')
+    await acceptInvite(
+      member.user.id,
+      (await createInvite(owner.user.id, created.id, member.user.id)).id,
+    )
+    const owned = await createPage(owner.user.id, {
+      spaceId: created.spaceId,
+      title: 'Owner page',
+    })
+    const made = await createPage(member.user.id, {
+      spaceId: created.spaceId,
+      title: 'Member page',
+      parentId: owned.id,
+    })
+    await expect(archivePage(member.user.id, owned.id)).rejects.toMatchObject({
+      status: 403,
+    })
+    const kept = await getPageView(owner.user.id, owned.id)
+    expect(kept.title).toBe('Owner page')
+    const tree = await listPageTree(member.user.id, created.spaceId)
+    expect(tree.tree[0]?.canDelete).toBe(false)
+    expect(tree.tree[0]?.children[0]?.canDelete).toBe(true)
+    const ownerTree = await listPageTree(owner.user.id, created.spaceId)
+    expect(ownerTree.tree[0]?.canDelete).toBe(true)
+    expect(ownerTree.tree[0]?.children[0]?.canDelete).toBe(true)
+
+    await archivePage(member.user.id, made.id)
+    await expect(archivePage(member.user.id, made.id)).resolves.toEqual({
+      ok: true,
+    })
+    await expect(getPageView(owner.user.id, made.id)).rejects.toMatchObject({
+      status: 404,
+    })
+    await expect(getPageView(owner.user.id, owned.id)).resolves.toMatchObject({
+      id: owned.id,
+    })
+    const other = await createPage(member.user.id, {
+      spaceId: created.spaceId,
+      parentId: owned.id,
+      title: 'Other',
+    })
+    await archivePage(owner.user.id, other.id)
+    await expect(getPageView(member.user.id, other.id)).rejects.toMatchObject({
+      status: 404,
+    })
+
+    const personal = await createPage(owner.user.id, {
+      spaceId: owner.space.id,
+      title: 'Mine',
+    })
+    await archivePage(owner.user.id, personal.id)
+    await expect(getPageView(owner.user.id, personal.id)).rejects.toMatchObject({
+      status: 404,
+    })
+  })
 })

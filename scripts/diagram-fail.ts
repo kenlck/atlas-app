@@ -523,8 +523,14 @@ async function recipeEdit(base: string) {
     const block = document.querySelector('.diagram-block')
     if (!block) return false
     if (block.querySelector('img')) return true
-    const text = (block.querySelector('.diagram-empty')?.textContent ?? '').trim()
-    return text === 'Empty drawing' || text === 'Drawing unavailable'
+    const text = (
+      block.querySelector('.diagram-empty, .diagram-deleted')?.textContent ?? ''
+    ).trim()
+    return (
+      text === 'Empty drawing' ||
+      text === 'Drawing unavailable' ||
+      text === 'This drawing was deleted.'
+    )
   })
   const cookies = await page.context().cookies()
   const cookie = cookies.map((item) => `${item.name}=${item.value}`).join('; ')

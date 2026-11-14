@@ -31,16 +31,29 @@ async function readJson(request: Request) {
   }
 }
 
+function refusesPageRemoval(method: string, parts: string[]) {
+  if (parts[0] !== 'pages' || !parts[1]) return false
+  const action = parts[2]
+  return (
+    method === 'DELETE' ||
+    action === 'archive' ||
+    action === 'delete' ||
+    action === 'restore' ||
+    action === 'unarchive'
+  )
+}
+
 export async function handleAtlasApi(request: Request) {
   try {
-    const session = await requireUnlockedSession()
-    const userId = session.user.id
     const url = new URL(request.url)
     const rest = url.pathname
       .replace(/\/+$/, '')
       .replace(/^\/api\/atlas\/?/, '')
     const parts = rest.split('/').filter(Boolean)
     const method = request.method.toUpperCase()
+    if (refusesPageRemoval(method, parts)) throw new HttpError(404, 'Not found')
+    const session = await requireUnlockedSession()
+    const userId = session.user.id
 
     if (method === 'POST' && parts.length === 1 && parts[0] === 'teams') {
       const body = await readJson(request)
