@@ -981,14 +981,17 @@ async function fc5Head() {
     await alert.waitFor({ state: 'hidden', timeout: 2000 })
     await alert.waitFor({ state: 'visible', timeout: 8000 })
     const hangElapsed = Date.now() - hangStart
-    const hangText = (await page.locator('.doc-editor').innerText()).includes(
-      marker,
-    )
+    const hangBody = await page.locator('.doc-editor').innerText()
+    const hangMarkerKept = hangBody.includes(hangMarker)
+    const hangPriorKept = hangBody.includes(marker)
+    const hangText = hangMarkerKept && hangPriorKept
     const hangKept = new URL(page.url()).pathname === hangUrl
     console.log(`fc5_hang_elapsed_ms=${hangElapsed}`)
     console.log(
       `fc5_hang_timed_out=${hangElapsed >= 4500 && hangElapsed < 7000}`,
     )
+    console.log(`fc5_hang_marker_kept=${hangMarkerKept}`)
+    console.log(`fc5_hang_prior_kept=${hangPriorKept}`)
     console.log(`fc5_hang_text_kept=${hangText}`)
     console.log(`fc5_hang_url_kept=${hangKept}`)
     const logicOk =
