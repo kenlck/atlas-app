@@ -28,6 +28,14 @@ export async function unlockOnlyLocker(sql: Sql, userId: string, pageId: string)
   return 200
 }
 
+export async function archiveBlockedByLock(sql: Sql, pageId: string) {
+  const rows = await sql`select locked_at, archived_at from page where id = ${pageId}`
+  return {
+    status: rows[0]?.locked_at ? 423 : 200,
+    archived: rows[0]?.archived_at != null,
+  }
+}
+
 export function stuckAfterUnlock() {
   return { canEdit: false, switchVisible: false }
 }

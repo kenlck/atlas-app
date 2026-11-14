@@ -92,12 +92,15 @@ describe('page lock', () => {
     await expect(setPageLock(owner.user.id, child.id, false)).rejects.toMatchObject({
       status: 404,
     })
+    await expect(archivePage(owner.user.id, child.id)).rejects.toMatchObject({
+      status: 404,
+    })
     const childRow = await rowOf(child.id)
     expect(childRow.locked_at).toBeNull()
   })
 
   it('blocks other members on every write and still allows a child page', async () => {
-    const { owner, member, spaceId } = await team()
+    const { owner, member, other, spaceId } = await team()
     const note = await createPage(member.user.id, { spaceId, title: 'Writable' })
     const board = await createPage(member.user.id, {
       spaceId,
@@ -117,7 +120,7 @@ describe('page lock', () => {
     await expect(
       movePage(member.user.id, { pageId: note.id, parentId: parent.id }),
     ).rejects.toMatchObject({ status: 423 })
-    await expect(archivePage(member.user.id, note.id)).rejects.toMatchObject({ status: 423 })
+    await expect(archivePage(other.user.id, note.id)).rejects.toMatchObject({ status: 403 })
     const token = await createApiToken(member.user.id, {
       name: 'lock',
       scope: 'read_write',
@@ -182,6 +185,24 @@ describe('page lock', () => {
       .from(page)
       .where(eq(page.id, board.id))
     expect(scene).toHaveLength(1)
+  })
+
+  it('lets the creator and the owner delete a locked page', async () => {
+    const { owner, member, other, spaceId } = await team()
+    const creatorPage = await createPage(member.user.id, { spaceId, title: 'Creator deletes' })
+    const ownerPage = await createPage(member.user.id, { spaceId, title: 'Owner deletes' })
+    const memberPage = await createPage(owner.user.id, { spaceId, title: 'Member blocked' })
+    await setPageLock(owner.user.id, creatorPage.id, true)
+    await setPageLock(member.user.id, ownerPage.id, true)
+    await setPageLock(owner.user.id, memberPage.id, true)
+    await expect(archivePage(member.user.id, creatorPage.id)).resolves.toEqual({ ok: true })
+    await expect(archivePage(owner.user.id, ownerPage.id)).resolves.toEqual({ ok: true })
+    await expect(archivePage(other.user.id, memberPage.id)).rejects.toMatchObject({
+      status: 403,
+    })
+    expect((await rowOf(creatorPage.id)).archived_at).not.toBeNull()
+    expect((await rowOf(ownerPage.id)).archived_at).not.toBeNull()
+    expect((await rowOf(memberPage.id)).archived_at).toBeNull()
   })
 
   it('lets the locker and the owner edit and unlock', async () => {

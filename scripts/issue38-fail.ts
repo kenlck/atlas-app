@@ -9,6 +9,7 @@ import { chromium } from 'playwright'
 import type { Page } from 'playwright'
 import { assertLocalBaseUrl, assertLocalDatabaseUrl, enterEdit, submitAuthForm } from './verify-local.ts'
 import {
+  archiveBlockedByLock,
   denyOwner,
   stuckAfterUnlock,
   uncheckedLock,
@@ -525,7 +526,7 @@ async function postMcp(app: App, token: string, pageId: string, updatedAt: strin
 
 async function fc3(app: App, planted: boolean) {
   const prefix = planted ? '38_fc3_planted' : '38_fc3_head'
-  const { owner, member, spaceId } = await roster(app)
+  const { owner, member, other, spaceId } = await roster(app)
   const saveTarget = await app.createPage(member.user.id, { spaceId, title: 'Save me' })
   const renameTarget = await app.createPage(member.user.id, { spaceId, title: 'Rename me' })
   const moveTarget = await app.createPage(member.user.id, { spaceId, title: 'Move me' })
@@ -552,7 +553,7 @@ async function fc3(app: App, planted: boolean) {
   const moveStatus = await statusOf(() =>
     app.movePage(member.user.id, { pageId: moveTarget.id, parentId: parent.id }),
   )
-  const archiveStatus = await statusOf(() => app.archivePage(member.user.id, archiveTarget.id))
+  const archiveStatus = await statusOf(() => app.archivePage(other.user.id, archiveTarget.id))
   const drawingStatus = await postDrawing(app, token.token, board.id)
   const mcp = await postMcp(app, token.token, mcpTarget.id, current.updatedAt, 'From token')
   const after = await readRow(app.getSql(), saveTarget.id)
@@ -572,6 +573,7 @@ async function fc3(app: App, planted: boolean) {
   line(`${prefix}_rename_status`, renameStatus)
   line(`${prefix}_move_status`, moveStatus)
   line(`${prefix}_archive_status`, archiveStatus)
+  line(`${prefix}_archive_archived`, archived.archived_at != null)
   line(`${prefix}_mcp_status`, mcp.status)
   line(`${prefix}_stored`, stored)
   line(`${prefix}_restore`, 'skipped')
@@ -582,7 +584,8 @@ async function fc3(app: App, planted: boolean) {
       drawingStatus === 200 &&
       renameStatus === 200 &&
       moveStatus === 200 &&
-      archiveStatus === 200 &&
+      archiveStatus === 403 &&
+      archived.archived_at == null &&
       mcp.status === 200 &&
       stored
     )
@@ -592,7 +595,8 @@ async function fc3(app: App, planted: boolean) {
     drawingStatus === 423 &&
     renameStatus === 423 &&
     moveStatus === 423 &&
-    archiveStatus === 423 &&
+    archiveStatus === 403 &&
+    archived.archived_at == null &&
     mcp.status === 423 &&
     mcp.message.startsWith('Page is locked by') &&
     !stored
@@ -909,11 +913,65 @@ function fc11(planted: boolean) {
   const recipes = planted
     ? pinText('scripts/verify-fail-conditions.sh')
     : readFileSync(join(repoRoot, 'scripts/verify-fail-conditions.sh'), 'utf8')
-  const missing = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].some(
+  const missing = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].some(
     (id) => !hasStep(verifyAll, id) || !hasStep(recipes, id),
   )
   line(planted ? `${prefix}_missing` : `${prefix}_steps`, planted ? missing : !missing)
   return missing
+}
+
+async function fc12(app: App, planted: boolean) {
+  const prefix = planted ? '38_fc12_planted' : '38_fc12_head'
+  const { owner, member, other, spaceId } = await roster(app)
+  const creatorPage = await app.createPage(member.user.id, { spaceId, title: 'Creator deletes' })
+  const ownerPage = await app.createPage(member.user.id, { spaceId, title: 'Owner deletes' })
+  const memberPage = await app.createPage(owner.user.id, { spaceId, title: 'Member blocked' })
+  await lockRow(app.getSql(), owner.user.id, creatorPage.id)
+  await lockRow(app.getSql(), member.user.id, ownerPage.id)
+  await lockRow(app.getSql(), owner.user.id, memberPage.id)
+  if (planted) {
+    line(
+      `${prefix}_note`,
+      'e6902c30 has no lock that blocks delete, so this planted case uses a fixture that refuses archive while locked',
+    )
+    const creator = await archiveBlockedByLock(app.getSql(), creatorPage.id)
+    const ownerResult = await archiveBlockedByLock(app.getSql(), ownerPage.id)
+    const memberResult = await archiveBlockedByLock(app.getSql(), memberPage.id)
+    line(`${prefix}_creator_status`, creator.status)
+    line(`${prefix}_owner_status`, ownerResult.status)
+    line(`${prefix}_member_status`, memberResult.status)
+    line(`${prefix}_creator_archived`, creator.archived)
+    line(`${prefix}_owner_archived`, ownerResult.archived)
+    line(`${prefix}_member_archived`, memberResult.archived)
+    return (
+      creator.status === 423 &&
+      ownerResult.status === 423 &&
+      memberResult.status === 423 &&
+      !creator.archived &&
+      !ownerResult.archived &&
+      !memberResult.archived
+    )
+  }
+  const creatorStatus = await statusOf(() => app.archivePage(member.user.id, creatorPage.id))
+  const ownerStatus = await statusOf(() => app.archivePage(owner.user.id, ownerPage.id))
+  const memberStatus = await statusOf(() => app.archivePage(other.user.id, memberPage.id))
+  const creatorRow = await readRow(app.getSql(), creatorPage.id)
+  const ownerRow = await readRow(app.getSql(), ownerPage.id)
+  const memberRow = await readRow(app.getSql(), memberPage.id)
+  line(`${prefix}_creator_status`, creatorStatus)
+  line(`${prefix}_owner_status`, ownerStatus)
+  line(`${prefix}_member_status`, memberStatus)
+  line(`${prefix}_creator_archived`, creatorRow.archived_at != null)
+  line(`${prefix}_owner_archived`, ownerRow.archived_at != null)
+  line(`${prefix}_member_archived`, memberRow.archived_at != null)
+  return !(
+    creatorStatus === 200 &&
+    ownerStatus === 200 &&
+    memberStatus === 403 &&
+    creatorRow.archived_at != null &&
+    ownerRow.archived_at != null &&
+    memberRow.archived_at == null
+  )
 }
 
 async function run(which: string, planted: boolean) {
@@ -933,6 +991,7 @@ async function run(which: string, planted: boolean) {
     if (which === 'fc8') return await fc8(app, planted)
     if (which === 'fc9') return await fc9(app, planted)
     if (which === 'fc10') return await fc10(app, planted)
+    if (which === 'fc12') return await fc12(app, planted)
     throw new Error(`unknown ${which}`)
   } finally {
     await app.closeDb().catch(() => undefined)
@@ -944,8 +1003,8 @@ const mode = process.argv[2] ?? ''
 const planted = mode.endsWith('-planted')
 const which = mode.replace(/-planted$/, '')
 
-if (!/^fc(?:[1-9]|10|11)$/.test(which)) {
-  console.error('usage: issue38-fail.ts fc1..fc11[-planted]')
+if (!/^fc(?:[1-9]|1[0-2])$/.test(which)) {
+  console.error('usage: issue38-fail.ts fc1..fc12[-planted]')
   process.exit(2)
 }
 

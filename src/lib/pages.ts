@@ -386,7 +386,7 @@ async function lockWritablePage(
   tx: PageTx,
   userId: string,
   pageId: string,
-  options?: { allowArchived?: boolean; purpose?: 'write' | 'lock' },
+  options?: { allowArchived?: boolean; purpose?: 'write' | 'lock'; ignoreLock?: boolean },
 ) {
   const preview = await tx
     .select({ spaceId: page.spaceId })
@@ -446,6 +446,7 @@ async function lockWritablePage(
   if (row.archivedAt && !options?.allowArchived) notFound()
   if (await hasArchivedAncestor({ ...row, archivedAt: null })) notFound()
   if (
+    !options?.ignoreLock &&
     !row.archivedAt &&
     row.lockedAt &&
     options?.purpose !== 'lock' &&
@@ -698,6 +699,7 @@ export async function archivePage(userId: string, pageId: string) {
   await db.transaction(async (tx) => {
     const locked = await lockWritablePage(tx, userId, pageId, {
       allowArchived: true,
+      ignoreLock: true,
     })
     if (!canDeletePage(locked.role, locked.page.createdBy, userId)) {
       if (locked.page.archivedAt) notFound()

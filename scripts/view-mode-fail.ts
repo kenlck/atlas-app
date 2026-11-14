@@ -439,6 +439,7 @@ const DELETE_PAGE_HUNKS = [
   'export async function createDiagram',
   'export async function cloneDiagram',
   'export async function movePage',
+  'export async function archivePage',
 ]
 
 function deletePageDiffOnly(path: string) {
