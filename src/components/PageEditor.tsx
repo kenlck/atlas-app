@@ -13,7 +13,11 @@ import { EditorContent, useEditor } from '@tiptap/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Json } from '#/lib/body-text'
 import type { PageView } from '#/lib/pages'
-import { createEditorSave, registerEditorFlush } from '#/lib/editor-flush'
+import {
+  createEditorSave,
+  registerEditorFlush,
+  withTimeout,
+} from '#/lib/editor-flush'
 import {
   browserPageSaveTransport,
   deliverPageSave,
@@ -130,11 +134,12 @@ export function PageEditor({ page }: { page: PageView }) {
       setSaveState('saving')
     }
     try {
-      await queueRef.current.flush()
+      await withTimeout(queueRef.current.flush())
       setSaveState((state) => (state === 'error' ? state : 'saved'))
-    } catch {
+    } catch (error) {
       dirtyRef.current = true
       setSaveState('error')
+      throw error
     }
   }
   const flushSaveRef = useRef(flushSave)
@@ -145,7 +150,7 @@ export function PageEditor({ page }: { page: PageView }) {
     writeDraft(pageIdRef.current, titleRef.current, bodyRef.current)
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => {
-      void flushSaveRef.current()
+      void flushSaveRef.current().catch(() => undefined)
     }, 800)
   }
 
@@ -193,7 +198,7 @@ export function PageEditor({ page }: { page: PageView }) {
       setTitle(saved.title)
     }
     if (!dirtyRef.current) return
-    void flushSaveRef.current()
+    void flushSaveRef.current().catch(() => undefined)
   }, [page.title])
 
   useEffect(() => {
@@ -221,7 +226,7 @@ export function PageEditor({ page }: { page: PageView }) {
         clearTimeout(timer.current)
         timer.current = null
       }
-      void flushSaveRef.current()
+      void flushSaveRef.current().catch(() => undefined)
     }
   }, [page.id])
 
@@ -232,7 +237,7 @@ export function PageEditor({ page }: { page: PageView }) {
         timer.current = null
       }
       if (!dirtyRef.current) {
-        void flushSaveRef.current()
+        void flushSaveRef.current().catch(() => undefined)
         return
       }
       const snapshot = {
@@ -244,7 +249,7 @@ export function PageEditor({ page }: { page: PageView }) {
       dirtyRef.current = false
       const delivered = deliverPageSave(snapshot, browserPageSaveTransport())
       if (delivered === 'sync') clearDraft(snapshot.pageId)
-      void flushSaveRef.current()
+      void flushSaveRef.current().catch(() => undefined)
     }
     window.addEventListener('pagehide', onHide)
     window.addEventListener('beforeunload', onHide)
@@ -288,20 +293,28 @@ export function PageEditor({ page }: { page: PageView }) {
         editor={editor}
         onDrawing={() => {
           if (!editor) return
-          void createDiagramFn({ data: { pageId: page.id } }).then((created) => {
-            editor
-              .chain()
-              .focus()
-              .insertContent({ type: 'diagram', attrs: { drawingId: created.id } })
-              .run()
-          })
+          void createDiagramFn({ data: { pageId: page.id } }).then(
+            (created) => {
+              editor
+                .chain()
+                .focus()
+                .insertContent({
+                  type: 'diagram',
+                  attrs: { drawingId: created.id },
+                })
+                .run()
+            },
+          )
         }}
       />
       <DatePickerHost />
       {saveState === 'error' ? (
         <div className="retry">
           Couldn't save.
-          <button type="button" onClick={() => void flushSave()}>
+          <button
+            type="button"
+            onClick={() => void flushSave().catch(() => undefined)}
+          >
             Retry
           </button>
         </div>
@@ -324,7 +337,7 @@ export function PageEditor({ page }: { page: PageView }) {
               titleRef.current = next
               setTitle(next)
               if (next !== savedTitle.current) dirtyRef.current = true
-              void flushSaveRef.current()
+              void flushSaveRef.current().catch(() => undefined)
             }}
           />
           <div className="meta">

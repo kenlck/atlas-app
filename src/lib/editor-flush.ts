@@ -1,5 +1,28 @@
 let flush = async () => {}
 
+export const FLUSH_TIMEOUT_MS = 5000
+
+export function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs = FLUSH_TIMEOUT_MS,
+) {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Save timed out'))
+    }, timeoutMs)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
 export function registerEditorFlush(fn: () => Promise<void>) {
   flush = fn
   return () => {
@@ -7,8 +30,8 @@ export function registerEditorFlush(fn: () => Promise<void>) {
   }
 }
 
-export function flushEditor() {
-  return flush()
+export function flushEditor(timeoutMs = FLUSH_TIMEOUT_MS) {
+  return withTimeout(flush(), timeoutMs)
 }
 
 export type EditorSnapshot = {

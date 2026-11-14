@@ -59,6 +59,7 @@ export function TeamSettings({
   const [found, setFound] = useState<Found | null>(null)
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const cancelDeleteRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -98,11 +99,39 @@ export function TeamSettings({
 
   const send = async () => {
     if (!found) return
-    await createInviteFn({ data: { teamId, userId: found.id } })
+    setActionError(null)
+    try {
+      await createInviteFn({ data: { teamId, userId: found.id } })
+    } catch (error) {
+      setActionError(messageOf(error) || 'Could not send the invite.')
+      return
+    }
     setEmail('')
     setFound(null)
     setPhase('idle')
     refresh()
+  }
+
+  const remove = async (userId: string) => {
+    setActionError(null)
+    try {
+      await removeMemberFn({ data: { teamId, userId } })
+    } catch (error) {
+      setActionError(messageOf(error) || 'Could not remove that member.')
+      return
+    }
+    refresh()
+  }
+
+  const removeTeam = async () => {
+    setActionError(null)
+    try {
+      await deleteTeamFn({ data: { teamId } })
+    } catch (error) {
+      setActionError(messageOf(error) || 'Could not delete the team.')
+      return
+    }
+    window.location.assign('/')
   }
 
   return (
@@ -113,6 +142,11 @@ export function TeamSettings({
       <div className="doc">
         <div className="col" data-role={role}>
           <h1>{name}</h1>
+          {actionError ? (
+            <p className="err" role="alert">
+              {actionError}
+            </p>
+          ) : null}
           <p className="empty">
             People in this team can open its pages and mention each other.
           </p>
@@ -128,11 +162,7 @@ export function TeamSettings({
                 <button
                   type="button"
                   className="ghost"
-                  onClick={() =>
-                    void removeMemberFn({
-                      data: { teamId, userId: member.id },
-                    }).then(() => refresh())
-                  }
+                  onClick={() => void remove(member.id)}
                 >
                   Remove
                 </button>
@@ -223,11 +253,7 @@ export function TeamSettings({
                     <button
                       className="btn delete-team"
                       type="button"
-                      onClick={() =>
-                        void deleteTeamFn({ data: { teamId } }).then(() => {
-                          window.location.assign('/')
-                        })
-                      }
+                      onClick={() => void removeTeam()}
                     >
                       Delete team
                     </button>

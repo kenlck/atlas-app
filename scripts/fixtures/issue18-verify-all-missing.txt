@@ -1,0 +1,4 @@
+# Planted verify-all excerpt. It has no issue 18 fail-condition steps.
+run_step typecheck pnpm typecheck
+run_step test pnpm test
+run_step build pnpm build

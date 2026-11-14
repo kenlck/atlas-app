@@ -110,6 +110,10 @@ body {
   min-width: 0;
 }
 
+.sw .k {
+  color: var(--muted);
+}
+
 .switcher-wrap {
   position: relative;
   margin-bottom: 8px;
@@ -1078,6 +1082,12 @@ body {
   font-weight: var(--title-weight);
   line-height: var(--title-line);
   margin: 0 0 6px;
+}
+
+.nf.space-error {
+  margin-left: 0;
+  margin-right: auto;
+  text-align: left;
 }
 
 .team-modal {

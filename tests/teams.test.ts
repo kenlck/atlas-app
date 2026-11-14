@@ -20,8 +20,15 @@ import {
   renamePage,
   savePage,
 } from '../src/lib/pages'
-import { space, teamInvite, teamMember, user } from '../src/lib/schema'
 import {
+  page as pageTable,
+  space,
+  teamInvite,
+  teamMember,
+  user,
+} from '../src/lib/schema'
+import {
+  ALREADY_INVITED,
   NO_ACCOUNT,
   acceptInvite,
   createInvite,
@@ -708,5 +715,112 @@ describe('teams', () => {
     ])
     expect(JSON.stringify(personal)).not.toContain('Outsider Secret Name')
     expect(JSON.stringify(personal)).not.toContain(outsider.user.email)
+  })
+
+  it('returns one invite and one already-invited conflict when two sends race', async () => {
+    const owner = await createUser('Owner')
+    const invited = await createUser('Invited')
+    const created = await createTeam(owner.user.id, 'Race invite')
+    const results = await Promise.allSettled([
+      createInvite(owner.user.id, created.id, invited.user.id),
+      createInvite(owner.user.id, created.id, invited.user.id),
+    ])
+    const ok = results.filter((item) => item.status === 'fulfilled')
+    const denied = results.filter((item) => item.status === 'rejected')
+    expect(ok).toHaveLength(1)
+    expect(denied).toHaveLength(1)
+    const reason = (denied[0] as PromiseRejectedResult).reason as HttpError
+    expect(reason).toMatchObject({ status: 409, message: ALREADY_INVITED })
+    const rows = await getDb()
+      .select()
+      .from(teamInvite)
+      .where(eq(teamInvite.teamId, created.id))
+    expect(rows.filter((row) => row.status === 'pending')).toHaveLength(1)
+  })
+
+  it('clears invited_by when the sender is deleted', async () => {
+    const owner = await createUser('Owner')
+    const invited = await createUser('Invited')
+    const created = await createTeam(owner.user.id, 'Sender gone')
+    const invite = await createInvite(
+      owner.user.id,
+      created.id,
+      invited.user.id,
+    )
+    await getSql()`delete from "user" where id = ${owner.user.id}`
+    const rows = await getDb()
+      .select()
+      .from(teamInvite)
+      .where(eq(teamInvite.id, invite.id))
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.status).toBe('pending')
+    expect(rows[0]?.invitedBy).toBeNull()
+    const cards = await listInvitations(invited.user.id)
+    expect(cards).toEqual([
+      {
+        id: invite.id,
+        teamId: created.id,
+        teamName: 'Sender gone',
+        invitedByName: 'A former member',
+      },
+    ])
+  })
+
+  it('does not store a save that is still in flight when the member is removed', async () => {
+    const owner = await createUser('Owner')
+    const member = await createUser('Member')
+    const created = await createTeam(owner.user.id, 'Save race')
+    await acceptInvite(
+      member.user.id,
+      (await createInvite(owner.user.id, created.id, member.user.id)).id,
+    )
+    const made = await createPage(member.user.id, {
+      spaceId: created.spaceId,
+      title: 'Notes',
+    })
+    const doc = { type: 'doc', content: [{ type: 'paragraph' }] }
+    const hold = await getSql().reserve()
+    try {
+      await hold`begin`
+      await hold`select user_id from team_member where team_id = ${created.id} and user_id = ${member.user.id} for update`
+      const saving = savePage(member.user.id, {
+        pageId: made.id,
+        title: 'In flight',
+        body: doc,
+      }).then(
+        () => 'stored' as const,
+        (error: unknown) => error,
+      )
+      const started = Date.now()
+      let waiting = false
+      while (Date.now() - started < 5000) {
+        const locks = await getSql()`
+          select count(*)::int as n
+          from pg_stat_activity
+          where datname = current_database()
+            and wait_event_type = 'Lock'
+            and state = 'active'
+            and query like 'select "user_id" from "team_member"%'
+        `
+        if (Number(locks[0]?.n) > 0) {
+          waiting = true
+          break
+        }
+        await new Promise((resolve) => setTimeout(resolve, 40))
+      }
+      expect(waiting).toBe(true)
+      await hold`delete from team_member where team_id = ${created.id} and user_id = ${member.user.id}`
+      await hold`commit`
+      const result = await saving
+      expect(result).toMatchObject({ status: 404, message: 'Not found' })
+      const stored = await getDb()
+        .select({ title: pageTable.title })
+        .from(pageTable)
+        .where(eq(pageTable.id, made.id))
+      expect(stored[0]?.title).toBe('Notes')
+    } finally {
+      await hold`rollback`.catch(() => undefined)
+      hold.release()
+    }
   })
 })
