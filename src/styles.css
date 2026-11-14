@@ -660,6 +660,41 @@ body {
   font-weight: 400;
 }
 
+.lock-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  max-width: min(190px, 48vw);
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 22px;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.lock-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lock-chip svg {
+  flex-shrink: 0;
+}
+
+.it .lock {
+  width: 12px;
+  height: 12px;
+  color: var(--muted);
+}
+
 .mode-done {
   height: 28px;
   padding: 0 10px;

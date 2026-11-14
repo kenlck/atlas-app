@@ -28,6 +28,7 @@ export type SpaceOutlet = {
   claimFresh: (pageId: string) => boolean
   releaseFresh: (pageId: string) => void
   requestDelete: (pageId: string) => void
+  requestLock: (pageId: string, locked: boolean) => void
 }
 
 function findNode(nodes: TreeNode[], pageId: string): TreeNode | null {
@@ -88,7 +89,8 @@ export function AppFrame({
   const [drawer, setDrawer] = useState(false)
   const [moving, setMoving] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
-  const [toast, setToast] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+  const toastTimer = useRef<number | null>(null)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -195,8 +197,7 @@ export function AppFrame({
       (node != null && viewing != null && containsId(node.children, viewing))
     await archivePageFn({ data: { pageId: deleting } })
     setDeleting(null)
-    setToast(true)
-    window.setTimeout(() => setToast(false), 4000)
+    showToast('Page deleted.')
     if (affected) {
       if (parentId) {
         await navigate({
@@ -207,6 +208,22 @@ export function AppFrame({
         await navigate({ to: '/s/$spaceId', params: { spaceId } })
       }
     }
+    refresh()
+  }
+
+  const showToast = (message: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    setToast(message)
+    toastTimer.current = window.setTimeout(() => setToast(null), 4000)
+  }
+
+  const setLock = async (pageId: string, locked: boolean) => {
+    const response = await fetch(
+      `/api/atlas/pages/${pageId}/${locked ? 'lock' : 'unlock'}`,
+      { method: 'POST', credentials: 'same-origin' },
+    )
+    if (!response.ok) return
+    showToast(locked ? 'Page locked.' : 'Page unlocked.')
     refresh()
   }
 
@@ -240,6 +257,10 @@ export function AppFrame({
       if (blocked) return
       askDelete(pageId)
     },
+    requestLock: (pageId, locked) => {
+      if (blocked) return
+      void setLock(pageId, locked)
+    },
   }
 
   return (
@@ -267,6 +288,9 @@ export function AppFrame({
           onMove={guard((pageId) => setMoving(pageId))}
           onArchive={guard((pageId) => {
             askDelete(pageId)
+          })}
+          onLock={guard((pageId, locked) => {
+            void setLock(pageId, locked)
           })}
           spaces={spaces}
           role={role}
@@ -349,7 +373,7 @@ export function AppFrame({
         ) : null}
         {toast ? (
           <div className="toast" role="status">
-            Page deleted.
+            {toast}
           </div>
         ) : null}
         {searchOpen ? (

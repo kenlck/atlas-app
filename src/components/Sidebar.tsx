@@ -26,6 +26,7 @@ export function Sidebar({
   onRename,
   onMove,
   onArchive,
+  onLock,
   onCreateTeam,
   onNavigate,
   onOpenSearch,
@@ -46,6 +47,7 @@ export function Sidebar({
   onRename: (pageId: string, title: string) => void
   onMove: (pageId: string) => void
   onArchive: (pageId: string) => void
+  onLock: (pageId: string, locked: boolean) => void
   onCreateTeam: () => void
   onNavigate: () => void
   onOpenSearch: () => void
@@ -117,6 +119,7 @@ export function Sidebar({
           onRename={onRename}
           onMove={onMove}
           onArchive={onArchive}
+          onLock={onLock}
         />
       )}
       <div className="foot">

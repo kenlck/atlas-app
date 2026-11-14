@@ -8,6 +8,15 @@ function depthPad(depth: number) {
   return { paddingLeft: `${8 + 18 * depth}px` }
 }
 
+function LockIcon() {
+  return (
+    <svg className="lock" viewBox="0 0 16 16" role="img" aria-label="Locked">
+      <rect x="3.5" y="7" width="9" height="7" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" fill="none" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  )
+}
+
 function PenIcon() {
   return (
     <svg className="pen" viewBox="0 0 16 16" aria-hidden="true">
@@ -42,6 +51,7 @@ export function PageTree({
   onRename,
   onMove,
   onArchive,
+  onLock,
 }: {
   spaceId: string
   tree: TreeNode[]
@@ -50,6 +60,7 @@ export function PageTree({
   onRename: (pageId: string, title: string) => void
   onMove: (pageId: string) => void
   onArchive: (pageId: string) => void
+  onLock: (pageId: string, locked: boolean) => void
 }) {
   const [open, setOpen] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(collectIds(tree).map((id) => [id, true])),
@@ -116,6 +127,7 @@ export function PageTree({
                   setMenu(node.id)
                 }}
               >
+                {node.locked ? <LockIcon /> : null}
                 {node.kind === 'whiteboard' ? <PenIcon /> : null}
                 {hasKids ? (
                   <span
@@ -165,6 +177,17 @@ export function PageTree({
                 >
                   Move
                 </button>
+                {node.canLock ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenu(null)
+                      onLock(node.id, !node.locked)
+                    }}
+                  >
+                    {node.locked ? 'Unlock' : 'Lock'}
+                  </button>
+                ) : null}
                 {node.canDelete ? (
                   <>
                     <div className="menu-sep" role="separator" />
