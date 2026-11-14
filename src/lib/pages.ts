@@ -369,7 +369,7 @@ async function lockWritablePage(
     role = 'personal'
   } else if (spaceRow.teamId) {
     const members = await tx
-      .select({ role: teamMember.role })
+      .select({ userId: teamMember.userId })
       .from(teamMember)
       .where(
         and(
@@ -379,7 +379,18 @@ async function lockWritablePage(
       )
       .limit(1)
       .for('key share')
-    const memberRole = members[0]?.role
+    if (!members[0]) notFound()
+    const roles = await tx
+      .select({ role: teamMember.role })
+      .from(teamMember)
+      .where(
+        and(
+          eq(teamMember.teamId, spaceRow.teamId),
+          eq(teamMember.userId, userId),
+        ),
+      )
+      .limit(1)
+    const memberRole = roles[0]?.role
     if (!memberRole) notFound()
     role = memberRole
   } else {
