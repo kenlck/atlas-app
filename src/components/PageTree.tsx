@@ -155,7 +155,6 @@ export function PageTree({
                   <span
                     className={node.canDelete ? 'drag-handle' : undefined}
                     draggable={node.canDelete ? true : undefined}
-                    aria-label={node.canDelete ? 'Drag page' : undefined}
                     onDragStart={
                       node.canDelete
                         ? (event) => startDrag(event, node.id)
@@ -176,7 +175,6 @@ export function PageTree({
                   <span
                     className={node.canDelete ? 'dot drag-handle' : 'dot'}
                     draggable={node.canDelete ? true : undefined}
-                    aria-label={node.canDelete ? 'Drag page' : undefined}
                     style={{ width: 6, height: 6 }}
                     onDragStart={
                       node.canDelete

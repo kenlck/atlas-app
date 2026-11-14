@@ -734,7 +734,7 @@ async function shot(page: Page, name: string) {
 
 async function handleCount(page: Page, title: string) {
   const row = page.locator('.tree a.it').filter({ hasText: title }).first()
-  return row.locator('[aria-label="Drag page"]').count()
+  return row.locator('.drag-handle').count()
 }
 
 async function menuHasMove(page: Page) {
