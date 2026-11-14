@@ -84,9 +84,12 @@ export function DiagramView({ node, updateAttributes, editor, getPos }: NodeView
                 ...current.attrs,
                 drawingId: created.id,
               })
+              tr.setMeta('diagramRepair', true)
               return true
             })
           } else {
+            const storage = (editor.storage as { diagram?: { repair?: boolean } }).diagram
+            if (storage) storage.repair = true
             updateRef.current({ drawingId: created.id })
           }
         } catch {

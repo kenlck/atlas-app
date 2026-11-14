@@ -192,8 +192,13 @@ export function PageEditor({ page }: { page: PageView }) {
     // Table resizing is installed only while the editor is editable at
     // creation. Start editable, then the effect below locks View mode.
     editable: true,
-    onUpdate: ({ editor: instance }) => {
-      if (!editingRef.current) return
+    onUpdate: ({ editor: instance, transaction }) => {
+      const storage = (instance.storage as { diagram?: { repair?: boolean } }).diagram
+      const repair = transaction.getMeta('diagramRepair') === true || storage?.repair === true
+      if (storage) storage.repair = false
+      // View mode ignores typing. A foreign diagram id is still copied and
+      // saved, because that repair is not an edit the reader chose.
+      if (!editingRef.current && !repair) return
       bodyRef.current = instance.getJSON() as Json
       schedule()
     },
