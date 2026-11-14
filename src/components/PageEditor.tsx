@@ -32,6 +32,7 @@ import { NewPageMenu } from './NewPageMenu'
 import { DatePickerHost } from './DatePicker'
 import { EditorToolbar } from './EditorToolbar'
 import { createMentionExtension } from './MentionExtension'
+import { PageModeBar, saveStatusLabel } from './PageModeBar'
 
 type SaveState = 'saved' | 'saving' | 'error'
 
@@ -74,12 +75,17 @@ function clearDraft(pageId: string) {
 
 export function PageEditor({ page }: { page: PageView }) {
   const router = useRouter()
-  const { createChild } = useSpaceOutlet()
+  const { createChild, claimFresh, releaseFresh } = useSpaceOutlet()
+  const openedFresh = useState(() => claimFresh(page.id))[0]
+  const [editing, setEditing] = useState(openedFresh)
+  const editingRef = useRef(editing)
+  editingRef.current = editing
   const draftRef = useRef(readDraft(page.id))
   const draft = draftRef.current
   const [title, setTitle] = useState(page.title)
   const [saveState, setSaveState] = useState<SaveState>('saved')
   const titleRef = useRef(page.title)
+  const titleField = useRef<HTMLInputElement>(null)
   const savedTitle = useRef(page.title)
   const bodyRef = useRef(draft?.body ?? page.body)
   const dirtyRef = useRef(draft != null)
@@ -183,11 +189,40 @@ export function PageEditor({ page }: { page: PageView }) {
     editorProps: {
       attributes: { class: 'doc-editor' },
     },
+    // Table resizing is installed only while the editor is editable at
+    // creation. Start editable, then the effect below locks View mode.
+    editable: true,
     onUpdate: ({ editor: instance }) => {
+      if (!editingRef.current) return
       bodyRef.current = instance.getJSON() as Json
       schedule()
     },
   })
+
+  useEffect(() => {
+    if (!editor) return
+    editor.setEditable(editing)
+  }, [editor, editing])
+
+  useEffect(() => {
+    if (!openedFresh) return
+    const focusTitle = () => titleField.current?.focus()
+    focusTitle()
+    const frame = window.requestAnimationFrame(focusTitle)
+    return () => window.cancelAnimationFrame(frame)
+  }, [openedFresh, editor])
+
+  const leaveEdit = () => {
+    void (async () => {
+      try {
+        await flushSaveRef.current()
+        releaseFresh(page.id)
+        setEditing(false)
+      } catch {
+        // The failed flush already shows the Retry banner. Stay in Edit.
+      }
+    })()
+  }
 
   useEffect(() => registerEditorFlush(() => flushSaveRef.current()), [])
 
@@ -197,7 +232,7 @@ export function PageEditor({ page }: { page: PageView }) {
       titleRef.current = saved.title
       setTitle(saved.title)
     }
-    if (!dirtyRef.current) return
+    if (!dirtyRef.current || !editingRef.current) return
     void flushSaveRef.current().catch(() => undefined)
   }, [page.title])
 
@@ -261,52 +296,40 @@ export function PageEditor({ page }: { page: PageView }) {
 
   return (
     <>
-      <div className="top">
-        <div className="crumbs">
-          {page.breadcrumbs.map((crumb, index) => (
-            <span key={crumb.id}>
-              {index > 0 ? <span> / </span> : null}
-              {index === page.breadcrumbs.length - 1 ? (
-                <b>{crumb.title}</b>
-              ) : (
-                crumb.title
-              )}
-            </span>
-          ))}
-        </div>
-        <div className="r">
+      <PageModeBar
+        breadcrumbs={page.breadcrumbs}
+        editing={editing}
+        saveLabel={saveStatusLabel(saveState)}
+        onEdit={() => setEditing(true)}
+        onLeave={leaveEdit}
+        menu={
           <NewPageMenu
             label="Create page"
             className="create-page"
             onChoose={(kind) => createChild(page.id, kind)}
           />
-          <span className="save">
-            {saveState === 'saving'
-              ? 'Saving'
-              : saveState === 'saved'
-                ? 'Saved'
-                : ''}
-          </span>
-        </div>
-      </div>
-      <EditorToolbar
-        editor={editor}
-        onDrawing={() => {
-          if (!editor) return
-          void createDiagramFn({ data: { pageId: page.id } }).then(
-            (created) => {
-              editor
-                .chain()
-                .focus()
-                .insertContent({
-                  type: 'diagram',
-                  attrs: { drawingId: created.id },
-                })
-                .run()
-            },
-          )
-        }}
+        }
       />
+      {editing ? (
+        <EditorToolbar
+          editor={editor}
+          onDrawing={() => {
+            if (!editor || !editingRef.current) return
+            void createDiagramFn({ data: { pageId: page.id } }).then(
+              (created) => {
+                editor
+                  .chain()
+                  .focus()
+                  .insertContent({
+                    type: 'diagram',
+                    attrs: { drawingId: created.id },
+                  })
+                  .run()
+              },
+            )
+          }}
+        />
+      ) : null}
       <DatePickerHost />
       {saveState === 'error' ? (
         <div className="retry">
@@ -322,17 +345,21 @@ export function PageEditor({ page }: { page: PageView }) {
       <div className="doc">
         <div className="col">
           <input
+            ref={titleField}
             id="page-title"
             className="title-input"
             aria-label="Title"
             placeholder="Untitled"
             value={title}
+            readOnly={!editing}
             onChange={(event) => {
+              if (!editingRef.current) return
               setTitle(event.target.value)
               titleRef.current = event.target.value
               schedule()
             }}
             onBlur={(event) => {
+              if (!editingRef.current) return
               const next = event.currentTarget.value
               titleRef.current = next
               setTitle(next)
