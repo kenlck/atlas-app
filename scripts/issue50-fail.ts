@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
-import type { Page, Request } from 'playwright'
+import type { Page } from 'playwright'
 import type { Json } from '../src/lib/body-text.ts'
 import { rejectEverySave, requireTokenStamp } from './fixtures/issue50-save.ts'
 import {
@@ -1564,7 +1564,7 @@ async function fc6Head() {
   })
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
   const statuses: number[] = []
-  const marked = new Set<Request>()
+  const marked = new Set<object>()
   page.on('request', (request) => {
     if (request.method() !== 'POST' || !request.url().includes('_serverFn')) return
     let post = ''
