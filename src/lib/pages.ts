@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, max, sql } from 'drizzle-orm'
-import { assertAccess } from './access'
+import { assertAccess, hasArchivedAncestor } from './access'
 import type { SpaceRole } from './access'
 import { emptyDoc, tiptapToText } from './body-text'
 import type { Json } from './body-text'
@@ -369,18 +369,6 @@ async function lockWritablePage(
     role = 'personal'
   } else if (spaceRow.teamId) {
     const members = await tx
-      .select({ userId: teamMember.userId })
-      .from(teamMember)
-      .where(
-        and(
-          eq(teamMember.teamId, spaceRow.teamId),
-          eq(teamMember.userId, userId),
-        ),
-      )
-      .limit(1)
-      .for('key share')
-    if (!members[0]) notFound()
-    const roles = await tx
       .select({ role: teamMember.role })
       .from(teamMember)
       .where(
@@ -390,7 +378,8 @@ async function lockWritablePage(
         ),
       )
       .limit(1)
-    const memberRole = roles[0]?.role
+      .for('key share')
+    const memberRole = members[0]?.role
     if (!memberRole) notFound()
     role = memberRole
   } else {
@@ -405,6 +394,7 @@ async function lockWritablePage(
   const row = rows[0]
   if (!row || row.spaceId !== spaceId) notFound()
   if (row.archivedAt && !options?.allowArchived) notFound()
+  if (await hasArchivedAncestor({ ...row, archivedAt: null })) notFound()
   return { page: row, space: spaceRow, role }
 }
 

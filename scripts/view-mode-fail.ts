@@ -449,7 +449,15 @@ function deletePageDiffOnly(path: string) {
         .split('\n')
         .filter((row) => row.startsWith('+') && !row.startsWith('+++'))
         .map((row) => row.slice(1))
-      return path.endsWith('pages.ts') && added.length === 1 && added[0] === "import type { SpaceRole } from './access'"
+      const allowedAdded = new Set([
+        "import { assertAccess, hasArchivedAncestor } from './access'",
+        "import type { SpaceRole } from './access'",
+      ])
+      return (
+        path.endsWith('pages.ts') &&
+        added.length > 0 &&
+        added.every((row) => allowedAdded.has(row))
+      )
     }
     return DELETE_PAGE_HUNKS.some((name) => context.startsWith(name))
   })

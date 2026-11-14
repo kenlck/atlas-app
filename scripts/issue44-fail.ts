@@ -106,9 +106,9 @@ function pinIncludes(path: string, needle: string) {
   }
 }
 
-function materializePin() {
+function materializePin(sha = PIN) {
   const dir = mkdtempSync(join(tmpdir(), 'atlas-44-'))
-  const git = spawn('git', ['archive', '--format=tar', PIN], { cwd: repoRoot })
+  const git = spawn('git', ['archive', '--format=tar', sha], { cwd: repoRoot })
   const tar = spawn('tar', ['-x', '-C', dir])
   git.stdout.pipe(tar.stdin)
   return new Promise<string>((resolve, reject) => {
@@ -493,7 +493,7 @@ async function fc14(app: App, prefix: string) {
   return !locked || raced.some((status) => status === 500)
 }
 
-async function fc16(app: App, prefix: string) {
+async function fc16(app: App, prefix: string, planted: boolean) {
   const { owner, member, spaceId } = await roster(app, 'Fc16')
   const parent = await app.createPage(owner.user.id, { spaceId, title: 'Parent sixteen' })
   const child = await app.createPage(member.user.id, {
@@ -511,13 +511,98 @@ async function fc16(app: App, prefix: string) {
   line(`${prefix}_child_in_tree`, ids.includes(child.id))
   line(`${prefix}_child_status`, childStatus)
   line(`${prefix}_search`, search.some((hit) => hit.id === child.id || hit.id === parent.id))
+  const hiddenBug = await hiddenChildArchive(planted)
   return (
     memberStatus === 200 ||
     ids.includes(child.id) ||
     ids.includes(parent.id) ||
     childStatus !== 404 ||
-    search.some((hit) => hit.id === child.id || hit.id === parent.id)
+    search.some((hit) => hit.id === child.id || hit.id === parent.id) ||
+    hiddenBug
   )
+}
+
+async function archivedStamp(app: App, pageId: string) {
+  const rows = (await app.getSql().unsafe(
+    'select archived_at from page where id = $1',
+    [pageId],
+  )) as Array<{ archived_at: Date | string | null }>
+  const value = rows[0]?.archived_at
+  if (value == null) return 'null'
+  return value instanceof Date ? value.toISOString() : String(value)
+}
+
+async function hiddenChild(app: App, label: string) {
+  const owner = await app.createUser(`${label} Owner`)
+  const creator = await app.createUser(`${label} Creator`)
+  const member = await app.createUser(`${label} Member`)
+  const created = await app.createTeam(
+    owner.user.id,
+    `${label} ${crypto.randomUUID().slice(0, 6)}`,
+  )
+  const creatorInvite = await app.createInvite(owner.user.id, created.id, creator.user.id)
+  await app.acceptInvite(creator.user.id, creatorInvite.id)
+  const memberInvite = await app.createInvite(owner.user.id, created.id, member.user.id)
+  await app.acceptInvite(member.user.id, memberInvite.id)
+  const parent = await app.createPage(owner.user.id, {
+    spaceId: created.spaceId,
+    title: `${label} parent`,
+  })
+  const child = await app.createPage(creator.user.id, {
+    spaceId: created.spaceId,
+    parentId: parent.id,
+    title: `${label} child`,
+  })
+  const parentStatus = await statusOf(() => app.archivePage(owner.user.id, parent.id))
+  if (parentStatus !== 200) throw new Error(`parent archive ${parentStatus}`)
+  return { owner, creator, member, childId: child.id }
+}
+
+async function hiddenAttempt(
+  app: App,
+  label: string,
+  actor: 'member' | 'creator' | 'owner',
+) {
+  const setup = await hiddenChild(app, label)
+  const before = await archivedStamp(app, setup.childId)
+  const userId =
+    actor === 'member'
+      ? setup.member.user.id
+      : actor === 'creator'
+        ? setup.creator.user.id
+        : setup.owner.user.id
+  const status = await statusOf(() => app.archivePage(userId, setup.childId))
+  const after = await archivedStamp(app, setup.childId)
+  return { status, archivedSame: before === after && after === 'null' }
+}
+
+async function hiddenChildArchive(planted: boolean) {
+  const side = planted ? 'planted' : 'head'
+  const root = planted ? await materializePin(COPY_PIN) : repoRoot
+  const app = planted ? await loadApp(root) : await loadApp(repoRoot)
+  try {
+    line(`44_fc16_ancestor_${side}_pin`, planted ? COPY_PIN : 'head')
+    const member = await hiddenAttempt(app, 'Fc16 member', 'member')
+    const creator = await hiddenAttempt(app, 'Fc16 creator', 'creator')
+    const owner = await hiddenAttempt(app, 'Fc16 owner', 'owner')
+    const memberBug = member.status !== 404
+    const creatorBug = creator.status !== 404 || !creator.archivedSame
+    const ownerBug = owner.status !== 404 || !owner.archivedSame
+    line(`44_fc16_ancestor_member_${side}_status`, member.status)
+    line(`44_fc16_ancestor_member_${side}_exit`, memberBug ? 1 : 0)
+    line(`44_fc16_ancestor_creator_${side}_status`, creator.status)
+    line(`44_fc16_ancestor_creator_${side}_archived_same`, creator.archivedSame)
+    line(`44_fc16_ancestor_creator_${side}_exit`, creatorBug ? 1 : 0)
+    line(`44_fc16_ancestor_owner_${side}_status`, owner.status)
+    line(`44_fc16_ancestor_owner_${side}_archived_same`, owner.archivedSame)
+    line(`44_fc16_ancestor_owner_${side}_exit`, ownerBug ? 1 : 0)
+    return memberBug || creatorBug || ownerBug
+  } finally {
+    if (planted) {
+      await app.closeDb().catch(() => undefined)
+      rmSync(root, { recursive: true, force: true })
+    }
+  }
 }
 
 async function fc17(app: App, prefix: string) {
@@ -1102,7 +1187,7 @@ async function run(which: string, planted: boolean) {
     if (which === 'fc13') return await deletedDrawing(app, prefix)
     if (which === 'fc14') return await fc14(app, prefix)
     if (which === 'fc15') return await failedDelete(prefix)
-    if (which === 'fc16') return await fc16(app, prefix)
+    if (which === 'fc16') return await fc16(app, prefix, planted)
     if (which === 'fc17') return await fc17(app, prefix)
     if (which === 'fc18') return await fc18(app, prefix)
     if (which === 'fc19') return await fc19(app, prefix)
