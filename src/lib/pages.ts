@@ -65,6 +65,12 @@ export function canDeletePage(
   return role === 'personal' || role === 'owner' || createdBy === userId
 }
 
+function assertCanMovePage(role: SpaceRole, createdBy: string, userId: string) {
+  if (!canDeletePage(role, createdBy, userId)) {
+    throw new HttpError(403, 'Forbidden')
+  }
+}
+
 function canManagePageLock(role: SpaceRole, createdBy: string, userId: string) {
   return role === 'personal' || role === 'owner' || createdBy === userId
 }
@@ -646,7 +652,8 @@ export async function movePage(
   const db = getDb()
   await db.transaction(async (tx) => {
     await lockSpaces(tx, [row.spaceId, parentSpaceId])
-    await lockWritablePage(tx, userId, row.id)
+    const locked = await lockWritablePage(tx, userId, row.id)
+    assertCanMovePage(locked.role, locked.page.createdBy, userId)
     const currentRows = await tx
       .select()
       .from(page)

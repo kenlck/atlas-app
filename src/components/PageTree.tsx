@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import type { DragEvent, KeyboardEvent } from 'react'
 import type { TreeNode } from '#/lib/pages'
 import { NewPageMenu } from './NewPageMenu'
 
@@ -30,6 +30,12 @@ function PenIcon() {
   )
 }
 
+function startDrag(event: DragEvent<HTMLSpanElement>, pageId: string) {
+  event.stopPropagation()
+  event.dataTransfer.setData('text/plain', pageId)
+  event.dataTransfer.effectAllowed = 'move'
+}
+
 function collectIds(nodes: TreeNode[]): string[] {
   return nodes.flatMap((node) => [node.id, ...collectIds(node.children)])
 }
@@ -50,6 +56,7 @@ export function PageTree({
   onCreate,
   onRename,
   onMove,
+  onDropMove,
   onArchive,
   onLock,
 }: {
@@ -59,6 +66,7 @@ export function PageTree({
   onCreate: (parentId: string | null, kind?: 'doc' | 'whiteboard') => void
   onRename: (pageId: string, title: string) => void
   onMove: (pageId: string) => void
+  onDropMove: (pageId: string, parentId: string) => void
   onArchive: (pageId: string) => void
   onLock: (pageId: string, locked: boolean) => void
 }) {
@@ -93,7 +101,21 @@ export function PageTree({
       const expanded = open[node.id] !== false
       const hasKids = node.children.length > 0
       return (
-        <div key={node.id}>
+        <div
+          key={node.id}
+          onDragOver={(event) => {
+            if ([...event.dataTransfer.types].includes('text/plain')) {
+              event.preventDefault()
+            }
+          }}
+          onDrop={(event) => {
+            const pageId = event.dataTransfer.getData('text/plain')
+            if (!pageId || pageId === node.id) return
+            event.preventDefault()
+            event.stopPropagation()
+            onDropMove(pageId, node.id)
+          }}
+        >
           <div style={{ position: 'relative' }}>
             {editing === node.id ? (
               <input
@@ -131,6 +153,14 @@ export function PageTree({
                 {node.kind === 'whiteboard' ? <PenIcon /> : null}
                 {hasKids ? (
                   <span
+                    className={node.canDelete ? 'drag-handle' : undefined}
+                    draggable={node.canDelete ? true : undefined}
+                    aria-label={node.canDelete ? 'Drag page' : undefined}
+                    onDragStart={
+                      node.canDelete
+                        ? (event) => startDrag(event, node.id)
+                        : undefined
+                    }
                     onClick={(event) => {
                       event.preventDefault()
                       event.stopPropagation()
@@ -143,7 +173,17 @@ export function PageTree({
                     {expanded ? '▾' : '▸'}
                   </span>
                 ) : (
-                  <span className="dot" style={{ width: 6, height: 6 }} />
+                  <span
+                    className={node.canDelete ? 'dot drag-handle' : 'dot'}
+                    draggable={node.canDelete ? true : undefined}
+                    aria-label={node.canDelete ? 'Drag page' : undefined}
+                    style={{ width: 6, height: 6 }}
+                    onDragStart={
+                      node.canDelete
+                        ? (event) => startDrag(event, node.id)
+                        : undefined
+                    }
+                  />
                 )}
                 <span
                   style={{
@@ -168,15 +208,17 @@ export function PageTree({
                 >
                   Rename
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMenu(null)
-                    onMove(node.id)
-                  }}
-                >
-                  Move
-                </button>
+                {node.canDelete ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenu(null)
+                      onMove(node.id)
+                    }}
+                  >
+                    Move
+                  </button>
+                ) : null}
                 {node.canLock ? (
                   <button
                     type="button"

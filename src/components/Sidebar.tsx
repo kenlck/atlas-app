@@ -25,6 +25,7 @@ export function Sidebar({
   onCreate,
   onRename,
   onMove,
+  onDropMove,
   onArchive,
   onLock,
   onCreateTeam,
@@ -46,6 +47,7 @@ export function Sidebar({
   onCreate: (parentId: string | null, kind?: 'doc' | 'whiteboard') => void
   onRename: (pageId: string, title: string) => void
   onMove: (pageId: string) => void
+  onDropMove: (pageId: string, parentId: string) => void
   onArchive: (pageId: string) => void
   onLock: (pageId: string, locked: boolean) => void
   onCreateTeam: () => void
@@ -118,6 +120,7 @@ export function Sidebar({
           onCreate={onCreate}
           onRename={onRename}
           onMove={onMove}
+          onDropMove={onDropMove}
           onArchive={onArchive}
           onLock={onLock}
         />
