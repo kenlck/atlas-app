@@ -45,6 +45,8 @@ export function PageModeBar({
   menu,
   lockedByName = null,
   canEdit = true,
+  canUnlock = false,
+  onUnlock,
 }: {
   breadcrumbs: Array<{ id: string; title: string }>
   editing: boolean
@@ -54,6 +56,8 @@ export function PageModeBar({
   menu: ReactNode
   lockedByName?: string | null
   canEdit?: boolean
+  canUnlock?: boolean
+  onUnlock?: () => void
 }) {
   const lockedView = Boolean(lockedByName) && !canEdit
   return (
@@ -69,9 +73,18 @@ export function PageModeBar({
       <div className="r">
         <div className="mode">
           {lockedByName ? (
-            <span className="lock-chip">
+            <span className="lock-chip" title={`Locked by ${lockedByName}`} aria-label={`Locked by ${lockedByName}`}>
               <LockGlyph />
-              <span>Locked by {lockedByName}</span>
+              <span className="lock-label">Locked by {lockedByName}</span>
+              {canUnlock && onUnlock ? (
+                <button
+                  type="button"
+                  className="lock-hit"
+                  aria-label={`Locked by ${lockedByName}`}
+                  title={`Locked by ${lockedByName}`}
+                  onClick={() => onUnlock()}
+                />
+              ) : null}
             </span>
           ) : null}
           {lockedView ? null : (

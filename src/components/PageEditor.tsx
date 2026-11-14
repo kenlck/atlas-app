@@ -444,6 +444,8 @@ export function PageEditor({ page }: { page: PageView }) {
           setEditing(true)
         }}
         onLeave={leaveEdit}
+        canUnlock={page.canLock}
+        onUnlock={() => requestLock(page.id, false)}
         menu={
           <>
             <NewPageMenu
@@ -455,6 +457,8 @@ export function PageEditor({ page }: { page: PageView }) {
               canDelete={page.canDelete}
               canLock={page.canLock}
               locked={Boolean(page.lockedByName)}
+              saveLabel={saveStatusLabel(saveState)}
+              onCreate={(kind) => createChild(page.id, kind)}
               onDelete={() => requestDelete(page.id)}
               onLock={() => requestLock(page.id, !page.lockedByName)}
             />
@@ -494,7 +498,7 @@ export function PageEditor({ page }: { page: PageView }) {
       )}
       {deleted || held || conflict || saveState !== 'error' ? null : (
         <div className="retry">
-          Couldn't save.
+          <span className="retry-copy">Couldn't save.</span>
           <button
             type="button"
             onClick={() => void flushSave().catch(() => undefined)}
@@ -505,7 +509,7 @@ export function PageEditor({ page }: { page: PageView }) {
       )}
       {deleted || held || !conflict ? null : (
         <div className="retry" role="alert">
-          Someone else changed this page since you opened it.
+          <span className="retry-copy">Someone else changed this page since you opened it.</span>
           <button
             type="button"
             onClick={() => {
