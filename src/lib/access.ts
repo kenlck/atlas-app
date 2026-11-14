@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm'
-import { getDb } from './db'
+import { getQueryDb } from './db'
 import { notFound } from './http'
 import { page, space, teamMember } from './schema'
 import type { Page, Space } from './schema'
@@ -15,7 +15,7 @@ export type AccessResult = {
 }
 
 async function loadSpace(spaceId: string) {
-  const db = getDb()
+  const db = getQueryDb()
   const rows = await db
     .select()
     .from(space)
@@ -25,7 +25,7 @@ async function loadSpace(spaceId: string) {
 }
 
 async function loadPage(pageId: string) {
-  const db = getDb()
+  const db = getQueryDb()
   const rows = await db.select().from(page).where(eq(page.id, pageId)).limit(1)
   return rows[0] ?? null
 }
@@ -74,7 +74,7 @@ export async function assertAccess(
   if (spaceRow.kind === 'personal' && spaceRow.ownerUserId === userId) {
     role = 'personal'
   } else if (spaceRow.kind === 'team' && spaceRow.teamId) {
-    const db = getDb()
+    const db = getQueryDb()
     const members = await db
       .select({ role: teamMember.role })
       .from(teamMember)
