@@ -431,7 +431,15 @@ const DELETE_PAGE_HUNKS = [
   'export async function getPageView',
   'type PageTx',
   'async function lockWritablePage',
+  'async function lockerName',
+  'export async function holdWritablePage',
+  'export async function setPageLock',
+  'export async function renamePage',
+  'export async function refreshDocText',
+  'export async function createDiagram',
+  'export async function cloneDiagram',
   'export async function movePage',
+  'export async function archivePage',
 ]
 
 function deletePageDiffOnly(path: string) {

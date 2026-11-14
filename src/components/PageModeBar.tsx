@@ -27,6 +27,15 @@ function EyeIcon() {
   )
 }
 
+function LockGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="3.5" y="7" width="9" height="7" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" fill="none" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  )
+}
+
 export function PageModeBar({
   breadcrumbs,
   editing,
@@ -34,6 +43,8 @@ export function PageModeBar({
   onEdit,
   onLeave,
   menu,
+  lockedByName = null,
+  canEdit = true,
 }: {
   breadcrumbs: Array<{ id: string; title: string }>
   editing: boolean
@@ -41,7 +52,10 @@ export function PageModeBar({
   onEdit: () => void
   onLeave: () => void
   menu: ReactNode
+  lockedByName?: string | null
+  canEdit?: boolean
 }) {
+  const lockedView = Boolean(lockedByName) && !canEdit
   return (
     <div className={editing ? 'top is-editing' : 'top'}>
       <div className="crumbs">
@@ -54,54 +68,64 @@ export function PageModeBar({
       </div>
       <div className="r">
         <div className="mode">
-          <div className="mode-switch" role="radiogroup" aria-label="Mode">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={!editing}
-              onClick={() => {
-                if (editing) onLeave()
-              }}
-            >
-              View
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={editing}
-              onClick={() => {
-                if (!editing) onEdit()
-              }}
-            >
-              Edit
-            </button>
-          </div>
-          <button
-            type="button"
-            className="mode-icon"
-            aria-label={editing ? 'View' : 'Edit'}
-            aria-pressed={editing}
-            onClick={() => {
-              if (editing) onLeave()
-              else onEdit()
-            }}
-          >
-            {editing ? <EyeIcon /> : <PenIcon />}
-          </button>
-          {editing ? (
-            <span className="editing-chip">
-              Editing
-              {saveLabel ? <span className="save">{saveLabel}</span> : null}
+          {lockedByName ? (
+            <span className="lock-chip">
+              <LockGlyph />
+              <span>Locked by {lockedByName}</span>
             </span>
           ) : null}
-          {editing ? (
-            <button type="button" className="ghost mode-done" onClick={onLeave}>
-              Done
-            </button>
-          ) : null}
+          {lockedView ? null : (
+            <>
+              <div className="mode-switch" role="radiogroup" aria-label="Mode">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!editing}
+                  onClick={() => {
+                    if (editing) onLeave()
+                  }}
+                >
+                  View
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={editing}
+                  onClick={() => {
+                    if (!editing) onEdit()
+                  }}
+                >
+                  Edit
+                </button>
+              </div>
+              <button
+                type="button"
+                className="mode-icon"
+                aria-label={editing ? 'View' : 'Edit'}
+                aria-pressed={editing}
+                onClick={() => {
+                  if (editing) onLeave()
+                  else onEdit()
+                }}
+              >
+                {editing ? <EyeIcon /> : <PenIcon />}
+              </button>
+              {editing ? (
+                <span className="editing-chip">
+                  Editing
+                  {saveLabel ? <span className="save">{saveLabel}</span> : null}
+                </span>
+              ) : null}
+              {editing ? (
+                <button type="button" className="ghost mode-done" onClick={onLeave}>
+                  Done
+                </button>
+              ) : null}
+            </>
+          )}
         </div>
         {menu}
-        {editing ? null : <span className="save">{saveLabel}</span>}
+        {editing || lockedView ? null : <span className="save">{saveLabel}</span>}
       </div>
     </div>
   )

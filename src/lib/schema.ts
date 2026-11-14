@@ -200,6 +200,8 @@ export const page = pgTable('page', {
   createdAt: timestamp('created_at').notNull(),
   updatedAt: timestamp('updated_at').notNull(),
   archivedAt: timestamp('archived_at'),
+  lockedBy: text('locked_by').references(() => user.id, { onDelete: 'set null' }),
+  lockedAt: timestamp('locked_at'),
   updatedViaTokenId: text('updated_via_token_id').references(
     () => apiToken.id,
     {

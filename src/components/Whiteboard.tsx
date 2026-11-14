@@ -11,6 +11,7 @@ import type { PageView } from '#/lib/pages'
 import { useSpaceOutlet } from './AppFrame'
 import { NewPageMenu } from './NewPageMenu'
 import { PageMenu } from './PageMenu'
+import { lockBannerText, lockHolderName } from '#/lib/page-lock-message'
 import { PageModeBar, saveStatusLabel } from './PageModeBar'
 
 type SaveState = 'saved' | 'saving' | 'error' | 'conflict'
@@ -26,13 +27,15 @@ const SAVE_URL = '/api/drawings'
 
 export function Whiteboard({ page }: { page: PageView }) {
   const router = useRouter()
-  const { createChild, requestDelete } = useSpaceOutlet()
+  const { createChild, requestDelete, requestLock } = useSpaceOutlet()
   const [deleted, setDeleted] = useState(false)
   const deletedRef = useRef(false)
   const board = page.drawing
   const [title, setTitle] = useState(page.title)
   const [saveState, setSaveState] = useState<SaveState>('saved')
   const [editing, setEditing] = useState(false)
+  const [held, setHeld] = useState<string | null>(null)
+  const frozenRef = useRef(false)
   const editingRef = useRef(false)
   editingRef.current = editing
   const saveStateRef = useRef(saveState)
@@ -68,7 +71,22 @@ export function Whiteboard({ page }: { page: PageView }) {
     via,
   })
 
+  const freeze = (name: string) => {
+    frozenRef.current = true
+    editingRef.current = false
+    dirtyRef.current = false
+    clearTimer()
+    setHeld(name)
+    setEditing(false)
+    setSaveState('saved')
+  }
+
   const applyResult = async (response: Response) => {
+    if (response.status === 423) {
+      const body = (await response.json().catch(() => null)) as { error?: unknown } | null
+      freeze(lockHolderName(body?.error ?? body) ?? 'someone')
+      return false
+    }
     if (response.status === 404) {
       deletedRef.current = true
       dirtyRef.current = false
@@ -99,7 +117,7 @@ export function Whiteboard({ page }: { page: PageView }) {
 
   const flushSave = async () => {
     clearTimer()
-    if (deletedRef.current) return false
+    if (deletedRef.current || frozenRef.current) return false
     if (saveStateRef.current === 'conflict') return false
     if (!dirtyRef.current) return saveStateRef.current !== 'error'
     const body = JSON.stringify(payload('autosave'))
@@ -123,7 +141,7 @@ export function Whiteboard({ page }: { page: PageView }) {
   flushSaveRef.current = flushSave
 
   const schedule = () => {
-    if (deletedRef.current) return
+    if (deletedRef.current || frozenRef.current) return
     if (!editingRef.current || saveStateRef.current === 'conflict') return
     dirtyRef.current = true
     setSaveState('saving')
@@ -154,7 +172,7 @@ export function Whiteboard({ page }: { page: PageView }) {
     const onHide = () => {
       if (document.visibilityState !== 'hidden') return
       clearTimer()
-      if (!dirtyRef.current || saveState === 'conflict') return
+      if (frozenRef.current || !dirtyRef.current || saveState === 'conflict') return
       const snapshot = payload('flush')
       dirtyRef.current = false
       versionRef.current += 1
@@ -170,9 +188,14 @@ export function Whiteboard({ page }: { page: PageView }) {
     <div className="board">
       <PageModeBar
         breadcrumbs={page.breadcrumbs}
-        editing={editing}
+        editing={editing && !held}
         saveLabel={saveStatusLabel(saveState)}
-        onEdit={() => setEditing(true)}
+        lockedByName={held ?? page.lockedByName}
+        canEdit={held ? false : page.canEdit}
+        onEdit={() => {
+          if (frozenRef.current || !page.canEdit) return
+          setEditing(true)
+        }}
         onLeave={leaveEdit}
         menu={
           <>
@@ -183,7 +206,10 @@ export function Whiteboard({ page }: { page: PageView }) {
             />
             <PageMenu
               canDelete={page.canDelete}
+              canLock={page.canLock}
+              locked={Boolean(page.lockedByName)}
               onDelete={() => requestDelete(page.id)}
+              onLock={() => requestLock(page.id, !page.lockedByName)}
             />
           </>
         }
@@ -193,7 +219,12 @@ export function Whiteboard({ page }: { page: PageView }) {
           <h1>This page was deleted.</h1>
         </div>
       ) : null}
-      {deleted || saveState !== 'error' ? null : (
+      {deleted || !held ? null : (
+        <div className="banner" role="alert">
+          {lockBannerText(held)}
+        </div>
+      )}
+      {deleted || held || saveState !== 'error' ? null : (
         <div className="retry">
           Couldn't save.
           <button type="button" onClick={() => void flushSave()}>
@@ -218,15 +249,15 @@ export function Whiteboard({ page }: { page: PageView }) {
           aria-label="Title"
           placeholder="Untitled"
           value={title}
-          readOnly={!editing}
+          readOnly={!editing || Boolean(held)}
           onChange={(event) => {
-            if (!editingRef.current) return
+            if (frozenRef.current || !editingRef.current) return
             setTitle(event.target.value)
             titleRef.current = event.target.value
             schedule()
           }}
           onBlur={() => {
-            if (!editingRef.current) return
+            if (frozenRef.current || !editingRef.current) return
             if (titleRef.current !== savedTitle.current) {
               dirtyRef.current = true
               void flushSaveRef.current()
@@ -242,9 +273,9 @@ export function Whiteboard({ page }: { page: PageView }) {
           <Canvas
             elements={board.elements}
             appState={board.appState}
-            viewMode={!editing}
+            viewMode={!editing || Boolean(held) || !page.canEdit}
             onScene={(elements, appState) => {
-              if (!editingRef.current) return
+              if (frozenRef.current || !editingRef.current) return
               const next = canonicalElements(elements)
               // Excalidraw repeats the same scene while the pointer moves.
               // A failed save must stay on the Retry banner, so ignore repeats.

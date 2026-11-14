@@ -2,10 +2,16 @@ import { useEffect, useState } from 'react'
 
 export function PageMenu({
   canDelete,
+  canLock,
+  locked,
   onDelete,
+  onLock,
 }: {
   canDelete: boolean
+  canLock: boolean
+  locked: boolean
   onDelete: () => void
+  onLock: () => void
 }) {
   const [open, setOpen] = useState(false)
 
@@ -30,6 +36,17 @@ export function PageMenu({
       </button>
       {open ? (
         <div className="menu" role="menu">
+          {canLock ? (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                onLock()
+              }}
+            >
+              {locked ? 'Unlock' : 'Lock'}
+            </button>
+          ) : null}
           {canDelete ? (
             <>
               <div className="menu-sep" role="separator" />
