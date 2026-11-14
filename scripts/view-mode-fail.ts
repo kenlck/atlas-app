@@ -5,7 +5,10 @@ import { join } from 'node:path'
 import { chromium } from 'playwright'
 import type { Page, Request } from 'playwright'
 import { canonicalElements } from '../src/lib/drawing'
-import { assertLocalBaseUrl, clickNewDoc, submitAuthForm } from './verify-local.ts'
+import { closeDb, getSql } from '../src/lib/db'
+import { createDiagram, createPage } from '../src/lib/pages'
+import { assertLocalBaseUrl, assertLocalDatabaseUrl, clickNewDoc, enterEdit, submitAuthForm } from './verify-local.ts'
+import { PINNED_ADOPT_SHA, PINNED_ADOPT_SNIPPET, runEb07cd14ViewAdopt } from './fixtures/eb07cd14-adopt.ts'
 
 const BASE = assertLocalBaseUrl(process.env.BASE_URL ?? 'http://127.0.0.1:3000')
 const PASSWORD = 'view-mode-password'
@@ -590,6 +593,155 @@ async function recipeFc10() {
   finish('fc10')
 }
 
+type AdoptCounts = { save: number; drawings: number; clone: number }
+
+function countAdopt(page: Page) {
+  const counts: AdoptCounts = { save: 0, drawings: 0, clone: 0 }
+  const onRequest = (request: Request) => {
+    const url = request.url()
+    const body = request.postData() ?? ''
+    let path = url
+    try {
+      path = new URL(url).pathname
+    } catch {
+      path = url
+    }
+    if (path === '/api/drawings') counts.drawings += 1
+    const serverFn = path.includes('_serverFn') || path.includes('serverFn')
+    if (request.method() !== 'POST') return
+    if (path === '/api/pages/save' || (serverFn && body.includes('"title"') && body.includes('pageId'))) {
+      counts.save += 1
+      return
+    }
+    if (serverFn && body.includes('drawingId') && body.includes('pageId') && !body.includes('"title"')) {
+      counts.clone += 1
+    }
+  }
+  page.on('request', onRequest)
+  return counts
+}
+
+function useLocalDatabase() {
+  const url = process.env.DATABASE_URL || process.env.TEST_DATABASE_URL
+  if (!url) throw new Error('DATABASE_URL or TEST_DATABASE_URL is required')
+  assertLocalDatabaseUrl(url)
+  process.env.DATABASE_URL = url
+}
+
+async function recipeFc11Planted() {
+  const pinned = execFileSync('git', ['show', `${PINNED_ADOPT_SHA}:src/components/DiagramView.tsx`], {
+    encoding: 'utf8',
+  })
+  const pinnedEditor = execFileSync('git', ['show', `${PINNED_ADOPT_SHA}:src/components/PageEditor.tsx`], {
+    encoding: 'utf8',
+  })
+  const pinMatch =
+    pinned.includes(PINNED_ADOPT_SNIPPET) &&
+    pinned.includes("fetch(\n        `/api/drawings?drawingId=") &&
+    pinnedEditor.includes('if (!editingRef.current && !repair) return')
+  expectLine('fc11_planted_pin_match', pinMatch, true)
+  const counts: AdoptCounts = { save: 0, drawings: 0, clone: 0 }
+  await runEb07cd14ViewAdopt({
+    fetchDrawing: async () => {
+      counts.drawings += 1
+      return { ok: true, pageId: 'source-page', previewSvg: '<svg></svg>' }
+    },
+    cloneDiagram: async () => {
+      counts.clone += 1
+      return { id: 'copied-drawing' }
+    },
+    saveRepair: () => {
+      counts.save += 1
+    },
+  })
+  expectLine('fc11_planted_view_save', counts.save, 0)
+  expectLine('fc11_planted_view_drawings', counts.drawings, 0)
+  expectLine('fc11_planted_view_clone', counts.clone, 0)
+  if (failed) process.exit(1)
+}
+
+async function recipeFc11() {
+  useLocalDatabase()
+  let browser: Awaited<ReturnType<typeof browserPage>>['browser'] | null = null
+  try {
+  const owner = await signUpApi('Foreign View')
+  const spaceRows = await getSql()<{ id: string }[]>`
+    select id from space where owner_user_id = ${owner.id} and kind = 'personal' limit 1
+  `
+  const spaceId = spaceRows[0]?.id ?? ''
+  if (!spaceId) throw new Error('personal space missing')
+  const source = await createPage(owner.id, { spaceId, title: 'Source' })
+  const dest = await createPage(owner.id, { spaceId, title: 'Dest' })
+  const created = await createDiagram(owner.id, source.id)
+  const planted = {
+    type: 'doc',
+    content: [{ type: 'diagram', attrs: { drawingId: created.id } }],
+  }
+  await getSql()`update page set body = ${JSON.stringify(planted)}::jsonb where id = ${dest.id}`
+  const opened = await browserPage()
+  browser = opened.browser
+  const page = opened.page
+  const counts = countAdopt(page)
+  await page.context().addCookies(
+    owner.cookie.split('; ').map((part) => {
+      const [name, ...rest] = part.split('=')
+      return { name: name ?? '', value: rest.join('='), url: BASE }
+    }),
+  )
+  await page.goto(`${BASE}/s/${spaceId}/p/${dest.id}`, { waitUntil: 'domcontentloaded' })
+  await page.locator('.diagram-block').waitFor()
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.locator('.diagram-block').waitFor()
+  await page.waitForTimeout(1000)
+  expectLine('fc11_view_save', counts.save, 0)
+  expectLine('fc11_view_drawings', counts.drawings, 0)
+  expectLine('fc11_view_clone', counts.clone, 0)
+  await enterEdit(page)
+  const started = Date.now()
+  while (Date.now() - started < 10_000 && (counts.clone < 1 || counts.save < 1)) {
+    await page.waitForTimeout(100)
+  }
+  await page.waitForTimeout(1500)
+  expectLine('fc11_edit_clone', counts.clone, 1)
+  expectLine('fc11_edit_save', counts.save, 1)
+  } finally {
+    await browser?.close().catch(() => undefined)
+    await closeDb().catch(() => undefined)
+  }
+  if (failed) process.exit(1)
+}
+
+async function signUpApi(name: string) {
+  const email = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.${crypto.randomUUID()}@example.com`
+  let response: Response | null = null
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    response = await fetch(`${BASE}/api/auth/sign-up/email`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: BASE },
+      body: JSON.stringify({ name, email, password: PASSWORD }),
+    })
+    if (response.status !== 429) break
+    const retryAfter = Number(response.headers.get('x-retry-after') ?? '10')
+    const seconds = Math.min(15, Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter + 1 : 11)
+    line('signup_status', 429)
+    await response.text().catch(() => '')
+    await new Promise((resolve) => setTimeout(resolve, seconds * 1000))
+  }
+  if (!response) throw new Error('sign-up missing response')
+  const text = await response.text()
+  line('signup_status', response.status)
+  if (response.status !== 200) throw new Error('sign-up failed')
+  const headers = response.headers as Headers & { getSetCookie?: () => string[] }
+  const raw = typeof headers.getSetCookie === 'function' ? headers.getSetCookie() : []
+  const cookie = raw
+    .map((entry) => entry.split(';')[0] ?? '')
+    .filter((entry) => entry.includes('='))
+    .join('; ')
+  const body = JSON.parse(text) as { user?: { id?: string } }
+  if (!cookie || !body.user?.id) throw new Error('sign-up session missing')
+  return { cookie, id: body.user.id }
+}
+
 const recipes: Record<string, () => Promise<void>> = {
   fc1: recipeFc1,
   fc2: recipeFc2,
@@ -600,12 +752,14 @@ const recipes: Record<string, () => Promise<void>> = {
   fc8: recipeFc8,
   fc9: recipeFc9,
   fc10: recipeFc10,
+  fc11: recipeFc11,
+  'fc11-planted': recipeFc11Planted,
 }
 
 const name = process.argv[2] ?? ''
 const recipe = recipes[name]
 if (!recipe) {
-  console.error('usage: view-mode-fail.ts fc1|fc2|fc3|fc4|fc5|fc7|fc8|fc9|fc10')
+  console.error('usage: view-mode-fail.ts fc1|fc2|fc3|fc4|fc5|fc7|fc8|fc9|fc10|fc11|fc11-planted')
   process.exit(2)
 }
 

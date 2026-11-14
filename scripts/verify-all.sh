@@ -593,6 +593,8 @@ run_step 37-fc9 ./scripts/verify-fail-conditions.sh 37-fc9
 require_step_log 37-fc9 "fc9_view_mode=1" "fc9_save_requests=0" "fc9_scene_unchanged=true" "fc9_reload_scene=true" "37_fc9=pass" "recipe_exit=0"
 run_step 37-fc10 ./scripts/verify-fail-conditions.sh 37-fc10
 require_step_log 37-fc10 "fc10_save_source_match=true" "fc10_mcp_source_match=true" "fc10_pages_source_match=true" "fc10_save_status=204" "fc10_update_status=200" "fc10_conflict_status=409" "fc10_forbidden_status=403" "fc10_save_new_deny=false" "fc10_update_new_deny=false" "fc10_update_body_match=true" "37_fc10=pass" "recipe_exit=0"
+run_step 37-fc11 ./scripts/verify-fail-conditions.sh 37-fc11
+require_step_log 37-fc11 "fc11_planted_pin_match=true" "fc11_planted_view_save=1" "fc11_planted_view_drawings=1" "fc11_planted_view_clone=1" "37_fc11_planted_exit=1" "fc11_view_save=0" "fc11_view_drawings=0" "fc11_view_clone=0" "fc11_edit_clone=1" "fc11_edit_save=1" "37_fc11_head_exit=0" "37_fc11=pass" "recipe_exit=0"
 run_step fail10-3 ./scripts/verify-fail-conditions.sh 10-3
 require_step_log fail10-3 "grandchild_status=400" "grandchild_error_clear=true" "parents_unchanged=true" "grandchild_rows_unchanged=true" "self_status=400" "self_error_clear=true" "self_unchanged=true" "self_rows_unchanged=true" "valid_status=200" "valid_parent_updated=true" "cycle_walk_within_500ms=true" "statement_timeout=false" "cycle_rows_unchanged=true"
 run_step fail13 ./scripts/verify-fail-conditions.sh 13

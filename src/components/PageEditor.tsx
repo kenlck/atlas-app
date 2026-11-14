@@ -193,12 +193,9 @@ export function PageEditor({ page }: { page: PageView }) {
     // creation. Start editable, then the effect below locks View mode.
     editable: true,
     onUpdate: ({ editor: instance, transaction }) => {
-      const storage = (instance.storage as { diagram?: { repair?: boolean } }).diagram
-      const repair = transaction.getMeta('diagramRepair') === true || storage?.repair === true
-      if (storage) storage.repair = false
-      // View mode ignores typing. A foreign diagram id is still copied and
-      // saved, because that repair is not an edit the reader chose.
-      if (!editingRef.current && !repair) return
+      // A mode switch emits an update with no document change. View never
+      // saves, and Edit saves only after the document itself changes.
+      if (!editingRef.current || !transaction.docChanged) return
       bodyRef.current = instance.getJSON() as Json
       schedule()
     },
@@ -206,7 +203,11 @@ export function PageEditor({ page }: { page: PageView }) {
 
   useEffect(() => {
     if (!editor) return
+    const storage = (editor.storage as { diagram?: { editing?: boolean } }).diagram
+    if (storage) storage.editing = editing
     editor.setEditable(editing)
+    if (editor.isDestroyed) return
+    editor.view.dispatch(editor.state.tr.setMeta('pageEditing', editing))
   }, [editor, editing])
 
   useEffect(() => {

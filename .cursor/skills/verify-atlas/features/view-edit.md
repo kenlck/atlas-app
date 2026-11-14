@@ -12,6 +12,7 @@ A page or whiteboard opens in View. Editing starts from the header switch, and a
 - `narrow` collapses the switch to one icon button at 390px without a horizontal scroll.
 - `whiteboard` uses Excalidraw view mode until Edit.
 - `endpoints` keep `update_page` and `POST /api/pages/save` on the same statuses as `3d03b704`.
+- `foreign-diagram` leaves a diagram owned by another page untouched in View, and copies it on the first switch to Edit.
 
 ## How to get to it (user POV)
 
@@ -37,6 +38,7 @@ Preconditions:
 - **390 icon.** Run `./scripts/verify-fail-conditions.sh 37-fc8`. The log shows `fc8_icon_to_edit=true`, `fc8_390_scroll=false`, `fc8_1280_scroll=false`, and `37_fc8=pass`.
 - **Whiteboard view.** Run `./scripts/verify-fail-conditions.sh 37-fc9`. The log shows `fc9_save_requests=0`, `fc9_scene_unchanged=true`, and `37_fc9=pass`.
 - **Save endpoints.** Run `./scripts/verify-fail-conditions.sh 37-fc10`. The log shows `fc10_save_status=204`, `fc10_update_status=200`, and `37_fc10=pass`.
+- **Foreign diagram.** Run `./scripts/verify-fail-conditions.sh 37-fc11`. The log shows `fc11_view_save=0`, `fc11_view_drawings=0`, `fc11_view_clone=0`, `fc11_edit_clone=1`, `fc11_edit_save=1`, `37_fc11_planted_exit=1`, and `37_fc11=pass`.
 
 ## Gotchas
 

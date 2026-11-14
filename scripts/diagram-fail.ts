@@ -518,6 +518,14 @@ async function recipeEdit(base: string) {
   if (!drawingId) fail('drawing_id=missing')
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.locator('.diagram-block').waitFor()
+  await enterEdit(page)
+  await page.waitForFunction(() => {
+    const block = document.querySelector('.diagram-block')
+    if (!block) return false
+    if (block.querySelector('img')) return true
+    const text = (block.querySelector('.diagram-empty')?.textContent ?? '').trim()
+    return text === 'Empty drawing' || text === 'Drawing unavailable'
+  })
   const cookies = await page.context().cookies()
   const cookie = cookies.map((item) => `${item.name}=${item.value}`).join('; ')
   const loaded = await drawingRequest(base, 'GET', `/api/drawings?drawingId=${drawingId}`, { cookie })
@@ -692,7 +700,8 @@ async function recipeLazy(base: string) {
   const settle = trackExcalidraw(page, hits)
   await addSession(page, base, owner.cookie)
   await page.goto(`${base}/s/${spaceId}/p/${doc.id}`, { waitUntil: 'domcontentloaded' })
-  await page.getByText('Empty drawing').waitFor()
+  await enterEdit(page)
+  await page.getByText('Empty drawing').waitFor({ timeout: 15_000 })
   await settle()
   const before = hits.length
   if (before !== 0) console.log(`before_edit_url=${hits[0]}`)
@@ -815,6 +824,8 @@ async function recipeForeign(base: string) {
   }, created.id)
   await addSession(page, base, owner.cookie)
   await page.goto(`${base}/s/${spaceId}/p/${dest.id}`, { waitUntil: 'domcontentloaded' })
+  await page.locator('.diagram-block').waitFor()
+  await enterEdit(page)
   await page.waitForFunction(
     (foreign) => {
       const ids = [...document.querySelectorAll('.diagram-block')].map((node) =>

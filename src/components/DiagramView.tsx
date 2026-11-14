@@ -16,6 +16,10 @@ type EditorProps = {
   onPreview: (svg: string | null) => void
 }
 
+function pageIsEditing(editor: NodeViewProps['editor']) {
+  return (editor.storage as { diagram?: { editing?: boolean } }).diagram?.editing === true
+}
+
 function laterCopy(
   editor: NodeViewProps['editor'],
   drawingId: string,
@@ -44,8 +48,21 @@ export function DiagramView({ node, updateAttributes, editor, getPos }: NodeView
   const updateRef = useRef(updateAttributes)
   getPosRef.current = getPos
   updateRef.current = updateAttributes
+  const [pageEditing, setPageEditing] = useState(() => pageIsEditing(editor))
 
   useEffect(() => {
+    const sync = () => {
+      const next = pageIsEditing(editor)
+      setPageEditing((current) => (current === next ? current : next))
+    }
+    editor.on('transaction', sync)
+    return () => {
+      editor.off('transaction', sync)
+    }
+  }, [editor])
+
+  useEffect(() => {
+    if (!pageEditing) return
     const cancel = { current: false }
     setPhase('loading')
     setPreview(null)
@@ -84,12 +101,9 @@ export function DiagramView({ node, updateAttributes, editor, getPos }: NodeView
                 ...current.attrs,
                 drawingId: created.id,
               })
-              tr.setMeta('diagramRepair', true)
               return true
             })
           } else {
-            const storage = (editor.storage as { diagram?: { repair?: boolean } }).diagram
-            if (storage) storage.repair = true
             updateRef.current({ drawingId: created.id })
           }
         } catch {
@@ -105,7 +119,7 @@ export function DiagramView({ node, updateAttributes, editor, getPos }: NodeView
     return () => {
       cancel.current = true
     }
-  }, [drawingId, pageId, editor])
+  }, [drawingId, pageId, editor, pageEditing])
 
   const openEditor = () => {
     if (phase !== 'ready') return
