@@ -575,6 +575,26 @@ run_step fail8-12 ./scripts/verify-fail-conditions.sh 8-12
 require_step_log fail8-12 "svg_in_drawing_row=true" "served_svg=true" "outsider_status=404" "file_storage=false" "result=pass"
 run_step fail8-13 ./scripts/verify-fail-conditions.sh 8-13
 require_step_log fail8-13 "node_copied=false" "node_response_leaks=false" "mcp_copied=false" "mcp_response_leaks=false" "unknown_matches_denied=true" "mcp_update_copied=false" "mcp_update_response_leaks=false" "archived_copied=false" "archived_response_leaks=false" "source_only=true" "result=pass"
+run_step 37-fc1 ./scripts/verify-fail-conditions.sh 37-fc1
+require_step_log 37-fc1 "fc1_save_requests=0" "fc1_text_unchanged=true" "fc1_title_unchanged=true" "fc1_editable=true" "fc1_reload_unchanged=true" "fc1_reload_view=true" "37_fc1=pass" "recipe_exit=0"
+run_step 37-fc2 ./scripts/verify-fail-conditions.sh 37-fc2
+require_step_log 37-fc2 "fc2_rule=true" "fc2_chip=true" "fc2_status=true" "fc2_text=true" "37_fc2=pass" "recipe_exit=0"
+run_step 37-fc3 ./scripts/verify-fail-conditions.sh 37-fc3
+require_step_log 37-fc3 "fc3_view=true" "fc3_persisted=true" "fc3_reload_view=true" "37_fc3=pass" "recipe_exit=0"
+run_step 37-fc4 ./scripts/verify-fail-conditions.sh 37-fc4
+require_step_log 37-fc4 "fc4_stayed=true" "fc4_banner=true" "fc4_discard=0" "fc4_retry_saved=true" "37_fc4=pass" "recipe_exit=0"
+run_step 37-fc5 ./scripts/verify-fail-conditions.sh 37-fc5
+require_step_log 37-fc5 "fc5_before=true" "fc5_view=true" "fc5_editable=true" "fc5_stored=false" "fc5_url=false" "37_fc5=pass" "recipe_exit=0"
+run_step 37-fc7 ./scripts/verify-fail-conditions.sh 37-fc7
+require_step_log 37-fc7 "fc7_edit=true" "fc7_title_focused=true" "37_fc7=pass" "recipe_exit=0"
+run_step 37-fc8 ./scripts/verify-fail-conditions.sh 37-fc8
+require_step_log 37-fc8 "fc8_switch_1280=true" "fc8_icon_1280=false" "fc8_1280_scroll=false" "fc8_switch_390=false" "fc8_icon_390=true" "fc8_390_scroll=false" "fc8_icon_to_edit=true" "fc8_390_edit_scroll=false" "fc8_icon_to_view=true" "fc8_390_back_scroll=false" "fc8_1280_back_scroll=false" "37_fc8=pass" "recipe_exit=0"
+run_step 37-fc9 ./scripts/verify-fail-conditions.sh 37-fc9
+require_step_log 37-fc9 "fc9_view_mode=1" "fc9_save_requests=0" "fc9_scene_unchanged=true" "fc9_reload_scene=true" "37_fc9=pass" "recipe_exit=0"
+run_step 37-fc10 ./scripts/verify-fail-conditions.sh 37-fc10
+require_step_log 37-fc10 "fc10_save_source_match=true" "fc10_mcp_source_match=true" "fc10_pages_source_match=true" "fc10_save_status=204" "fc10_update_status=200" "fc10_conflict_status=409" "fc10_forbidden_status=403" "fc10_save_new_deny=false" "fc10_update_new_deny=false" "fc10_update_body_match=true" "37_fc10=pass" "recipe_exit=0"
+run_step 37-fc11 ./scripts/verify-fail-conditions.sh 37-fc11
+require_step_log 37-fc11 "fc11_planted_pin_match=true" "fc11_planted_view_save=1" "fc11_planted_view_clone=1" "37_fc11_planted_exit=1" "fc11_planted_skip_pin_match=true" "fc11_planted_skip_preview=false" "37_fc11_planted_skip_exit=1" "fc11_view_preview_owned=true" "fc11_view_preview_foreign=true" "fc11_view_save=0" "fc11_view_clone=0" "fc11_edit_clone=1" "fc11_edit_save=1" "37_fc11_head_exit=0" "37_fc11=pass" "recipe_exit=0"
 run_step fail10-3 ./scripts/verify-fail-conditions.sh 10-3
 require_step_log fail10-3 "grandchild_status=400" "grandchild_error_clear=true" "parents_unchanged=true" "grandchild_rows_unchanged=true" "self_status=400" "self_error_clear=true" "self_unchanged=true" "self_rows_unchanged=true" "valid_status=200" "valid_parent_updated=true" "cycle_walk_within_500ms=true" "statement_timeout=false" "cycle_rows_unchanged=true"
 run_step fail13 ./scripts/verify-fail-conditions.sh 13

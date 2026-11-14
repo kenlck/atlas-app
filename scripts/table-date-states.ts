@@ -1,6 +1,7 @@
 import { inflateSync } from 'node:zlib'
 import type { Page } from 'playwright'
 import { sheetsClipboard } from './clipboard-fixtures.ts'
+import { enterEdit } from './verify-local.ts'
 
 type Shot = (name: string, png?: Buffer) => Promise<void>
 
@@ -429,6 +430,7 @@ async function captureMergedPair(page: Page, shot: Shot) {
   const before = roundBox(beforeBox)
   const beforeFrames = await grabSamples(page, before)
   await page.reload({ waitUntil: 'networkidle' })
+  await enterEdit(page)
   await page.locator('.doc-editor table').first().waitFor()
   await page.locator('.doc-editor [rowspan="2"]').waitFor()
   await focusFirstBodyCell(page)

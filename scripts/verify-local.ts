@@ -182,3 +182,36 @@ export async function clickNewDoc(page: NewDocPage, which: 'first' | 'last' = 'l
     await page.getByRole('button', { name: 'Page', exact: true }).click()
   }
 }
+
+type EditPage = {
+  locator: (selector: string) => {
+    isVisible: () => Promise<boolean>
+    getAttribute: (name: string) => Promise<string | null>
+    click: () => Promise<void>
+    waitFor: () => Promise<unknown>
+    count: () => Promise<number>
+    getByRole: (
+      role: 'radio',
+      options: { name: string; exact?: boolean },
+    ) => {
+      getAttribute: (name: string) => Promise<string | null>
+      click: () => Promise<void>
+    }
+  }
+}
+
+// Existing pages open in View. Call this before changing one.
+export async function enterEdit(page: EditPage) {
+  const switcher = page.locator('.mode-switch')
+  if (await switcher.isVisible()) {
+    const edit = switcher.getByRole('radio', { name: 'Edit', exact: true })
+    if ((await edit.getAttribute('aria-checked')) !== 'true') await edit.click()
+  } else {
+    const icon = page.locator('.mode-icon')
+    if ((await icon.getAttribute('aria-label')) === 'Edit') await icon.click()
+  }
+  await page.locator('.top.is-editing').waitFor()
+  if ((await page.locator('.doc-editor').count()) > 0) {
+    await page.locator('.doc-editor[contenteditable="true"]').waitFor()
+  }
+}

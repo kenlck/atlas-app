@@ -10,6 +10,7 @@ import { relativeTime } from '#/lib/relative-time'
 import type { PageView } from '#/lib/pages'
 import { useSpaceOutlet } from './AppFrame'
 import { NewPageMenu } from './NewPageMenu'
+import { PageModeBar, saveStatusLabel } from './PageModeBar'
 
 type SaveState = 'saved' | 'saving' | 'error' | 'conflict'
 
@@ -28,7 +29,11 @@ export function Whiteboard({ page }: { page: PageView }) {
   const board = page.drawing
   const [title, setTitle] = useState(page.title)
   const [saveState, setSaveState] = useState<SaveState>('saved')
-  const [narrow, setNarrow] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const editingRef = useRef(false)
+  editingRef.current = editing
+  const saveStateRef = useRef(saveState)
+  saveStateRef.current = saveState
   const [Canvas, setCanvas] = useState<ComponentType<CanvasProps> | null>(null)
   const titleRef = useRef(page.title)
   const savedTitle = useRef(page.title)
@@ -64,12 +69,12 @@ export function Whiteboard({ page }: { page: PageView }) {
     if (response.status === 409) {
       dirtyRef.current = false
       setSaveState('conflict')
-      return
+      return false
     }
     if (!response.ok) {
       dirtyRef.current = true
       setSaveState('error')
-      return
+      return false
     }
     const body = (await response.json()) as { version?: number }
     if (typeof body.version === 'number') versionRef.current = body.version
@@ -80,11 +85,13 @@ export function Whiteboard({ page }: { page: PageView }) {
     void routerRef.current.invalidate({
       filter: (match) => match.routeId === '/_app/s/$spaceId',
     })
+    return true
   }
 
   const flushSave = async () => {
     clearTimer()
-    if (!dirtyRef.current || saveState === 'conflict') return
+    if (saveStateRef.current === 'conflict') return false
+    if (!dirtyRef.current) return saveStateRef.current !== 'error'
     const body = JSON.stringify(payload('autosave'))
     dirtyRef.current = false
     setSaveState('saving')
@@ -95,23 +102,31 @@ export function Whiteboard({ page }: { page: PageView }) {
         credentials: 'include',
         body,
       })
-      await applyResult(response)
+      return await applyResult(response)
     } catch {
       dirtyRef.current = true
       setSaveState('error')
+      return false
     }
   }
   const flushSaveRef = useRef(flushSave)
   flushSaveRef.current = flushSave
 
   const schedule = () => {
-    if (saveState === 'conflict') return
+    if (!editingRef.current || saveStateRef.current === 'conflict') return
     dirtyRef.current = true
     setSaveState('saving')
     clearTimer()
     timer.current = setTimeout(() => {
       void flushSaveRef.current()
     }, 800)
+  }
+
+  const leaveEdit = () => {
+    void (async () => {
+      const ok = await flushSaveRef.current()
+      if (ok) setEditing(false)
+    })()
   }
 
   useEffect(() => {
@@ -122,14 +137,6 @@ export function Whiteboard({ page }: { page: PageView }) {
     return () => {
       cancelled = true
     }
-  }, [])
-
-  useEffect(() => {
-    const query = window.matchMedia('(max-width: 700px)')
-    const apply = () => setNarrow(query.matches)
-    apply()
-    query.addEventListener('change', apply)
-    return () => query.removeEventListener('change', apply)
   }, [])
 
   useEffect(() => {
@@ -150,26 +157,20 @@ export function Whiteboard({ page }: { page: PageView }) {
 
   return (
     <div className="board">
-      <div className="top">
-        <div className="crumbs">
-          {page.breadcrumbs.map((crumb, index) => (
-            <span key={crumb.id}>
-              {index > 0 ? <span> / </span> : null}
-              {index === page.breadcrumbs.length - 1 ? <b>{crumb.title}</b> : crumb.title}
-            </span>
-          ))}
-        </div>
-        <div className="r">
+      <PageModeBar
+        breadcrumbs={page.breadcrumbs}
+        editing={editing}
+        saveLabel={saveStatusLabel(saveState)}
+        onEdit={() => setEditing(true)}
+        onLeave={leaveEdit}
+        menu={
           <NewPageMenu
             label="Create page"
             className="create-page"
             onChoose={(kind) => createChild(page.id, kind)}
           />
-          <span className="save">
-            {saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : ''}
-          </span>
-        </div>
-      </div>
+        }
+      />
       {saveState === 'error' ? (
         <div className="retry">
           Couldn't save.
@@ -193,12 +194,15 @@ export function Whiteboard({ page }: { page: PageView }) {
           aria-label="Title"
           placeholder="Untitled"
           value={title}
+          readOnly={!editing}
           onChange={(event) => {
+            if (!editingRef.current) return
             setTitle(event.target.value)
             titleRef.current = event.target.value
             schedule()
           }}
           onBlur={() => {
+            if (!editingRef.current) return
             if (titleRef.current !== savedTitle.current) {
               dirtyRef.current = true
               void flushSaveRef.current()
@@ -214,8 +218,9 @@ export function Whiteboard({ page }: { page: PageView }) {
           <Canvas
             elements={board.elements}
             appState={board.appState}
-            viewMode={narrow}
+            viewMode={!editing}
             onScene={(elements, appState) => {
+              if (!editingRef.current) return
               const next = canonicalElements(elements)
               // Excalidraw repeats the same scene while the pointer moves.
               // A failed save must stay on the Retry banner, so ignore repeats.

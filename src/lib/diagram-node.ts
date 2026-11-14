@@ -11,7 +11,7 @@ export function createDiagramExtension(pageId: string) {
     draggable: false,
 
     addStorage() {
-      return { pageId }
+      return { pageId, editing: false }
     },
 
     addAttributes() {

@@ -24,6 +24,8 @@ import { Sidebar } from './Sidebar'
 export type SpaceOutlet = {
   createChild: (parentId: string, kind?: 'doc' | 'whiteboard') => void
   createRoot: (kind?: 'doc' | 'whiteboard') => void
+  claimFresh: (pageId: string) => boolean
+  releaseFresh: (pageId: string) => void
 }
 
 const SpaceOutletContext = createContext<SpaceOutlet | null>(null)
@@ -65,6 +67,7 @@ export function AppFrame({
   const [createError, setCreateError] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const createTeamTrigger = useRef<HTMLElement | null>(null)
+  const freshPageId = useRef<string | null>(null)
   const navigate = useNavigate()
   const router = useRouter()
   const params = useParams({ strict: false })
@@ -77,6 +80,13 @@ export function AppFrame({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [drawer])
+
+  useEffect(() => {
+    const fresh = freshPageId.current
+    if (fresh && params.pageId && params.pageId !== fresh) {
+      freshPageId.current = null
+    }
+  }, [params.pageId])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -133,6 +143,7 @@ export function AppFrame({
       filter: (match) => match.routeId === '/_app/s/$spaceId',
       sync: true,
     })
+    freshPageId.current = created.kind === 'doc' ? created.id : null
     await navigate({
       to: '/s/$spaceId/p/$pageId',
       params: { spaceId, pageId: created.id },
@@ -174,6 +185,10 @@ export function AppFrame({
     },
     createRoot: (kind = 'doc') => {
       void create(null, kind)
+    },
+    claimFresh: (pageId) => freshPageId.current === pageId,
+    releaseFresh: (pageId) => {
+      if (freshPageId.current === pageId) freshPageId.current = null
     },
   }
 

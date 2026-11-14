@@ -41,3 +41,4 @@ Each feature file has an H1, one paragraph, then these H2 sections in order: `Su
 - [Page search](./page-search.md) covers sidebar search, visible pages, and literal `%` / `_` queries.
 - [Team whiteboard](./whiteboard.md) covers the pen row, the canvas, save failures, and who can read a board.
 - [Diagram block](./diagram.md) covers a drawing inside a page, the saved image, and who can read it.
+- [View and edit](./view-edit.md) covers the page header switch, the Editing chip, whiteboard view mode, and foreign diagrams.

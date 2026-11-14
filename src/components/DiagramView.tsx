@@ -16,6 +16,10 @@ type EditorProps = {
   onPreview: (svg: string | null) => void
 }
 
+function pageIsEditing(editor: NodeViewProps['editor']) {
+  return (editor.storage as { diagram?: { editing?: boolean } }).diagram?.editing === true
+}
+
 function laterCopy(
   editor: NodeViewProps['editor'],
   drawingId: string,
@@ -44,6 +48,18 @@ export function DiagramView({ node, updateAttributes, editor, getPos }: NodeView
   const updateRef = useRef(updateAttributes)
   getPosRef.current = getPos
   updateRef.current = updateAttributes
+  const [pageEditing, setPageEditing] = useState(() => pageIsEditing(editor))
+
+  useEffect(() => {
+    const sync = () => {
+      const next = pageIsEditing(editor)
+      setPageEditing((current) => (current === next ? current : next))
+    }
+    editor.on('transaction', sync)
+    return () => {
+      editor.off('transaction', sync)
+    }
+  }, [editor])
 
   useEffect(() => {
     const cancel = { current: false }
@@ -70,7 +86,9 @@ export function DiagramView({ node, updateAttributes, editor, getPos }: NodeView
       const readPos = getPosRef.current
       const pos = typeof readPos === 'function' ? readPos() : null
       const extra = pos != null && laterCopy(editor, drawingId, pos)
-      if (data.pageId !== pageId || extra) {
+      // View still reads and paints the preview, including a drawing owned
+      // by another page. The copy and its save wait for the first Edit.
+      if (pageEditing && (data.pageId !== pageId || extra)) {
         try {
           const created = await cloneDiagramFn({ data: { pageId, drawingId } })
           if (isCancelled(cancel)) return
@@ -102,7 +120,7 @@ export function DiagramView({ node, updateAttributes, editor, getPos }: NodeView
     return () => {
       cancel.current = true
     }
-  }, [drawingId, pageId, editor])
+  }, [drawingId, pageId, editor, pageEditing])
 
   const openEditor = () => {
     if (phase !== 'ready') return
