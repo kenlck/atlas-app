@@ -681,7 +681,7 @@ async function recipeFc11PlantedSkip() {
 }
 
 const PREVIEW_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="#0f766e"/></svg>'
+  '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8"/></svg>'
 
 async function viewPreview(page: Page) {
   const block = page.locator('.diagram-block')
