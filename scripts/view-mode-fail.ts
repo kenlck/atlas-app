@@ -440,7 +440,31 @@ const DELETE_PAGE_HUNKS = [
   'export async function cloneDiagram',
   'export async function movePage',
   'export async function archivePage',
+  'export async function savePage',
 ]
+
+const VERSION_HUNKS: Record<string, string[]> = {
+  'src/lib/page-save-request.ts': ['export async function handlePageSave'],
+  'src/server/fns.ts': ['export const renamePageFn'],
+}
+
+function hunksAllowed(path: string, names: string[]) {
+  const diff = execFileSync('git', ['diff', '--unified=3', PIN, 'HEAD', '--', path], {
+    encoding: 'utf8',
+  })
+  if (!diff.trim()) return true
+  const hunks = diff.split(/^@@/m).slice(1)
+  if (hunks.length === 0) return false
+  return hunks.every((hunk) => {
+    const header = hunk.slice(0, hunk.indexOf('\n'))
+    const context = header.slice(header.indexOf('@@') + 2).trim()
+    if (!names.some((name) => context.startsWith(name))) return false
+    if (context.startsWith('export const renamePageFn')) {
+      return hunk.includes('export const savePageFn')
+    }
+    return true
+  })
+}
 
 function deletePageDiffOnly(path: string) {
   const diff = execFileSync('git', ['diff', '--unified=3', PIN, 'HEAD', '--', path], {
@@ -474,9 +498,13 @@ function deletePageDiffOnly(path: string) {
 function sameFile(path: string) {
   const current = readFileSync(path, 'utf8')
   if (current === pinnedFile(path)) return true
-  if (path !== 'src/lib/mcp.ts' && path !== 'src/lib/pages.ts') return false
+  const versionNames = VERSION_HUNKS[path]
+  const pagesOrMcp = path === 'src/lib/mcp.ts' || path === 'src/lib/pages.ts'
+  if (!versionNames && !pagesOrMcp) return false
   const committed = execFileSync('git', ['show', `HEAD:${path}`], { encoding: 'utf8' })
-  return committed === current && deletePageDiffOnly(path)
+  if (committed !== current) return false
+  if (pagesOrMcp) return deletePageDiffOnly(path)
+  return hunksAllowed(path, versionNames)
 }
 
 function statusIn(source: string, pattern: RegExp) {
@@ -583,6 +611,7 @@ async function recipeFc10() {
   }
   const updatedData = JSON.parse(updatedPayload.result?.content?.[0]?.text ?? '{}') as {
     title?: string
+    updated_at?: string
   }
   const payloadStart = mcpSrc.indexOf('return {\n    id:')
   const payloadEnd = mcpSrc.indexOf('\n  }', payloadStart)
@@ -619,6 +648,7 @@ async function recipeFc10() {
       type: 'doc',
       content: [{ type: 'paragraph', content: [{ type: 'text', text: 'endpoint' }] }],
     },
+    updatedAt: updatedData.updated_at ?? '',
   }
   const saved = await fetch(`${BASE}/api/pages/save`, {
     method: 'POST',

@@ -191,10 +191,24 @@ export const renamePageFn = createServerFn({ method: 'POST' })
 
 export const savePageFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
-  .validator((data: { pageId: string; title: string; body: Json }) => data)
+  .validator(
+    (data: { pageId: string; title: string; body: Json; updatedAt?: string }) =>
+      data,
+  )
   .handler(async ({ data, context }) => {
     try {
-      const view = await savePage(context.userId, data)
+      if (
+        typeof data.updatedAt !== 'string' ||
+        !Number.isFinite(Date.parse(data.updatedAt))
+      ) {
+        throw new HttpError(400, 'Bad request')
+      }
+      const view = await savePage(context.userId, {
+        pageId: data.pageId,
+        title: data.title,
+        body: data.body,
+        updatedAt: data.updatedAt,
+      })
       await touchLastSpace(context.userId, view.spaceId)
       return view
     } catch (error) {

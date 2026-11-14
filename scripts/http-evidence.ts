@@ -399,6 +399,7 @@ async function fail1(dir: string) {
       pageId,
       title: 'stolen',
       body: { type: 'doc', content: [] },
+      updatedAt: '2000-01-01T00:00:00.000Z',
     }),
   )
   const otherSave = await dumpCurl('B saves A page', [

@@ -129,6 +129,7 @@ async function main() {
     pageId: created.id,
     title: 'Origin',
     body: DOC,
+    updatedAt: created.updatedAt,
   }
 
   const missing = await postSave(base, cookie, null, good)

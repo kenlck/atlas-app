@@ -56,6 +56,26 @@ function isMissing(error: unknown): boolean {
   return false
 }
 
+function isConflict(error: unknown, depth = 0): boolean {
+  if (depth > 5 || error == null) return false
+  if (typeof error === 'string') return error.includes('Conflict')
+  if (typeof error !== 'object') return false
+  const record = error as Record<string, unknown>
+  if (record.status === 409 || record.statusCode === 409) return true
+  if (typeof record.message === 'string' && record.message.includes('Conflict'))
+    return true
+  for (const key of ['cause', 'data', 'body', 'error']) {
+    if (
+      key in record &&
+      record[key] !== error &&
+      isConflict(record[key], depth + 1)
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
 const spaceRoute = getRouteApi('/_app/s/$spaceId')
 
 function draftKey(pageId: string) {
@@ -109,6 +129,7 @@ export function PageEditor({ page }: { page: PageView }) {
   const draft = draftRef.current
   const [title, setTitle] = useState(page.title)
   const [saveState, setSaveState] = useState<SaveState>('saved')
+  const [conflict, setConflict] = useState(false)
   const titleRef = useRef(page.title)
   const titleField = useRef<HTMLInputElement>(null)
   const savedTitle = useRef(page.title)
@@ -116,6 +137,7 @@ export function PageEditor({ page }: { page: PageView }) {
   const dirtyRef = useRef(draft != null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pageIdRef = useRef(page.id)
+  const updatedAtRef = useRef(page.updatedAt)
   const peopleRef = useRef(page.people)
   peopleRef.current = page.people
   const spaceData = spaceRoute.useLoaderData()
@@ -133,13 +155,15 @@ export function PageEditor({ page }: { page: PageView }) {
   routerRef.current = router
   const queueRef = useRef(
     createEditorSave(async (snapshot) => {
-      await savePageFn({
+      const view = await savePageFn({
         data: {
           pageId: snapshot.pageId,
           title: snapshot.title,
           body: snapshot.body as Json,
+          updatedAt: updatedAtRef.current,
         },
       })
+      updatedAtRef.current = view.updatedAt
       clearDraft(snapshot.pageId)
       if (savedTitle.current !== snapshot.title) {
         savedTitle.current = snapshot.title
@@ -160,6 +184,19 @@ export function PageEditor({ page }: { page: PageView }) {
     }
     clearDraft(pageIdRef.current)
     setHeld(name)
+    setEditing(false)
+    setSaveState('saved')
+  }
+
+  const freezeConflict = () => {
+    frozenRef.current = true
+    editingRef.current = false
+    dirtyRef.current = false
+    if (timer.current) {
+      clearTimeout(timer.current)
+      timer.current = null
+    }
+    setConflict(true)
     setEditing(false)
     setSaveState('saved')
   }
@@ -186,6 +223,10 @@ export function PageEditor({ page }: { page: PageView }) {
       const holder = lockHolderName(error)
       if (holder) {
         freeze(holder)
+        return
+      }
+      if (isConflict(error)) {
+        freezeConflict()
         return
       }
       if (isMissing(error)) {
@@ -247,7 +288,8 @@ export function PageEditor({ page }: { page: PageView }) {
     onUpdate: ({ editor: instance, transaction }) => {
       // A mode switch emits an update with no document change. View never
       // saves, and Edit saves only after the document itself changes.
-      if (frozenRef.current || !editingRef.current || !transaction.docChanged) return
+      if (frozenRef.current || !editingRef.current || !transaction.docChanged)
+        return
       bodyRef.current = instance.getJSON() as Json
       schedule()
     },
@@ -255,7 +297,8 @@ export function PageEditor({ page }: { page: PageView }) {
 
   useEffect(() => {
     if (!editor) return
-    const storage = (editor.storage as { diagram?: { editing?: boolean } }).diagram
+    const storage = (editor.storage as { diagram?: { editing?: boolean } })
+      .diagram
     if (storage) storage.editing = editing
     editor.setEditable(editing)
     if (editor.isDestroyed) return
@@ -313,7 +356,10 @@ export function PageEditor({ page }: { page: PageView }) {
   }, [mentions, editor, spaceData, peopleToken])
 
   useEffect(() => {
-    pageIdRef.current = page.id
+    if (pageIdRef.current !== page.id) {
+      pageIdRef.current = page.id
+      updatedAtRef.current = page.updatedAt
+    }
     return () => {
       if (timer.current) {
         clearTimeout(timer.current)
@@ -330,17 +376,28 @@ export function PageEditor({ page }: { page: PageView }) {
         timer.current = null
       }
       if (frozenRef.current || !dirtyRef.current) {
-        if (!frozenRef.current) void flushSaveRef.current().catch(() => undefined)
+        if (!frozenRef.current)
+          void flushSaveRef.current().catch(() => undefined)
         return
       }
       const snapshot = {
         pageId: pageIdRef.current,
         title: titleRef.current,
         body: bodyRef.current,
+        updatedAt: updatedAtRef.current,
       }
-      queueRef.current.update(snapshot)
+      queueRef.current.update({
+        pageId: snapshot.pageId,
+        title: snapshot.title,
+        body: snapshot.body,
+      })
       dirtyRef.current = false
-      const delivered = deliverPageSave(snapshot, browserPageSaveTransport())
+      const delivered = deliverPageSave(
+        snapshot,
+        browserPageSaveTransport((next) => {
+          updatedAtRef.current = next
+        }),
+      )
       if (delivered === 'sync') clearDraft(snapshot.pageId)
       void flushSaveRef.current().catch(() => undefined)
     }
@@ -356,10 +413,10 @@ export function PageEditor({ page }: { page: PageView }) {
     <>
       <PageModeBar
         breadcrumbs={page.breadcrumbs}
-        editing={editing && !held}
+        editing={editing && !held && !conflict}
         saveLabel={saveStatusLabel(saveState)}
         lockedByName={held ?? page.lockedByName}
-        canEdit={held ? false : page.canEdit}
+        canEdit={held || conflict ? false : page.canEdit}
         onEdit={() => {
           if (frozenRef.current || !page.canEdit) return
           setEditing(true)
@@ -413,7 +470,7 @@ export function PageEditor({ page }: { page: PageView }) {
           {lockBannerText(held)}
         </div>
       )}
-      {deleted || held || saveState !== 'error' ? null : (
+      {deleted || held || conflict || saveState !== 'error' ? null : (
         <div className="retry">
           Couldn't save.
           <button
@@ -424,38 +481,52 @@ export function PageEditor({ page }: { page: PageView }) {
           </button>
         </div>
       )}
-      {deleted ? null : (
-      <div className="doc">
-        <div className="col">
-          <input
-            ref={titleField}
-            id="page-title"
-            className="title-input"
-            aria-label="Title"
-            placeholder="Untitled"
-            value={title}
-            readOnly={!editing || Boolean(held)}
-            onChange={(event) => {
-              if (frozenRef.current || !editingRef.current) return
-              setTitle(event.target.value)
-              titleRef.current = event.target.value
-              schedule()
+      {deleted || held || !conflict ? null : (
+        <div className="retry" role="alert">
+          Someone else changed this page since you opened it.
+          <button
+            type="button"
+            onClick={() => {
+              clearDraft(pageIdRef.current)
+              window.location.reload()
             }}
-            onBlur={(event) => {
-              if (frozenRef.current || !editingRef.current) return
-              const next = event.currentTarget.value
-              titleRef.current = next
-              setTitle(next)
-              if (next !== savedTitle.current) dirtyRef.current = true
-              void flushSaveRef.current().catch(() => undefined)
-            }}
-          />
-          <div className="meta">
-            Edited by {page.updatedByName} · {relativeTime(page.updatedAt)}
-          </div>
-          <EditorContent editor={editor} />
+          >
+            Reload
+          </button>
         </div>
-      </div>
+      )}
+      {deleted ? null : (
+        <div className="doc">
+          <div className="col">
+            <input
+              ref={titleField}
+              id="page-title"
+              className="title-input"
+              aria-label="Title"
+              placeholder="Untitled"
+              value={title}
+              readOnly={!editing || Boolean(held) || conflict}
+              onChange={(event) => {
+                if (frozenRef.current || !editingRef.current) return
+                setTitle(event.target.value)
+                titleRef.current = event.target.value
+                schedule()
+              }}
+              onBlur={(event) => {
+                if (frozenRef.current || !editingRef.current) return
+                const next = event.currentTarget.value
+                titleRef.current = next
+                setTitle(next)
+                if (next !== savedTitle.current) dirtyRef.current = true
+                void flushSaveRef.current().catch(() => undefined)
+              }}
+            />
+            <div className="meta">
+              Edited by {page.updatedByName} · {relativeTime(page.updatedAt)}
+            </div>
+            <EditorContent editor={editor} />
+          </div>
+        </div>
       )}
     </>
   )
