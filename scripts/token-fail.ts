@@ -1357,6 +1357,7 @@ async function mentionIndex(base: string) {
   const saved = await callServerFn(base, user.cookie, 'savePageFn', {
     pageId: appId,
     title: 'App mention',
+    updatedAt: String(appPage.updated_at ?? ''),
     body: {
       type: 'doc',
       content: [

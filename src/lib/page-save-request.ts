@@ -71,9 +71,19 @@ export async function handlePageSave(request: Request) {
   if (!parsed) return json({ error: 'Bad request' }, 400)
   try {
     const session = await requireUnlockedSession()
-    const view = await savePage(session.user.id, parsed)
+    const stamp =
+      payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? (payload as { updatedAt?: unknown }).updatedAt
+        : undefined
+    if (typeof stamp !== 'string' || !Number.isFinite(Date.parse(stamp))) {
+      return json({ error: 'Bad request' }, 400)
+    }
+    const view = await savePage(session.user.id, { ...parsed, updatedAt: stamp })
     await touchLastSpace(session.user.id, view.spaceId)
-    return new Response(null, { status: 204 })
+    return new Response(null, {
+      status: 204,
+      headers: { 'x-updated-at': view.updatedAt },
+    })
   } catch (error) {
     if (error instanceof HttpError) {
       return json({ error: error.message }, error.status)

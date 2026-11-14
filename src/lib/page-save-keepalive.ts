@@ -4,6 +4,7 @@ export type PageSavePayload = {
   pageId: string
   title: string
   body: Json
+  updatedAt?: string
 }
 
 export type PageSaveTransport = {
@@ -37,14 +38,19 @@ export function deliverPageSave(
   return 'fetch' as const
 }
 
-export function browserPageSaveTransport(): PageSaveTransport {
+export function browserPageSaveTransport(
+  onSynced?: (updatedAt: string) => void,
+): PageSaveTransport {
   return {
     syncPost(url, body) {
       const xhr = new XMLHttpRequest()
       xhr.open('POST', url, false)
       xhr.setRequestHeader('content-type', 'application/json')
       xhr.send(body)
-      return xhr.status >= 200 && xhr.status < 300
+      if (xhr.status < 200 || xhr.status >= 300) return false
+      const next = xhr.getResponseHeader('x-updated-at')
+      if (next && onSynced) onSynced(next)
+      return true
     },
     beacon(url, body) {
       if (

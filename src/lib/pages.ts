@@ -617,7 +617,7 @@ async function writeDocBody(
 
 export async function savePage(
   userId: string,
-  input: { pageId: string; title: string; body: Json },
+  input: { pageId: string; title: string; body: Json; updatedAt?: string | null },
 ) {
   const access = await assertAccess(userId, { pageId: input.pageId })
   const title = input.title.trim() || 'Untitled'
@@ -632,7 +632,18 @@ export async function savePage(
     })
     return getPageView(userId, input.pageId)
   }
-  await writeDocBody(userId, input.pageId, title, input.body, null, null)
+  const stamp = input.updatedAt
+  if (stamp === undefined || stamp === null) {
+    await writeDocBody(userId, input.pageId, title, input.body, null, null)
+    return getPageView(userId, input.pageId)
+  }
+  const expected = Date.parse(stamp)
+  if (!Number.isFinite(expected)) throw new HttpError(400, 'Bad request')
+  const row = access.page
+  if (!row || row.updatedAt.getTime() !== expected) {
+    throw new HttpError(409, 'Conflict')
+  }
+  await writeDocBody(userId, input.pageId, title, input.body, null, row.updatedAt)
   return getPageView(userId, input.pageId)
 }
 

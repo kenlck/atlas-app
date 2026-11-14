@@ -129,6 +129,7 @@ async function main() {
     pageId: created.id,
     title: 'Origin',
     body: DOC,
+    updatedAt: created.updatedAt,
   }
 
   const missing = await postSave(base, cookie, null, good)
@@ -154,6 +155,7 @@ async function main() {
     pageId: created.id,
     title: 'Accepted',
     body: DOC,
+    updatedAt: created.updatedAt,
   })
   const after = JSON.parse(await snapshot(created.id)) as { title?: string }
   const changed = (await snapshot(created.id)) !== before
