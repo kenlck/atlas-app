@@ -442,6 +442,7 @@ const DELETE_PAGE_HUNKS = [
   'export async function archivePage',
   'export async function savePage',
   'async function writeDocBody',
+  'export async function updatePageForToken',
 ]
 
 const VERSION_HUNKS: Record<string, string[]> = {

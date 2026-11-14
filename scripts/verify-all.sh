@@ -451,7 +451,7 @@ require_step_log token-image "app_containers=1" "same_image=true" "mcp_status=40
 run_step token-fidelity ./scripts/verify-fail-conditions.sh token-fidelity
 require_step_log token-fidelity "get_status=200" "update_status=200" "mention_link=true" "date_link=true" "table_markup=true" "stored_body_identical=true"
 run_step token-conflict ./scripts/verify-fail-conditions.sh token-conflict
-require_step_log token-conflict "missing_status=409" "missing_unchanged=true" "stale_status=409" "stale_unchanged=true" "parent_status=400" "reparent_status=400" "parent_unchanged=true"
+require_step_log token-conflict "missing_status=200" "missing_unchanged=false" "stale_status=409" "stale_unchanged=true" "parent_status=400" "reparent_status=400" "parent_unchanged=true"
 run_step token-scope ./scripts/verify-fail-conditions.sh token-scope
 require_step_log token-scope "read_create_status=403" "read_update_status=403" "read_get_status=200" "read_create_stored=false" "read_title_unchanged=true" "read_search_status=200" "read_search_visible=true" "write_search_status=200" "write_search_visible=true"
 run_step token-expiry ./scripts/verify-fail-conditions.sh token-expiry
@@ -678,11 +678,13 @@ require_step_log 49-fc5 "49_fc5_planted_move_ungated=true" "49_fc5_planted_toast
 run_step 49-fc6 ./scripts/verify-fail-conditions.sh 49-fc6
 require_step_log 49-fc6 "49_fc6_planted_already_allowed=true" "49_fc6_planted_fixture=too-strict" "49_fc6_planted_status=403" "49_fc6_head_status=200" "49_fc6_head_parent_changed=true" "49_fc6_planted_exit=1" "49_fc6_head_exit=0" "49_fc6=pass" "recipe_exit=0"
 run_step 50-fc1 ./scripts/verify-fail-conditions.sh 50-fc1
-require_step_log 50-fc1 "50_fc1_planted_server_fn_unversioned=true" "50_fc1_planted_api_unversioned=true" "50_fc1_planted_server_status=200" "50_fc1_planted_server_stored=bob" "50_fc1_planted_api_status=200" "50_fc1_planted_api_stored=bob" "50_fc1_head_server_alice=200" "50_fc1_head_server_bob=409" "50_fc1_head_server_stored=alice" "50_fc1_head_api_alice=204" "50_fc1_head_api_bob=409" "50_fc1_head_api_stored=alice" "50_fc1_head_server_missing=400" "50_fc1_head_api_missing=400" "50_fc1_planted_exit=1" "50_fc1_head_exit=0" "50_fc1=pass" "recipe_exit=0"
+require_step_log 50-fc1 "50_fc1_planted_server_fn_unversioned=true" "50_fc1_planted_api_unversioned=true" "50_fc1_planted_server_status=200" "50_fc1_planted_server_stored=bob" "50_fc1_planted_api_status=200" "50_fc1_planted_api_stored=bob" "50_fc1_planted_race_wins=2" "50_fc1_planted_race_conflicts=0" "50_fc1_head_server_alice=200" "50_fc1_head_server_bob=409" "50_fc1_head_server_stored=alice" "50_fc1_head_api_alice=204" "50_fc1_head_api_bob=409" "50_fc1_head_api_stored=alice" "50_fc1_head_server_missing=400" "50_fc1_head_api_missing=400" "50_fc1_head_race_200=1" "50_fc1_head_race_409=1" "50_fc1_head_race_stored=true" "50_fc1_head_api_race_204=1" "50_fc1_head_api_race_409=1" "50_fc1_head_api_race_stored=true" "50_fc1_planted_exit=1" "50_fc1_head_exit=0" "50_fc1=pass" "recipe_exit=0"
 run_step 50-fc2 ./scripts/verify-fail-conditions.sh 50-fc2
 require_step_log 50-fc2 "50_fc2_planted_pin_ok=true" "50_fc2_planted_fixture=reject-save" "50_fc2_planted_status=409" "50_fc2_planted_stored=false" "50_fc2_head_server_first=200" "50_fc2_head_server_second=200" "50_fc2_head_server_stored=true" "50_fc2_head_api_first=204" "50_fc2_head_api_second=204" "50_fc2_head_api_stored=true" "50_fc2_head_api_header=true" "50_fc2_head_inflight_match=true" "50_fc2_head_inflight_status=200" "50_fc2_planted_exit=1" "50_fc2_head_exit=0" "50_fc2=pass" "recipe_exit=0"
 run_step 50-fc3 ./scripts/verify-fail-conditions.sh 50-fc3
 require_step_log 50-fc3 "50_fc3_planted_banner=false" "50_fc3_head_banner=true" "50_fc3_head_reload=1" "50_fc3_head_retry=0" "50_fc3_head_readonly=true" "50_fc3_head_text_visible=true" "50_fc3_head_stored=false" "50_fc3_planted_exit=1" "50_fc3_head_exit=0" "50_fc3=pass" "recipe_exit=0"
+run_step 50-fc4 ./scripts/verify-fail-conditions.sh 50-fc4
+require_step_log 50-fc4 "50_fc4_planted_pin_status=409" "50_fc4_planted_pin_stored=false" "50_fc4_planted_pin_ok=false" "50_fc4_head_status=200" "50_fc4_head_stored=true" "50_fc4_planted_exit=1" "50_fc4_head_exit=0" "50_fc4=pass" "recipe_exit=0"
 run_step fail10-3 ./scripts/verify-fail-conditions.sh 10-3
 require_step_log fail10-3 "grandchild_status=400" "grandchild_error_clear=true" "parents_unchanged=true" "grandchild_rows_unchanged=true" "self_status=400" "self_error_clear=true" "self_unchanged=true" "self_rows_unchanged=true" "valid_status=200" "valid_parent_updated=true" "cycle_walk_within_500ms=true" "statement_timeout=false" "cycle_rows_unchanged=true"
 run_step fail13 ./scripts/verify-fail-conditions.sh 13

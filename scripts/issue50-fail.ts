@@ -13,7 +13,7 @@ import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
 import type { Page } from 'playwright'
 import type { Json } from '../src/lib/body-text.ts'
-import { rejectEverySave } from './fixtures/issue50-save.ts'
+import { rejectEverySave, requireTokenStamp } from './fixtures/issue50-save.ts'
 import {
   assertLocalBaseUrl,
   assertLocalDatabaseUrl,
@@ -45,7 +45,7 @@ type App = {
   ) => Promise<View>
   savePage: (
     userId: string,
-    input: { pageId: string; title: string; body: Json },
+    input: { pageId: string; title: string; body: Json; updatedAt?: string },
   ) => Promise<View>
   getPageView: (userId: string, pageId: string) => Promise<View>
   createUser: (name?: string) => Promise<Person & { space: { id: string } }>
@@ -284,6 +284,44 @@ function plantedSources() {
   return serverUnversioned && apiUnversioned && writeUnversioned
 }
 
+async function parallelLibrary(app: App) {
+  const owner = await app.createUser('Ada')
+  const made = await app.createPage(owner.user.id, {
+    spaceId: owner.space.id,
+    title: 'Race',
+  })
+  await app.savePage(owner.user.id, {
+    pageId: made.id,
+    title: 'Race',
+    body: doc('base'),
+  })
+  const loaded = await app.getPageView(owner.user.id, made.id)
+  const [left, right] = await Promise.all([
+    statusOf(() =>
+      app.savePage(owner.user.id, {
+        pageId: made.id,
+        title: 'Race',
+        body: doc('RACE LEFT'),
+        updatedAt: loaded.updatedAt,
+      }),
+    ),
+    statusOf(() =>
+      app.savePage(owner.user.id, {
+        pageId: made.id,
+        title: 'Race',
+        body: doc('RACE RIGHT'),
+        updatedAt: loaded.updatedAt,
+      }),
+    ),
+  ])
+  const stored = JSON.stringify((await app.getPageView(owner.user.id, made.id)).body)
+  const wins = [left, right].filter((status) => status === 200).length
+  const conflicts = [left, right].filter((status) => status === 409).length
+  const leftKept = stored.includes('RACE LEFT')
+  const rightKept = stored.includes('RACE RIGHT')
+  return { wins, conflicts, kept: leftKept !== rightKept }
+}
+
 async function fc1Planted() {
   databaseUrl()
   ensureAuthEnv()
@@ -294,7 +332,15 @@ async function fc1Planted() {
     const api = await overwrite(app, 'api')
     return server && api
   })
-  return sources && overwrote
+  const raceRoot = await materializePin()
+  const raced = await withApp(raceRoot, async (app) => {
+    const race = await parallelLibrary(app)
+    line('50_fc1_planted_race_wins', race.wins)
+    line('50_fc1_planted_race_conflicts', race.conflicts)
+    line('50_fc1_planted_race_stored', race.kept)
+    return race.wins !== 1 || race.conflicts !== 1
+  })
+  return sources && overwrote && raced
 }
 
 async function freshPair(app: App, texts: [string, string]) {
@@ -594,6 +640,96 @@ async function fc1Head() {
       winner(apiAfter.body) === 'alice' &&
         apiAfter.updatedAt === apiStored.updatedAt,
     )
+
+    const racePage = await app.createPage(ada.userId, {
+      spaceId: serverPage.spaceId,
+      title: 'Race',
+    })
+    const raceBase = await callSaveFn(base, ada.cookie, fn, {
+      pageId: racePage.id,
+      title: 'Race',
+      body: doc('base'),
+      updatedAt: racePage.updatedAt,
+    })
+    if (raceBase !== 200) throw new Error('race base save failed')
+    const raceLoaded = await app.getPageView(ada.userId, racePage.id)
+    const [raceLeft, raceRight] = await Promise.all([
+      callSaveFn(base, ada.cookie, fn, {
+        pageId: racePage.id,
+        title: 'Race',
+        body: doc('RACE LEFT'),
+        updatedAt: raceLoaded.updatedAt,
+      }),
+      callSaveFn(base, ada.cookie, fn, {
+        pageId: racePage.id,
+        title: 'Race',
+        body: doc('RACE RIGHT'),
+        updatedAt: raceLoaded.updatedAt,
+      }),
+    ])
+    const raceStored = JSON.stringify(
+      (await app.getPageView(ada.userId, racePage.id)).body,
+    )
+    const raceWins = [raceLeft, raceRight].filter((status) => status === 200).length
+    const raceConflicts = [raceLeft, raceRight].filter(
+      (status) => status === 409,
+    ).length
+    const raceKept =
+      (raceLeft === 200 &&
+        raceStored.includes('RACE LEFT') &&
+        !raceStored.includes('RACE RIGHT')) ||
+      (raceRight === 200 &&
+        raceStored.includes('RACE RIGHT') &&
+        !raceStored.includes('RACE LEFT'))
+    line('50_fc1_head_race_200', raceWins)
+    line('50_fc1_head_race_409', raceConflicts)
+    line('50_fc1_head_race_stored', raceKept)
+
+    const apiRacePage = await app.createPage(ada.userId, {
+      spaceId: serverPage.spaceId,
+      title: 'Api race',
+    })
+    const apiRaceBase = await callSaveApi(base, ada.cookie, {
+      pageId: apiRacePage.id,
+      title: 'Api race',
+      body: doc('base'),
+      updatedAt: apiRacePage.updatedAt,
+    })
+    if (apiRaceBase.status !== 204 || !apiRaceBase.updatedAt)
+      throw new Error('api race base save failed')
+    const [apiRaceLeft, apiRaceRight] = await Promise.all([
+      callSaveApi(base, ada.cookie, {
+        pageId: apiRacePage.id,
+        title: 'Api race',
+        body: doc('RACE LEFT'),
+        updatedAt: apiRaceBase.updatedAt,
+      }),
+      callSaveApi(base, ada.cookie, {
+        pageId: apiRacePage.id,
+        title: 'Api race',
+        body: doc('RACE RIGHT'),
+        updatedAt: apiRaceBase.updatedAt,
+      }),
+    ])
+    const apiRaceStored = JSON.stringify(
+      (await app.getPageView(ada.userId, apiRacePage.id)).body,
+    )
+    const apiRaceWins = [apiRaceLeft, apiRaceRight].filter(
+      (item) => item.status === 204,
+    ).length
+    const apiRaceConflicts = [apiRaceLeft, apiRaceRight].filter(
+      (item) => item.status === 409,
+    ).length
+    const apiRaceKept =
+      (apiRaceLeft.status === 204 &&
+        apiRaceStored.includes('RACE LEFT') &&
+        !apiRaceStored.includes('RACE RIGHT')) ||
+      (apiRaceRight.status === 204 &&
+        apiRaceStored.includes('RACE RIGHT') &&
+        !apiRaceStored.includes('RACE LEFT'))
+    line('50_fc1_head_api_race_204', apiRaceWins)
+    line('50_fc1_head_api_race_409', apiRaceConflicts)
+    line('50_fc1_head_api_race_stored', apiRaceKept)
     return (
       alice === 200 &&
       stale === 409 &&
@@ -604,7 +740,13 @@ async function fc1Head() {
       apiBob.status === 409 &&
       winner(apiStored.body) === 'alice' &&
       apiMissing.status === 400 &&
-      winner(apiAfter.body) === 'alice'
+      winner(apiAfter.body) === 'alice' &&
+      raceWins === 1 &&
+      raceConflicts === 1 &&
+      raceKept &&
+      apiRaceWins === 1 &&
+      apiRaceConflicts === 1 &&
+      apiRaceKept
     )
   } finally {
     await app.closeDb().catch(() => undefined)
@@ -910,6 +1052,160 @@ async function fc3Head() {
   }
 }
 
+const TOKEN_BODY = 'token omits the stamp'
+
+async function omitViaHandler(root: string) {
+  const href = (rel: string) => pathToFileURL(join(root, rel)).href
+  const app = await loadApp(root)
+  try {
+    const tokens = (await import(href('src/lib/api-tokens.ts'))) as {
+      createApiToken: (
+        userId: string,
+        input: { name: string; scope: string; expiry: string },
+      ) => Promise<{ token: string }>
+    }
+    const mcp = (await import(href('src/lib/mcp.ts'))) as {
+      handleMcp: (request: Request) => Promise<Response>
+    }
+    const owner = await app.createUser('Ada')
+    const issued = await tokens.createApiToken(owner.user.id, {
+      name: 'agent',
+      scope: 'read_write',
+      expiry: '90d',
+    })
+    const made = await app.createPage(owner.user.id, {
+      spaceId: owner.space.id,
+      title: 'Notes',
+    })
+    const response = await mcp.handleMcp(
+      new Request('http://127.0.0.1/mcp', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${issued.token}`,
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: {
+            name: 'update_page',
+            arguments: { page_id: made.id, body: TOKEN_BODY },
+          },
+        }),
+      }),
+    )
+    await response.text()
+    const stored = await app.getPageView(owner.user.id, made.id)
+    return {
+      status: response.status,
+      stored: JSON.stringify(stored.body).includes(TOKEN_BODY),
+    }
+  } finally {
+    await app.closeDb().catch(() => undefined)
+    if (root !== repoRoot) rmSync(root, { recursive: true, force: true })
+  }
+}
+
+async function fc4Planted() {
+  databaseUrl()
+  ensureAuthEnv()
+  const plain = await materializePin()
+  const pin = await omitViaHandler(plain)
+  line('50_fc4_planted_pin_status', pin.status)
+  line('50_fc4_planted_pin_stored', pin.stored)
+  const pinOk = pin.status === 200 && pin.stored
+  line('50_fc4_planted_pin_ok', pinOk)
+  if (!pinOk) return true
+  const tight = await materializePin()
+  writeFileSync(
+    join(tight, 'src/lib/pages.ts'),
+    requireTokenStamp(readFileSync(join(tight, 'src/lib/pages.ts'), 'utf8')),
+  )
+  const rejected = await omitViaHandler(tight)
+  line('50_fc4_planted_fixture', 'require-stamp')
+  line('50_fc4_planted_status', rejected.status)
+  line('50_fc4_planted_stored', rejected.stored)
+  return rejected.status !== 200 || !rejected.stored
+}
+
+function mcpData(text: string) {
+  const parsed = JSON.parse(text) as {
+    result?: { content?: Array<{ text?: string }> }
+  }
+  const inner = parsed.result?.content?.[0]?.text
+  if (!inner) return null
+  return JSON.parse(inner) as { id?: string; body?: string; spaces?: Array<{ id?: string; kind?: string }> }
+}
+
+async function mcpCall(
+  base: string,
+  token: string,
+  name: string,
+  args: Record<string, unknown>,
+) {
+  const response = await fetch(`${base}/mcp`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name, arguments: args },
+    }),
+  })
+  const text = await response.text()
+  return { status: response.status, data: mcpData(text) }
+}
+
+async function fc4Head() {
+  const base = assertLocalBaseUrl(
+    process.env.BASE_URL ?? 'http://127.0.0.1:3000',
+  )
+  const app = await headApp()
+  try {
+    const ada = await signUp(base, 'Ada')
+    const created = await fetch(`${base}/api/atlas/tokens`, {
+      method: 'POST',
+      headers: {
+        cookie: ada.cookie,
+        origin: base,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ name: 'agent', scope: 'read_write', expiry: '90d' }),
+    })
+    const createdText = await created.text()
+    if (created.status !== 201) throw new Error('token create failed')
+    const token = (JSON.parse(createdText) as { token?: string }).token
+    if (!token || !token.startsWith('atl_')) throw new Error('token missing')
+    const spaces = await mcpCall(base, token, 'list_spaces', {})
+    const spaceId = spaces.data?.spaces?.find((item) => item.kind === 'personal')?.id
+    if (spaces.status !== 200 || !spaceId) throw new Error('personal space missing')
+    const made = await mcpCall(base, token, 'create_page', {
+      space_id: spaceId,
+      title: 'Notes',
+      body: 'base',
+    })
+    if (made.status !== 200 || !made.data?.id) throw new Error('token create page failed')
+    const updated = await mcpCall(base, token, 'update_page', {
+      page_id: made.data.id,
+      body: TOKEN_BODY,
+    })
+    const stored = await app.getPageView(ada.userId, made.data.id)
+    const kept = JSON.stringify(stored.body).includes(TOKEN_BODY)
+    line('50_fc4_head_status', updated.status)
+    line('50_fc4_head_stored', kept)
+    return updated.status === 200 && kept
+  } finally {
+    await app.closeDb().catch(() => undefined)
+  }
+}
+
 const mode = process.argv[2]
 try {
   if (mode === 'fc1-planted') {
@@ -929,6 +1225,12 @@ try {
     process.exit(bug ? 1 : 0)
   } else if (mode === 'fc3') {
     const ok = await fc3Head()
+    process.exit(ok ? 0 : 1)
+  } else if (mode === 'fc4-planted') {
+    const bug = await fc4Planted()
+    process.exit(bug ? 1 : 0)
+  } else if (mode === 'fc4') {
+    const ok = await fc4Head()
     process.exit(ok ? 0 : 1)
   } else {
     throw new Error('usage')

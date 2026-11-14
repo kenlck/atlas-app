@@ -592,7 +592,13 @@ async function writeDocBody(
   const db = getDb()
   const people = await peopleForSavedBody(pageId, body)
   await db.transaction(async (tx) => {
-    await lockWritablePage(tx, userId, pageId)
+    const locked = await lockWritablePage(tx, userId, pageId)
+    if (
+      expectedUpdatedAt &&
+      locked.page.updatedAt.getTime() !== expectedUpdatedAt.getTime()
+    ) {
+      throw new HttpError(409, 'Conflict')
+    }
     const adopted = await adoptDiagrams(tx, userId, pageId, body)
     const bodyText = await indexedBodyText(tx, adopted, people)
     const rows = await tx
@@ -605,11 +611,7 @@ async function writeDocBody(
         updatedAt: new Date(),
         ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
       })
-      .where(
-        expectedUpdatedAt
-          ? and(eq(page.id, pageId), eq(page.updatedAt, expectedUpdatedAt))
-          : eq(page.id, pageId),
-      )
+      .where(eq(page.id, pageId))
       .returning({ id: page.id })
     if (rows.length === 0) throw new HttpError(409, 'Conflict')
   })
@@ -633,17 +635,13 @@ export async function savePage(
     return getPageView(userId, input.pageId)
   }
   const stamp = input.updatedAt
-  if (stamp === undefined || stamp === null) {
-    await writeDocBody(userId, input.pageId, title, input.body, null, null)
-    return getPageView(userId, input.pageId)
+  let expected: Date | null = null
+  if (stamp !== undefined && stamp !== null) {
+    const parsed = Date.parse(stamp)
+    if (!Number.isFinite(parsed)) throw new HttpError(400, 'Bad request')
+    expected = new Date(parsed)
   }
-  const expected = Date.parse(stamp)
-  if (!Number.isFinite(expected)) throw new HttpError(400, 'Bad request')
-  const row = access.page
-  if (!row || row.updatedAt.getTime() !== expected) {
-    throw new HttpError(409, 'Conflict')
-  }
-  await writeDocBody(userId, input.pageId, title, input.body, null, row.updatedAt)
+  await writeDocBody(userId, input.pageId, title, input.body, null, expected)
   return getPageView(userId, input.pageId)
 }
 
@@ -770,19 +768,23 @@ export async function updatePageForToken(
   const access = await assertAccess(userId, { pageId: input.pageId })
   const row = access.page
   if (!row) notFound()
-  const expected =
-    typeof input.updatedAt === 'string'
-      ? Date.parse(input.updatedAt)
-      : Number.NaN
-  if (!Number.isFinite(expected) || row.updatedAt.getTime() !== expected) {
-    throw new HttpError(409, 'Conflict')
+  const provided = input.updatedAt !== undefined && input.updatedAt !== null
+  let expected: Date | null = null
+  if (provided) {
+    const parsed =
+      typeof input.updatedAt === 'string' ? Date.parse(input.updatedAt) : Number.NaN
+    if (!Number.isFinite(parsed)) throw new HttpError(409, 'Conflict')
+    expected = new Date(parsed)
   }
   const db = getDb()
   if (row.kind === 'whiteboard') {
     if (input.title === undefined) return getPageView(userId, row.id)
     const title = input.title.trim() || 'Untitled'
     await db.transaction(async (tx) => {
-      await lockWritablePage(tx, userId, row.id)
+      const locked = await lockWritablePage(tx, userId, row.id)
+      if (expected && locked.page.updatedAt.getTime() !== expected.getTime()) {
+        throw new HttpError(409, 'Conflict')
+      }
       const written = await tx
         .update(page)
         .set({
@@ -791,7 +793,7 @@ export async function updatePageForToken(
           updatedAt: new Date(),
           updatedViaTokenId: tokenId,
         })
-        .where(and(eq(page.id, row.id), eq(page.updatedAt, row.updatedAt)))
+        .where(eq(page.id, row.id))
         .returning({ id: page.id })
       if (written.length === 0) throw new HttpError(409, 'Conflict')
     })
@@ -800,7 +802,7 @@ export async function updatePageForToken(
   const title =
     input.title === undefined ? row.title : input.title.trim() || 'Untitled'
   const body = input.body === undefined ? (row.body as Json) : input.body
-  await writeDocBody(userId, row.id, title, body, tokenId, row.updatedAt)
+  await writeDocBody(userId, row.id, title, body, tokenId, expected)
   return getPageView(userId, row.id)
 }
 

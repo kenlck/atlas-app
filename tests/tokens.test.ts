@@ -294,14 +294,15 @@ describe('api tokens', () => {
       page_id: note.id,
       body: 'changed',
     })
-    expect(missingStamp.status).toBe(409)
-    expect((await getPageView(owner.user.id, note.id)).body).toEqual(richDoc)
+    expect(missingStamp.status).toBe(200)
+    const afterMissing = await getPageView(owner.user.id, note.id)
+    expect(JSON.stringify(afterMissing.body)).toContain('changed')
 
     const same = await call(ownerToken.token, 'update_page', {
       page_id: note.id,
       title: 'Secret',
       body: String(payload.body),
-      updated_at: current.updatedAt,
+      updated_at: afterMissing.updatedAt,
     })
     expect(same.status).toBe(200)
     const saved = await getPageView(owner.user.id, note.id)
@@ -374,7 +375,7 @@ describe('api tokens', () => {
     } satisfies Partial<HttpError>)
   })
 
-  it('rejects parent_id and a missing or stale updated_at before any write', async () => {
+  it('stores a token update with no updated_at and rejects a stale one', async () => {
     const owner = await createUser('Revo')
     const note = await createPage(owner.user.id, {
       spaceId: owner.space.id,
@@ -404,11 +405,10 @@ describe('api tokens', () => {
       page_id: note.id,
       body: 'agent clobber',
     })
-    expect(missing.status).toBe(409)
-    expect((await getPageView(owner.user.id, note.id)).body).toEqual(before.body)
-    expect((await getPageView(owner.user.id, note.id)).updatedAt).toBe(
-      before.updatedAt,
-    )
+    expect(missing.status).toBe(200)
+    const afterMissing = await getPageView(owner.user.id, note.id)
+    expect(JSON.stringify(afterMissing.body)).toContain('agent clobber')
+    expect(afterMissing.updatedAt).not.toBe(before.updatedAt)
 
     const bypass = await call(token.token, 'update_page', {
       page_id: note.id,
@@ -417,7 +417,7 @@ describe('api tokens', () => {
     })
     expect(bypass.status).toBe(400)
     expect((await getPageView(owner.user.id, note.id)).updatedAt).toBe(
-      before.updatedAt,
+      afterMissing.updatedAt,
     )
 
     await savePage(owner.user.id, {
