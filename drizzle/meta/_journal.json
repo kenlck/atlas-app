@@ -64,6 +64,13 @@
       "when": 1761900000000,
       "tag": "0008_invited_by_set_null",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1762000000000,
+      "tag": "0009_page_lock",
+      "breakpoints": true
     }
   ]
 }
