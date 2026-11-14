@@ -7,6 +7,7 @@ import { captureTableDateStates } from './table-date-states.ts'
 import {
   assertLocalBaseUrl,
   clickNewDoc,
+  enterEdit,
   stamp as utcStamp,
   submitAuthForm,
   waitForClient,
@@ -534,6 +535,7 @@ async function main() {
     await page.locator('#page-title').waitFor()
 
     mode = 'fail-save'
+    await enterEdit(page)
     await page.locator('.doc-editor').click()
     await page.keyboard.type(' more text')
     await page.getByText("Couldn't save.").waitFor()
@@ -545,6 +547,7 @@ async function main() {
     await page.locator('.tree a.it').filter({ hasText: 'Two' }).click()
     await page.locator('#page-title').waitFor()
     await page.locator('.doc-editor').waitFor()
+    await enterEdit(page)
     await page.locator('.doc-editor').click()
     await page.keyboard.type('Bold me')
     await page.keyboard.press('ControlOrMeta+A')

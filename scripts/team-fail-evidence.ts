@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { chromium } from 'playwright'
 import type { BrowserContext } from 'playwright'
+import { enterEdit } from './verify-local.ts'
 
 const execFileAsync = promisify(execFile)
 const BASE_URL = (process.env.BASE_URL ?? '').replace(/\/$/, '')
@@ -1016,6 +1017,7 @@ async function fail4(dir: string) {
   const fns = await loadServerFns()
   const saveFn = serverFn(fns, 'savePageFn')
   step('type in the open editor so its autosave fires')
+  await enterEdit(tab)
   const autosave = tab.waitForResponse(
     (response) =>
       response.url().includes(`/_serverFn/${saveFn.id}`) &&

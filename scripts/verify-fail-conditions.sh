@@ -895,6 +895,11 @@ recipe_10_4() {
   pnpm exec tsx scripts/save-origin.ts
 }
 
+recipe_37() {
+  echo "CMD pnpm exec tsx scripts/view-mode-fail.ts $1"
+  pnpm exec tsx scripts/view-mode-fail.ts "$1"
+}
+
 recipe_18() {
   local name=$1
   local work planted head
@@ -1195,6 +1200,15 @@ case "${1:-}" in
   18-fc6) run_recipe recipe_18_fc6 ;;
   18-fc7) run_recipe recipe_18_fc7 ;;
   18-fc8) run_recipe recipe_18_fc8 ;;
+  37-fc1) run_recipe recipe_37 fc1 ;;
+  37-fc2) run_recipe recipe_37 fc2 ;;
+  37-fc3) run_recipe recipe_37 fc3 ;;
+  37-fc4) run_recipe recipe_37 fc4 ;;
+  37-fc5) run_recipe recipe_37 fc5 ;;
+  37-fc7) run_recipe recipe_37 fc7 ;;
+  37-fc8) run_recipe recipe_37 fc8 ;;
+  37-fc9) run_recipe recipe_37 fc9 ;;
+  37-fc10) run_recipe recipe_37 fc10 ;;
   fc1) run_recipe recipe_fc1 ;;
   fc2) run_recipe recipe_fc2 ;;
   fc3) run_recipe recipe_fc3 ;;
@@ -1215,7 +1229,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|8-1|8-2|8-3|8-4|8-5|8-6|8-7|8-8|8-9|8-10|8-11|8-12|8-13|test-db-guard|fc1|fc2|fc3|fc4|10-3|10-4|auto-migrate-a|auto-migrate-b|auto-migrate-c|auto-migrate-d|auto-migrate-e|auto-migrate-f|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|8-1|8-2|8-3|8-4|8-5|8-6|8-7|8-8|8-9|8-10|8-11|8-12|8-13|test-db-guard|fc1|fc2|fc3|fc4|10-3|10-4|auto-migrate-a|auto-migrate-b|auto-migrate-c|auto-migrate-d|auto-migrate-e|auto-migrate-f|37-fc1|37-fc2|37-fc3|37-fc4|37-fc5|37-fc7|37-fc8|37-fc9|37-fc10|all]" >&2
     exit 2
     ;;
 esac

@@ -11,7 +11,7 @@ import {
   getPageView,
   savePage,
 } from '../src/lib/pages'
-import { assertLocalBaseUrl, assertLocalDatabaseUrl, submitAuthForm } from './verify-local.ts'
+import { assertLocalBaseUrl, assertLocalDatabaseUrl, enterEdit, submitAuthForm } from './verify-local.ts'
 
 const PASSWORD = 'diagram-recipe-pass'
 const LABEL = 'diagramlabel'
@@ -657,6 +657,7 @@ async function recipeCopy(base: string) {
   const page = await browserApp.newPage({ viewport: { width: 1280, height: 800 } })
   await addSession(page, base, owner.cookie)
   await page.goto(`${base}/s/${spaceId}/p/${doc.id}`, { waitUntil: 'domcontentloaded' })
+  await enterEdit(page)
   await page.getByText('Keep this').click()
   await pasteHtml(
     page,

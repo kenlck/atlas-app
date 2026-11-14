@@ -1,7 +1,7 @@
 import { chromium } from 'playwright'
 import type { BrowserContext, Page } from 'playwright'
 import { excelClipboard, sheetsClipboard } from './clipboard-fixtures.ts'
-import { assertLocalBaseUrl, clickNewDoc, submitAuthForm } from './verify-local.ts'
+import { assertLocalBaseUrl, clickNewDoc, enterEdit, submitAuthForm } from './verify-local.ts'
 
 const BASE_URL = assertLocalBaseUrl(process.env.BASE_URL ?? 'http://127.0.0.1:3000')
 const PASSWORD = process.env.VERIFY_PASSWORD ?? 'tables-dates-password'
@@ -272,6 +272,7 @@ async function timezoneRecipe(browser: Awaited<ReturnType<typeof chromium.launch
   const west = await second.newPage()
   await west.clock.install({ time: new Date('2026-03-01T02:00:00Z') })
   await west.goto(href, { waitUntil: 'networkidle' })
+  await enterEdit(west)
   const seen = await readChip(west, 0)
   console.log(`midway_seen_date=${seen.date}`)
   console.log(`midway_seen_label=${seen.label}`)

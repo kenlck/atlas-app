@@ -8,7 +8,7 @@ import {
   listPageTree,
 } from '../src/lib/pages'
 import type { TreeNode } from '../src/lib/pages'
-import { assertLocalBaseUrl, assertLocalDatabaseUrl, submitAuthForm } from './verify-local.ts'
+import { assertLocalBaseUrl, assertLocalDatabaseUrl, enterEdit, submitAuthForm } from './verify-local.ts'
 
 const PASSWORD = 'whiteboard-recipe-pass'
 
@@ -466,6 +466,8 @@ async function recipeFlush(base: string) {
   const page = await browserApp.newPage({ viewport: { width: 1280, height: 800 } })
   await signUpUi(page, base, 'Flush Board')
   await openWhiteboard(page)
+  await enterEdit(page)
+  await page.locator('.excalidraw .App-toolbar').waitFor()
   await page.route('**/api/drawings', async (route) => {
     const body = route.request().postData() ?? ''
     if (route.request().method() === 'POST' && body.includes('"via":"autosave"')) {
@@ -606,6 +608,7 @@ async function recipeStale(base: string) {
   })
   await page.goto(`${base}/s/${spaceId}/p/${board.id}`, { waitUntil: 'networkidle' })
   await page.locator('#page-title').waitFor()
+  await enterEdit(page)
   await page.locator('#page-title').fill('Conflict title')
   await page.getByRole('button', { name: 'Reload' }).waitFor({ timeout: 10_000 })
   const banner = await page.locator('.retry').innerText()
@@ -858,6 +861,7 @@ async function recipeRetry(base: string) {
   const page = await browserApp.newPage({ viewport: { width: 1280, height: 800 } })
   await signUpUi(page, base, 'Retry')
   await openWhiteboard(page)
+  await enterEdit(page)
   await page.route('**/api/drawings', async (route) => {
     if (route.request().method() === 'POST') {
       await route.fulfill({

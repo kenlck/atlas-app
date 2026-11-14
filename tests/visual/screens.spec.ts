@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import type { Request } from '@playwright/test'
 import { captureTableDateStates } from '../../scripts/table-date-states.ts'
-import { clickNewDoc, submitAuthForm } from '../../scripts/verify-local.ts'
+import { clickNewDoc, enterEdit, submitAuthForm } from '../../scripts/verify-local.ts'
 
 const PINNED =
   'mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea'
@@ -200,6 +200,7 @@ test('1280 screens with seeded data', async ({ browser, request }) => {
   await page.goto(pageUrl, { waitUntil: 'networkidle' })
   await page.locator('.doc-editor').waitFor()
   mode = 'fail-save'
+  await enterEdit(page)
   await page.locator('.doc-editor').click()
   await page.keyboard.type(' more')
   await page.getByText("Couldn't save.").waitFor()
