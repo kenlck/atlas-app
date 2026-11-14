@@ -11,6 +11,7 @@ import Underline from '@tiptap/extension-underline'
 import { getRouteApi, useRouter } from '@tanstack/react-router'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { tiptapToText } from '#/lib/body-text'
 import type { Json } from '#/lib/body-text'
 import type { PageView } from '#/lib/pages'
 import {
@@ -23,7 +24,7 @@ import {
   deliverPageSave,
 } from '#/lib/page-save-keepalive'
 import { relativeTime } from '#/lib/relative-time'
-import { savePageFn, createDiagramFn } from '#/server/fns'
+import { savePageFn, createDiagramFn, fetchPage } from '#/server/fns'
 import { DateChip } from '#/lib/date-chip'
 import { createDiagramExtension } from '#/lib/diagram-node'
 import { TableCursor } from '#/lib/table-cursor'
@@ -138,6 +139,7 @@ export function PageEditor({ page }: { page: PageView }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pageIdRef = useRef(page.id)
   const updatedAtRef = useRef(page.updatedAt)
+  const stampReady = useRef(Promise.resolve())
   const peopleRef = useRef(page.people)
   peopleRef.current = page.people
   const spaceData = spaceRoute.useLoaderData()
@@ -155,6 +157,7 @@ export function PageEditor({ page }: { page: PageView }) {
   routerRef.current = router
   const queueRef = useRef(
     createEditorSave(async (snapshot) => {
+      await stampReady.current
       const view = await savePageFn({
         data: {
           pageId: snapshot.pageId,
@@ -203,6 +206,7 @@ export function PageEditor({ page }: { page: PageView }) {
 
   const flushSave = async () => {
     if (deletedRef.current || frozenRef.current) return
+    await stampReady.current
     if (timer.current) {
       clearTimeout(timer.current)
       timer.current = null
@@ -354,6 +358,24 @@ export function PageEditor({ page }: { page: PageView }) {
     if (!editor) return
     mentions.sync(editor.view.dom)
   }, [mentions, editor, spaceData, peopleToken])
+
+  useEffect(() => {
+    const draftAtMount = draftRef.current
+    const loaded = page.body
+    if (!draftAtMount || tiptapToText(draftAtMount.body) === tiptapToText(loaded)) return
+    let cancel = false
+    stampReady.current = fetchPage({ data: { pageId: page.id } })
+      .then((view) => {
+        if (cancel) return
+        if (tiptapToText(view.body) === tiptapToText(draftAtMount.body)) {
+          updatedAtRef.current = view.updatedAt
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      cancel = true
+    }
+  }, [page.id])
 
   useEffect(() => {
     if (pageIdRef.current !== page.id) {
