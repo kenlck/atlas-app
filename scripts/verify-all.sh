@@ -641,6 +641,28 @@ run_step 44-fc19 ./scripts/verify-fail-conditions.sh 44-fc19
 require_step_log 44-fc19 "44_fc19_planted_restore_statuses=400,400" "44_fc19_head_restore_statuses=404,404,404,404" "44_fc19_head_hidden=true" "44_fc19_head_parent_status=404" "44_fc19_head_child_status=404" "44_fc19_head_search=false" "44_fc19_planted_exit=1" "44_fc19_head_exit=0" "44_fc19=pass" "recipe_exit=0"
 run_step 44-fc20 ./scripts/verify-fail-conditions.sh 44-fc20
 require_step_log 44-fc20 "44_fc20_planted_bug=true" "44_fc20_head_owner_delete=true" "44_fc20_head_archive=false" "44_fc20_head_member_delete=false" "44_fc20_planted_exit=1" "44_fc20_head_exit=0" "44_fc20=pass" "recipe_exit=0"
+run_step 38-fc1 ./scripts/verify-fail-conditions.sh 38-fc1
+require_step_log 38-fc1 "38_fc1_planted_note=e6902c30 has no page lock" "38_fc1_planted_status=200" "38_fc1_planted_changed=true" "38_fc1_head_member_status=403" "38_fc1_head_outsider_status=404" "38_fc1_head_deleted_status=404" "38_fc1_head_child_status=404" "38_fc1_head_unchanged=true" "38_fc1_head_member_menu=false" "38_fc1_head_creator_menu=true" "38_fc1_planted_exit=1" "38_fc1_head_exit=0" "38_fc1=pass" "recipe_exit=0"
+run_step 38-fc2 ./scripts/verify-fail-conditions.sh 38-fc2
+require_step_log 38-fc2 "38_fc2_planted_save_status=200" "38_fc2_planted_chip=false" "38_fc2_planted_switch=true" "38_fc2_head_chip=true" "38_fc2_head_icon=true" "38_fc2_head_switch=false" "38_fc2_head_readonly=true" "38_fc2_head_saves=0" "38_fc2_head_stored=false" "38_fc2_head_child_status=200" "38_fc2_planted_exit=1" "38_fc2_head_exit=0" "38_fc2=pass" "recipe_exit=0"
+run_step 38-fc3 ./scripts/verify-fail-conditions.sh 38-fc3
+require_step_log 38-fc3 "38_fc3_planted_save_status=200" "38_fc3_planted_drawing_status=200" "38_fc3_planted_rename_status=200" "38_fc3_planted_move_status=200" "38_fc3_planted_archive_status=200" "38_fc3_planted_mcp_status=200" "38_fc3_planted_stored=true" "38_fc3_planted_restore=skipped" "38_fc3_head_save_status=423" "38_fc3_head_drawing_status=423" "38_fc3_head_rename_status=423" "38_fc3_head_move_status=423" "38_fc3_head_archive_status=423" "38_fc3_head_mcp_status=423" "38_fc3_head_stored=false" "38_fc3_head_message=Page is locked by" "38_fc3_head_restore=skipped" "38_fc3_planted_exit=1" "38_fc3_head_exit=0" "38_fc3=pass" "recipe_exit=0"
+run_step 38-fc4 ./scripts/verify-fail-conditions.sh 38-fc4
+require_step_log 38-fc4 "38_fc4_planted_note=e6902c30 has no page lock" "38_fc4_planted_owner_save=423" "38_fc4_planted_owner_unlock=403" "38_fc4_head_creator_save=200" "38_fc4_head_owner_save=200" "38_fc4_head_creator_unlock=200" "38_fc4_head_owner_unlock=200" "38_fc4_head_personal_lock=200" "38_fc4_planted_exit=1" "38_fc4_head_exit=0" "38_fc4=pass" "recipe_exit=0"
+run_step 38-fc5 ./scripts/verify-fail-conditions.sh 38-fc5
+require_step_log 38-fc5 "38_fc5_planted_note=e6902c30 has no page lock" "38_fc5_planted_owner_unlock=403" "38_fc5_head_owner_unlock=200" "38_fc5_head_locked=false" "38_fc5_head_creator_status=404" "38_fc5_planted_exit=1" "38_fc5_head_exit=0" "38_fc5=pass" "recipe_exit=0"
+run_step 38-fc6 ./scripts/verify-fail-conditions.sh 38-fc6
+require_step_log 38-fc6 "38_fc6_planted_status=200" "38_fc6_planted_stored=true" "38_fc6_planted_saw_wait=true" "38_fc6_head_status=423" "38_fc6_head_stored=false" "38_fc6_head_saw_wait=true" "38_fc6_planted_exit=1" "38_fc6_head_exit=0" "38_fc6=pass" "recipe_exit=0"
+run_step 38-fc7 ./scripts/verify-fail-conditions.sh 38-fc7
+require_step_log 38-fc7 "38_fc7_planted_banner=false" "38_fc7_head_banner=true" "38_fc7_head_text=true" "38_fc7_head_readonly=true" "38_fc7_head_stored=false" "38_fc7_head_undo=false" "38_fc7_head_copy=false" "38_fc7_planted_exit=1" "38_fc7_head_exit=0" "38_fc7=pass" "recipe_exit=0"
+run_step 38-fc8 ./scripts/verify-fail-conditions.sh 38-fc8
+require_step_log 38-fc8 "38_fc8_planted_note=e6902c30 always shows View and Edit" "38_fc8_planted_can_edit=false" "38_fc8_head_switch=true" "38_fc8_head_saved=true" "38_fc8_planted_exit=1" "38_fc8_head_exit=0" "38_fc8=pass" "recipe_exit=0"
+run_step 38-fc9 ./scripts/verify-fail-conditions.sh 38-fc9
+require_step_log 38-fc9 "38_fc9_planted_draw_status=200" "38_fc9_head_view_mode=true" "38_fc9_head_save_status=423" "38_fc9_head_scene_same=true" "38_fc9_planted_exit=1" "38_fc9_head_exit=0" "38_fc9=pass" "recipe_exit=0"
+run_step 38-fc10 ./scripts/verify-fail-conditions.sh 38-fc10
+require_step_log 38-fc10 "38_fc10_planted_note=e6902c30 has no lock chip" "38_fc10_planted_wrap=true" "38_fc10_head_390_wrap=false" "38_fc10_head_390_scroll=false" "38_fc10_head_1280_scroll=false" "38_fc10_planted_exit=1" "38_fc10_head_exit=0" "38_fc10=pass" "recipe_exit=0"
+run_step 38-fc11 ./scripts/verify-fail-conditions.sh 38-fc11
+require_step_log 38-fc11 "38_fc11_planted_missing=true" "38_fc11_head_steps=true" "38_fc11_planted_exit=1" "38_fc11_head_exit=0" "38_fc11=pass" "recipe_exit=0"
 run_step fail10-3 ./scripts/verify-fail-conditions.sh 10-3
 require_step_log fail10-3 "grandchild_status=400" "grandchild_error_clear=true" "parents_unchanged=true" "grandchild_rows_unchanged=true" "self_status=400" "self_error_clear=true" "self_unchanged=true" "self_rows_unchanged=true" "valid_status=200" "valid_parent_updated=true" "cycle_walk_within_500ms=true" "statement_timeout=false" "cycle_rows_unchanged=true"
 run_step fail13 ./scripts/verify-fail-conditions.sh 13
