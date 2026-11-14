@@ -3,10 +3,14 @@ import { mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { sql } from 'drizzle-orm'
 import { assertLocalDatabaseUrl } from './verify-local.ts'
 
 // Pinned main. Never origin/main: that ref moves.
 const MAIN_PIN = 'c22273c90c9027a3113d5eb361df99a6328034dc'
+// The head that published the transaction handle for the life of the async
+// context. Never origin/main.
+const LEAK_PIN = '600aea37318ef331b6812bfa4101ebc11450dfaf'
 const SAVE_LIMIT_MS = 4000
 const SAVE_COUNT = 10
 
@@ -28,6 +32,19 @@ type SqlClient = <T>(
   ...values: unknown[]
 ) => Promise<T>
 
+type ProbeRow = { pid: string; txid: string; seen: number }
+
+type QueryHandle = {
+  execute: (query: ReturnType<typeof sql>) => Promise<unknown>
+}
+
+type AppDb = {
+  transaction: (
+    callback: (tx: QueryHandle) => Promise<unknown>,
+    config?: unknown,
+  ) => Promise<unknown>
+}
+
 type App = {
   savePage: SavePage
   createPage: (
@@ -44,6 +61,8 @@ type App = {
   ) => { status: number; message: string }
   getSql: () => SqlClient
   closeDb: () => Promise<void>
+  getDb: () => AppDb
+  getQueryDb: () => QueryHandle
 }
 
 const repoRoot = path.resolve(
@@ -122,9 +141,9 @@ function pinMatches() {
   )
 }
 
-function materializePin() {
+function materializePin(pin: string = MAIN_PIN) {
   const dir = mkdtempSync(path.join(tmpdir(), 'atlas-42-'))
-  const git = spawn('git', ['archive', '--format=tar', MAIN_PIN], {
+  const git = spawn('git', ['archive', '--format=tar', pin], {
     cwd: repoRoot,
   })
   const tar = spawn('tar', ['-x', '-C', dir])
@@ -183,7 +202,7 @@ async function loadApp(root: string): Promise<App> {
   const http = (await import(href('src/lib/http.ts'))) as Pick<App, 'HttpError'>
   const db = (await import(href('src/lib/db.ts'))) as Pick<
     App,
-    'getSql' | 'closeDb'
+    'getSql' | 'closeDb' | 'getDb' | 'getQueryDb'
   >
   return {
     savePage: pages.savePage,
@@ -193,6 +212,8 @@ async function loadApp(root: string): Promise<App> {
     HttpError: http.HttpError,
     getSql: db.getSql,
     closeDb: db.closeDb,
+    getDb: db.getDb,
+    getQueryDb: db.getQueryDb,
   }
 }
 
@@ -363,6 +384,208 @@ async function runFc2(app: App, label: '42_fc2_main' | '42_fc2_head') {
   finish(0)
 }
 
+function leakPinMatches() {
+  const db = execFileSync('git', ['show', `${LEAK_PIN}:src/lib/db.ts`], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  })
+  return (
+    db.includes('transactionDb.run(tx, () => callback(tx))') &&
+    db.includes('return transactionDb.getStore() ?? getDb()') &&
+    !db.includes('open:')
+  )
+}
+
+function probeRow(result: unknown): ProbeRow {
+  const rows = Array.isArray(result) ? result : []
+  const row = rows[0]
+  if (!row || typeof row !== 'object') throw new Error('probe returned no row')
+  const record = row as Record<string, unknown>
+  const seen = Number(record.seen)
+  return {
+    pid: typeof record.pid === 'string' ? record.pid : String(record.pid ?? ''),
+    txid: record.txid == null ? '' : String(record.txid),
+    seen: Number.isFinite(seen) ? seen : -1,
+  }
+}
+
+function probeSql() {
+  return sql`select pg_backend_pid()::text as pid, txid_current_if_assigned()::text as txid, (select count(*)::text from fc3_marker) as seen`
+}
+
+async function holdFinishedConnection(app: App, pid: string, token: string) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    let release = () => {}
+    const gate = new Promise<void>((unlock) => {
+      release = unlock
+    })
+    let settle = (_held: boolean) => {}
+    const opened = new Promise<boolean>((resolve) => {
+      settle = resolve
+    })
+    const done = app.getDb().transaction(async (tx) => {
+      const current = probeRow(
+        await tx.execute(
+          sql`select pg_backend_pid()::text as pid, ''::text as txid, '0' as seen`,
+        ),
+      )
+      if (current.pid !== pid) {
+        settle(false)
+        return
+      }
+      await tx.execute(sql`insert into fc3_marker (token) values (${token})`)
+      settle(true)
+      await gate
+      throw new Error('fc3-hold-rollback')
+    })
+    const held = await opened
+    if (!held) {
+      await done
+      continue
+    }
+    return {
+      async release() {
+        release()
+        try {
+          await done
+        } catch (error) {
+          const message = error instanceof Error ? error.message : ''
+          if (!message.includes('fc3-hold-rollback')) throw error
+        }
+      },
+    }
+  }
+  throw new Error('could not hold the finished connection')
+}
+
+async function runFc3(app: App, planted: boolean) {
+  const label = planted ? '42_fc3_planted' : '42_fc3_head'
+  await app.getSql()`create table if not exists fc3_marker (token text)`
+  await app.getSql()`delete from fc3_marker`
+  const owner = await app.createUser(planted ? 'Planted Leak' : 'Head Leak')
+  const page = await app.createPage(owner.user.id, {
+    spaceId: owner.space.id,
+    title: 'Leak',
+  })
+  await Promise.all(Array.from({ length: 10 }, () => app.getSql()`select 1`))
+  const db = app.getDb()
+  const run = db.transaction.bind(db)
+  let arm: (() => Promise<void>) | null = null
+  db.transaction = (callback, config) =>
+    run(async (tx) => {
+      if (arm) {
+        const start = arm
+        arm = null
+        await start()
+      }
+      return callback(tx)
+    }, config)
+
+  async function scenario(kind: 'commit' | 'rollback') {
+    let sawUncommitted = false
+    let allFresh = true
+    await app.getSql()`delete from fc3_marker`
+    let finishedPid = ''
+    let finishedTxid = ''
+    let settled = false
+    let releaseReady = () => {}
+    const ready = new Promise<void>((resolve) => {
+      releaseReady = resolve
+    })
+    const probes: Array<Promise<void>> = []
+
+    const record = async (name: 'timer' | 'detached') => {
+      await ready
+      const row = probeRow(await app.getQueryDb().execute(probeSql()))
+      const fresh =
+        row.seen === 0 &&
+        row.pid !== '' &&
+        finishedPid !== '' &&
+        (row.pid !== finishedPid || row.txid !== finishedTxid)
+      if (row.seen > 0) sawUncommitted = true
+      if (!fresh) allFresh = false
+      console.log(`${label}_${kind}_${name}_fresh=${fresh}`)
+      console.log(`${label}_${kind}_${name}_seen=${row.seen}`)
+      console.log(
+        `${label}_${kind}_${name}_same_pid=${row.pid === finishedPid}`,
+      )
+      console.log(`${label}_${kind}_${name}_after_settle=${settled}`)
+    }
+
+    arm = async () => {
+      const row = probeRow(await app.getQueryDb().execute(probeSql()))
+      finishedPid = row.pid
+      finishedTxid = row.txid
+      probes.push(
+        new Promise((resolve, reject) => {
+          const fire = () => {
+            if (!settled) {
+              setTimeout(fire, 20)
+              return
+            }
+            void record('timer').then(resolve, reject)
+          }
+          setTimeout(fire, 30)
+        }),
+      )
+      probes.push(
+        (async () => {
+          await record('detached')
+        })(),
+      )
+    }
+
+    if (kind === 'commit') {
+      await app.savePage(owner.user.id, {
+        pageId: page.id,
+        title: 'Saved',
+        body: { type: 'doc', content: [{ type: 'paragraph' }] },
+      })
+    } else {
+      try {
+        await app.getDb().transaction(async () => {
+          throw new Error('fc3-rollback')
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : ''
+        if (!message.includes('fc3-rollback')) throw error
+      }
+    }
+    settled = true
+    const held = await holdFinishedConnection(app, finishedPid, kind)
+    try {
+      releaseReady()
+      await Promise.race([
+        Promise.all(probes),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('fc3 probe timed out')), 3000)
+        }),
+      ])
+    } finally {
+      await held.release()
+    }
+    return { sawUncommitted, allFresh }
+  }
+
+  try {
+    const commit = await scenario('commit')
+    const rollback = await scenario('rollback')
+    const sawUncommitted = commit.sawUncommitted || rollback.sawUncommitted
+    const allFresh = commit.allFresh && rollback.allFresh
+    console.log(`${label}_saw_uncommitted=${sawUncommitted}`)
+    console.log(`${label}_fresh=${allFresh}`)
+    await app.getSql()`drop table if exists fc3_marker`
+    await app.closeDb()
+    if (planted) finish(sawUncommitted && !allFresh ? 1 : 2)
+    finish(allFresh && !sawUncommitted ? 0 : 1)
+  } catch (error) {
+    console.error(`${label}_error=${safeError(error)}`)
+    await app.getSql()`drop table if exists fc3_marker`.catch(() => undefined)
+    await app.closeDb().catch(() => undefined)
+    finish(2)
+  }
+}
+
 async function main() {
   const mode = process.argv[2] ?? ''
   requireLocalDatabase()
@@ -379,13 +602,26 @@ async function main() {
     if (!match) finish(2)
     scratch = await materializePin()
   }
-  const app = await loadApp(pinned && scratch ? scratch : repoRoot)
+  if (mode === 'fc3-planted') {
+    const match = leakPinMatches()
+    console.log(`42_fc3_pin=${LEAK_PIN}`)
+    console.log(`42_fc3_pin_match=${match}`)
+    if (!match) finish(2)
+    scratch = await materializePin(LEAK_PIN)
+  }
+  const app = await loadApp(
+    (pinned || mode === 'fc3-planted') && scratch ? scratch : repoRoot,
+  )
   if (mode === 'fc1-planted') await runFc1(app, true)
   else if (mode === 'fc1') await runFc1(app, false)
   else if (mode === 'fc2-main') await runFc2(app, '42_fc2_main')
   else if (mode === 'fc2-head') await runFc2(app, '42_fc2_head')
+  else if (mode === 'fc3-planted') await runFc3(app, true)
+  else if (mode === 'fc3') await runFc3(app, false)
   else {
-    console.error('usage: issue42-fail.ts fc1-planted|fc1|fc2-main|fc2-head')
+    console.error(
+      'usage: issue42-fail.ts fc1-planted|fc1|fc2-main|fc2-head|fc3-planted|fc3',
+    )
     finish(2)
   }
 }

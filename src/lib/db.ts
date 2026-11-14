@@ -9,7 +9,11 @@ type QueryDb = Pick<Database, 'select'>
 
 // A save holds one pool connection for the whole transaction. Access checks
 // that run during that transaction must reuse it, or concurrent saves deadlock.
-const transactionDb = new AsyncLocalStorage<QueryDb>()
+// `open` flips off when the callback finishes, including rollback, so a timer
+// started inside the transaction does not keep the finished handle.
+type TxScope = { db: QueryDb; open: boolean }
+
+const transactionDb = new AsyncLocalStorage<TxScope>()
 
 const globalForDb = globalThis as typeof globalThis & {
   atlasSql?: ReturnType<typeof postgres>
@@ -37,14 +41,22 @@ export function getDb() {
     const db = drizzle(getSql(), { schema })
     const run = db.transaction.bind(db)
     db.transaction = (callback, config) =>
-      run(async (tx) => transactionDb.run(tx, () => callback(tx)), config)
+      run(async (tx) => {
+        const scope: TxScope = { db: tx, open: true }
+        try {
+          return await transactionDb.run(scope, () => callback(tx))
+        } finally {
+          scope.open = false
+        }
+      }, config)
     globalForDb.atlasDb = db
   }
   return globalForDb.atlasDb
 }
 
 export function getQueryDb(): QueryDb {
-  return transactionDb.getStore() ?? getDb()
+  const s = transactionDb.getStore()
+  return s?.open ? s.db : getDb()
 }
 
 export async function closeDb() {
