@@ -420,13 +420,9 @@ async function adoptDiagrams(
       }
       let accessible = false
       try {
-        await assertAccess(
-          userId,
-          {
-            pageId: row ? row.pageId : MISSING_DRAWING_PAGE,
-          },
-          db,
-        )
+        await assertAccess(userId, {
+          pageId: row ? row.pageId : MISSING_DRAWING_PAGE,
+        })
         accessible = true
       } catch (error) {
         if (!(error instanceof HttpError) || error.status !== 404) throw error

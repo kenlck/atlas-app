@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm'
-import { getDb } from './db'
+import { getQueryDb } from './db'
 import { notFound } from './http'
 import { page, space, teamMember } from './schema'
 import type { Page, Space } from './schema'
@@ -14,9 +14,8 @@ export type AccessResult = {
   role: SpaceRole
 }
 
-type AccessDb = Pick<ReturnType<typeof getDb>, 'select'>
-
-async function loadSpace(db: AccessDb, spaceId: string) {
+async function loadSpace(spaceId: string) {
+  const db = getQueryDb()
   const rows = await db
     .select()
     .from(space)
@@ -25,12 +24,13 @@ async function loadSpace(db: AccessDb, spaceId: string) {
   return rows[0] ?? null
 }
 
-async function loadPage(db: AccessDb, pageId: string) {
+async function loadPage(pageId: string) {
+  const db = getQueryDb()
   const rows = await db.select().from(page).where(eq(page.id, pageId)).limit(1)
   return rows[0] ?? null
 }
 
-async function hasArchivedAncestor(db: AccessDb, row: Page) {
+async function hasArchivedAncestor(row: Page) {
   let current: Page | null = row
   const seen = new Set<string>()
   while (current) {
@@ -44,7 +44,7 @@ async function hasArchivedAncestor(db: AccessDb, row: Page) {
       return true
     }
     seen.add(current.id)
-    current = await loadPage(db, current.parentId)
+    current = await loadPage(current.parentId)
   }
   return true
 }
@@ -52,19 +52,18 @@ async function hasArchivedAncestor(db: AccessDb, row: Page) {
 export async function assertAccess(
   userId: string,
   target: AccessTarget,
-  db: AccessDb = getDb(),
 ): Promise<AccessResult> {
   let spaceRow: Space | null = null
   let pageRow: Page | null = null
 
   if ('pageId' in target) {
-    pageRow = await loadPage(db, target.pageId)
+    pageRow = await loadPage(target.pageId)
     if (!pageRow) {
       notFound()
     }
-    spaceRow = await loadSpace(db, pageRow.spaceId)
+    spaceRow = await loadSpace(pageRow.spaceId)
   } else {
-    spaceRow = await loadSpace(db, target.spaceId)
+    spaceRow = await loadSpace(target.spaceId)
   }
 
   if (!spaceRow) {
@@ -75,6 +74,7 @@ export async function assertAccess(
   if (spaceRow.kind === 'personal' && spaceRow.ownerUserId === userId) {
     role = 'personal'
   } else if (spaceRow.kind === 'team' && spaceRow.teamId) {
+    const db = getQueryDb()
     const members = await db
       .select({ role: teamMember.role })
       .from(teamMember)
@@ -89,7 +89,7 @@ export async function assertAccess(
   }
   if (!role) notFound()
 
-  if (pageRow && (await hasArchivedAncestor(db, pageRow))) {
+  if (pageRow && (await hasArchivedAncestor(pageRow))) {
     notFound()
   }
 
