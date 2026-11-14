@@ -815,8 +815,6 @@ export async function refreshDocText(
     .update(page)
     .set({
       bodyText: await indexedBodyText(getDb(), body, people),
-      updatedBy: userId,
-      updatedAt: new Date(),
       ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
     })
     .where(eq(page.id, pageId))

@@ -7,6 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -125,9 +126,9 @@ function pinText(path: string) {
   })
 }
 
-function materializePin() {
+function materializePin(sha = PIN) {
   const dir = mkdtempSync(join(tmpdir(), 'atlas-50-'))
-  const git = spawn('git', ['archive', '--format=tar', PIN], { cwd: repoRoot })
+  const git = spawn('git', ['archive', '--format=tar', sha], { cwd: repoRoot })
   const tar = spawn('tar', ['-x', '-C', dir])
   git.stdout.pipe(tar.stdin)
   return new Promise<string>((resolve, reject) => {
@@ -955,7 +956,7 @@ async function shot(page: Page, name: string) {
   }).trim()
   for (const dir of [
     join(repoRoot, 'artifacts', sha),
-    '/opt/cursor/artifacts',
+    process.env.ATLAS_ARTIFACTS_DIR || '/opt/cursor/artifacts',
   ]) {
     await mkdir(dir, { recursive: true })
     await writeFile(join(dir, name), buf)
@@ -1569,6 +1570,246 @@ async function fc6Head() {
   }
 }
 
+const FC8_PIN = '47ecfa713b67b8143d92e34886e679419cfcc98f'
+
+function freePort() {
+  return new Promise<number>((resolve, reject) => {
+    const server = createServer()
+    server.on('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      const port = typeof address === 'object' && address ? address.port : 0
+      server.close(() => resolve(port))
+    })
+  })
+}
+
+async function bootPinServer(root: string) {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('pnpm', ['build'], {
+      cwd: root,
+      env: process.env,
+      stdio: ['ignore', 'ignore', 'pipe'],
+    })
+    let err = ''
+    child.stderr.on('data', (chunk: Buffer) => {
+      err = `${err}${chunk.toString()}`.slice(-2000)
+    })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code === 0) resolve()
+      else reject(new Error(redact(err || 'pin build failed')))
+    })
+  })
+  const port = await freePort()
+  const base = `http://127.0.0.1:${port}`
+  const child = spawn('node', ['.output/server/index.mjs'], {
+    cwd: root,
+    detached: true,
+    env: {
+      ...process.env,
+      HOST: '127.0.0.1',
+      PORT: String(port),
+      BETTER_AUTH_URL: base,
+    },
+    stdio: 'ignore',
+  })
+  child.unref()
+  const stop = () => {
+    if (child.pid) {
+      try {
+        process.kill(-child.pid, 'SIGTERM')
+      } catch {
+        child.kill('SIGTERM')
+      }
+    }
+  }
+  const deadline = Date.now() + 30000
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${base}/sign-in`)
+      if (response.status === 200) {
+        await response.text().catch(() => '')
+        return { base, stop }
+      }
+      await response.text().catch(() => '')
+    } catch {
+      // the process is still binding
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300))
+  }
+  stop()
+  throw new Error('pin server did not start')
+}
+
+async function drawStroke(page: Page) {
+  const canvas = page.locator('.diagram-screen .excalidraw canvas').first()
+  await canvas.waitFor({ timeout: 30000 })
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error('canvas missing')
+  const startX = box.x + box.width * 0.45
+  const startY = box.y + box.height * 0.45
+  await page.mouse.click(startX, startY)
+  await page.keyboard.press('r')
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  await page.mouse.move(startX + 160, startY + 100, { steps: 10 })
+  await page.mouse.up()
+}
+
+async function diagramRetype(base: string) {
+  const app = await headApp()
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+  const saves: Array<{ marker: string; status: number }> = []
+  const markers = new Map<object, string>()
+  page.on('request', (request) => {
+    if (request.method() !== 'POST' || !request.url().includes('_serverFn'))
+      return
+    let post = ''
+    try {
+      post = request.postData() ?? ''
+    } catch {
+      return
+    }
+    const marker = post.includes('fc8next')
+      ? 'fc8next'
+      : post.includes('fc8mark')
+        ? 'fc8mark'
+        : ''
+    if (marker) markers.set(request, marker)
+  })
+  page.on('response', (response) => {
+    const marker = markers.get(response.request())
+    if (!marker) return
+    saves.push({ marker, status: response.status() })
+  })
+  let drawing = 0
+  try {
+    const ada = await signUp(base, 'Ada')
+    const team = await app.createTeam(ada.userId, 'Diagram')
+    const made = await app.createPage(ada.userId, {
+      spaceId: team.spaceId,
+      title: 'Diagram',
+    })
+    await signIn(page, base, ada.email, ada.password)
+    await page.goto(`${base}/s/${team.spaceId}/p/${made.id}`, {
+      waitUntil: 'domcontentloaded',
+    })
+    await page.locator('#page-title').waitFor()
+    await enterEdit(page)
+    await page.locator('.doc-editor').click()
+    const beforeType = saves.length
+    await page.keyboard.type('fc8mark')
+    const typeDeadline = Date.now() + 12000
+    while (saves.length === beforeType) {
+      if (Date.now() > typeDeadline) throw new Error('text save missing')
+      await page.waitForTimeout(100)
+    }
+    const typed = saves[beforeType]
+    if (!typed || typed.status !== 200) throw new Error('text save failed')
+    const beforeInsert = saves.length
+    await page.getByRole('button', { name: 'Drawing' }).click()
+    await page.getByText('Empty drawing').waitFor({ timeout: 15000 })
+    const insertDeadline = Date.now() + 12000
+    while (saves.length === beforeInsert) {
+      if (Date.now() > insertDeadline)
+        throw new Error('diagram insert save missing')
+      await page.waitForTimeout(100)
+    }
+    if (saves[beforeInsert]?.status !== 200)
+      throw new Error('diagram insert save failed')
+    await page.locator('.diagram-block .diagram-edit').click()
+    await page
+      .locator('.diagram-screen .excalidraw')
+      .waitFor({ timeout: 30000 })
+    await drawStroke(page)
+    const doneResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        response.url().includes('/api/drawings'),
+      { timeout: 30000 },
+    )
+    await page
+      .locator('.diagram-bar')
+      .getByRole('button', { name: 'Done' })
+      .click()
+    drawing = (await doneResponse).status()
+    await page
+      .locator('.diagram-screen')
+      .waitFor({ state: 'hidden', timeout: 15000 })
+    await page.getByText('fc8mark', { exact: true }).click()
+    await page.keyboard.press('End')
+    const beforeNext = saves.length
+    await page.keyboard.type(' fc8next')
+    const nextDeadline = Date.now() + 12000
+    while (!saves.slice(beforeNext).some((save) => save.marker === 'fc8next')) {
+      if (Date.now() > nextDeadline) throw new Error('follow-up save missing')
+      await page.waitForTimeout(100)
+    }
+    const again = saves
+      .slice(beforeNext)
+      .find((save) => save.marker === 'fc8next')
+    const conflict = page.getByText(
+      'Someone else changed this page since you opened it.',
+    )
+    await conflict.waitFor({ timeout: 4000 }).catch(() => undefined)
+    const banner = await conflict.count()
+    const stored = await app.getPageView(ada.userId, made.id)
+    const text = JSON.stringify(stored.body)
+    return {
+      type: typed.status,
+      drawing,
+      again: again?.status ?? 0,
+      banner: banner > 0,
+      persisted: text.includes('fc8mark') && text.includes('fc8next'),
+    }
+  } finally {
+    await browser.close()
+    await app.closeDb().catch(() => undefined)
+  }
+}
+
+async function fc8Planted() {
+  databaseUrl()
+  ensureAuthEnv()
+  const root = await materializePin(FC8_PIN)
+  const server = await bootPinServer(root)
+  try {
+    const result = await diagramRetype(server.base)
+    line('50_fc8_planted_type', result.type)
+    line('50_fc8_planted_drawing', result.drawing)
+    line('50_fc8_planted_again', result.again)
+    line('50_fc8_planted_banner', result.banner)
+    line('50_fc8_planted_persisted', result.persisted)
+    return result.again !== 200 || result.banner || !result.persisted
+  } finally {
+    server.stop()
+    rmSync(root, { recursive: true, force: true })
+  }
+}
+
+async function fc8Head() {
+  const base = assertLocalBaseUrl(
+    process.env.BASE_URL ?? 'http://127.0.0.1:3000',
+  )
+  const result = await diagramRetype(base)
+  line('50_fc8_head_type', result.type)
+  line('50_fc8_head_drawing', result.drawing)
+  line('50_fc8_head_again', result.again)
+  line('50_fc8_head_banner', result.banner)
+  line('50_fc8_head_persisted', result.persisted)
+  return (
+    result.type === 200 &&
+    result.drawing === 200 &&
+    result.again === 200 &&
+    !result.banner &&
+    result.persisted
+  )
+}
+
 const mode = process.argv[2]
 try {
   if (mode === 'fc1-planted') {
@@ -1609,6 +1850,12 @@ try {
     process.exit(ok ? 0 : 1)
   } else if (mode === 'reg-mcp') {
     const ok = await regMcp()
+    process.exit(ok ? 0 : 1)
+  } else if (mode === 'fc8-planted') {
+    const bug = await fc8Planted()
+    process.exit(bug ? 1 : 0)
+  } else if (mode === 'fc8') {
+    const ok = await fc8Head()
     process.exit(ok ? 0 : 1)
   } else {
     throw new Error('usage')
