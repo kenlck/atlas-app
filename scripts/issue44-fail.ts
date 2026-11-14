@@ -522,14 +522,23 @@ async function fc16(app: App, prefix: string, planted: boolean) {
   )
 }
 
-async function archivedStamp(app: App, pageId: string) {
+async function pageStamp(app: App, pageId: string) {
   const rows = (await app.getSql().unsafe(
-    'select archived_at from page where id = $1',
+    'select title, body::text as body, archived_at from page where id = $1',
     [pageId],
-  )) as Array<{ archived_at: Date | string | null }>
-  const value = rows[0]?.archived_at
-  if (value == null) return 'null'
-  return value instanceof Date ? value.toISOString() : String(value)
+  )) as Array<{ title: string; body: string; archived_at: Date | string | null }>
+  const row = rows[0]
+  const archived = row?.archived_at
+  return {
+    title: row?.title ?? '',
+    body: row?.body ?? '',
+    archived:
+      archived == null
+        ? 'null'
+        : archived instanceof Date
+          ? archived.toISOString()
+          : String(archived),
+  }
 }
 
 async function hiddenChild(app: App, label: string) {
@@ -562,18 +571,48 @@ async function hiddenAttempt(
   app: App,
   label: string,
   actor: 'member' | 'creator' | 'owner',
+  action: 'archive' | 'save',
 ) {
   const setup = await hiddenChild(app, label)
-  const before = await archivedStamp(app, setup.childId)
+  const before = await pageStamp(app, setup.childId)
   const userId =
     actor === 'member'
       ? setup.member.user.id
       : actor === 'creator'
         ? setup.creator.user.id
         : setup.owner.user.id
-  const status = await statusOf(() => app.archivePage(userId, setup.childId))
-  const after = await archivedStamp(app, setup.childId)
-  return { status, archivedSame: before === after && after === 'null' }
+  const status =
+    action === 'archive'
+      ? await statusOf(() => app.archivePage(userId, setup.childId))
+      : await statusOf(() =>
+          app.savePage(userId, {
+            pageId: setup.childId,
+            title: 'Rewritten child',
+            body: {
+              type: 'doc',
+              content: [
+                { type: 'paragraph', content: [{ type: 'text', text: 'hidden save' }] },
+              ],
+            },
+          }),
+        )
+  const after = await pageStamp(app, setup.childId)
+  return {
+    status,
+    archivedSame: before.archived === 'null' && after.archived === 'null',
+    contentSame: before.title === after.title && before.body === after.body,
+  }
+}
+
+function hiddenBug(
+  result: { status: number; archivedSame: boolean; contentSame: boolean },
+  action: 'archive' | 'save',
+) {
+  return (
+    result.status !== 404 ||
+    !result.archivedSame ||
+    (action === 'save' && !result.contentSame)
+  )
 }
 
 async function hiddenChildArchive(planted: boolean) {
@@ -582,21 +621,24 @@ async function hiddenChildArchive(planted: boolean) {
   const app = planted ? await loadApp(root) : await loadApp(repoRoot)
   try {
     line(`44_fc16_ancestor_${side}_pin`, planted ? COPY_PIN : 'head')
-    const member = await hiddenAttempt(app, 'Fc16 member', 'member')
-    const creator = await hiddenAttempt(app, 'Fc16 creator', 'creator')
-    const owner = await hiddenAttempt(app, 'Fc16 owner', 'owner')
-    const memberBug = member.status !== 404
-    const creatorBug = creator.status !== 404 || !creator.archivedSame
-    const ownerBug = owner.status !== 404 || !owner.archivedSame
-    line(`44_fc16_ancestor_member_${side}_status`, member.status)
-    line(`44_fc16_ancestor_member_${side}_exit`, memberBug ? 1 : 0)
-    line(`44_fc16_ancestor_creator_${side}_status`, creator.status)
-    line(`44_fc16_ancestor_creator_${side}_archived_same`, creator.archivedSame)
-    line(`44_fc16_ancestor_creator_${side}_exit`, creatorBug ? 1 : 0)
-    line(`44_fc16_ancestor_owner_${side}_status`, owner.status)
-    line(`44_fc16_ancestor_owner_${side}_archived_same`, owner.archivedSame)
-    line(`44_fc16_ancestor_owner_${side}_exit`, ownerBug ? 1 : 0)
-    return memberBug || creatorBug || ownerBug
+    const actors = ['member', 'creator', 'owner'] as const
+    let bug = false
+    for (const action of ['archive', 'save'] as const) {
+      for (const actor of actors) {
+        const result = await hiddenAttempt(app, `Fc16 ${action} ${actor}`, actor, action)
+        const failed = hiddenBug(result, action)
+        bug = bug || failed
+        const name =
+          action === 'archive'
+            ? `44_fc16_ancestor_${actor}_${side}`
+            : `44_fc16_ancestor_save_${actor}_${side}`
+        line(`${name}_status`, result.status)
+        line(`${name}_archived_same`, result.archivedSame)
+        if (action === 'save') line(`${name}_content_same`, result.contentSame)
+        line(`${name}_exit`, failed ? 1 : 0)
+      }
+    }
+    return bug
   } finally {
     if (planted) {
       await app.closeDb().catch(() => undefined)
