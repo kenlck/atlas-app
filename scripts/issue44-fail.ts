@@ -604,7 +604,7 @@ async function hiddenAttempt(
   }
 }
 
-function hiddenBug(
+function writeRejected(
   result: { status: number; archivedSame: boolean; contentSame: boolean },
   action: 'archive' | 'save',
 ) {
@@ -626,7 +626,7 @@ async function hiddenChildArchive(planted: boolean) {
     for (const action of ['archive', 'save'] as const) {
       for (const actor of actors) {
         const result = await hiddenAttempt(app, `Fc16 ${action} ${actor}`, actor, action)
-        const failed = hiddenBug(result, action)
+        const failed = writeRejected(result, action)
         bug = bug || failed
         const name =
           action === 'archive'
