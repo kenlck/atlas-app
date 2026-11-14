@@ -398,6 +398,18 @@ require_step_log autosave-flush "reload_exact_match=true" "navigate_exact_match=
 run_step tokens node scripts/lint-tokens.mjs
 run_step docker-build build_image
 run_step psql ensure_psql
+run_step auto-migrate-a ./scripts/verify-fail-conditions.sh auto-migrate-a
+require_step_log auto-migrate-a "auto_migrate_a result=pass" "exit_code=0" "http_code=200" "rows_match_journal=true" "user_table=true" "recipe_exit=0"
+run_step auto-migrate-b ./scripts/verify-fail-conditions.sh auto-migrate-b
+require_step_log auto-migrate-b "auto_migrate_b result=pass" "partial_exit=0" "forward_exit=0" "http_code=200" "moved_forward=true" "rows_match_journal=true" "recipe_exit=0"
+run_step auto-migrate-c ./scripts/verify-fail-conditions.sh auto-migrate-c
+require_step_log auto-migrate-c "auto_migrate_c result=pass" "first_exit=0" "second_exit=0" "http_code=200" "rows_unchanged=true" "recipe_exit=0"
+run_step auto-migrate-d ./scripts/verify-fail-conditions.sh auto-migrate-d
+require_step_log auto-migrate-d "auto_migrate_d result=pass" "first_exit=0" "second_exit=0" "advisory_lock_held=true" "rows_match_journal=true" "recipe_exit=0"
+run_step auto-migrate-e ./scripts/verify-fail-conditions.sh auto-migrate-e
+require_step_log auto-migrate-e "auto_migrate_e result=pass" "exit_code_nonzero=true" "port_open=false" "server_started=false" "recipe_exit=0"
+run_step auto-migrate-f ./scripts/verify-fail-conditions.sh auto-migrate-f
+require_step_log auto-migrate-f "auto_migrate_f result=pass" "exit_code=0" "http_code=200" "schema_objects=0" "cmdline=node .output/server/index.mjs" "migrate_logged=false" "recipe_exit=0"
 run_step verify-migrate migrate_image
 run_step verify-start start_image
 run_step healthcheck ./scripts/verify-fail-conditions.sh healthcheck

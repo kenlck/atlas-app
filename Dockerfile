@@ -14,5 +14,6 @@ ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
 COPY --from=build /app/.output ./.output
 COPY --from=build /app/migrate.mjs ./migrate.mjs
 COPY --from=build /app/drizzle ./drizzle
+COPY --from=build /app/scripts/start.sh ./scripts/start.sh
 EXPOSE 3000
-CMD ["node", ".output/server/index.mjs"]
+CMD ["sh", "scripts/start.sh"]
