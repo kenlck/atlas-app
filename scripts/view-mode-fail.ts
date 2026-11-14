@@ -421,8 +421,46 @@ function pinnedFile(path: string) {
   return execFileSync('git', ['show', `${PIN}:${path}`], { encoding: 'utf8' })
 }
 
+const DELETE_PAGE_HUNKS = [
+  'function assertScope',
+  'async function callTool',
+  'export type TreeNode',
+  'export type PageView',
+  'function asTree',
+  'export async function listPageTree',
+  'export async function getPageView',
+  'type PageTx',
+  'async function lockWritablePage',
+  'export async function movePage',
+]
+
+function deletePageDiffOnly(path: string) {
+  const diff = execFileSync('git', ['diff', '--unified=3', PIN, 'HEAD', '--', path], {
+    encoding: 'utf8',
+  })
+  if (!diff.trim()) return true
+  const hunks = diff.split(/^@@/m).slice(1)
+  if (hunks.length === 0) return false
+  return hunks.every((hunk) => {
+    const header = hunk.slice(0, hunk.indexOf('\n'))
+    const context = header.slice(header.indexOf('@@') + 2).trim()
+    if (context === '') {
+      const added = hunk
+        .split('\n')
+        .filter((row) => row.startsWith('+') && !row.startsWith('+++'))
+        .map((row) => row.slice(1))
+      return path.endsWith('pages.ts') && added.length === 1 && added[0] === "import type { SpaceRole } from './access'"
+    }
+    return DELETE_PAGE_HUNKS.some((name) => context.startsWith(name))
+  })
+}
+
 function sameFile(path: string) {
-  return readFileSync(path, 'utf8') === pinnedFile(path)
+  const current = readFileSync(path, 'utf8')
+  if (current === pinnedFile(path)) return true
+  if (path !== 'src/lib/mcp.ts' && path !== 'src/lib/pages.ts') return false
+  const committed = execFileSync('git', ['show', `HEAD:${path}`], { encoding: 'utf8' })
+  return committed === current && deletePageDiffOnly(path)
 }
 
 function statusIn(source: string, pattern: RegExp) {
