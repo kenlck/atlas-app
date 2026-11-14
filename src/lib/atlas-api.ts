@@ -14,6 +14,7 @@ import {
 } from './teams'
 import { createApiToken, listApiTokens, revokeApiToken } from './api-tokens'
 import { HttpError } from './http'
+import { setPageLock } from './pages'
 import { requireUnlockedSession } from './session'
 
 function json(body: unknown, status = 200) {
@@ -54,6 +55,16 @@ export async function handleAtlasApi(request: Request) {
     if (refusesPageRemoval(method, parts)) throw new HttpError(404, 'Not found')
     const session = await requireUnlockedSession()
     const userId = session.user.id
+    if (
+      method === 'POST' &&
+      parts[0] === 'pages' &&
+      parts.length === 3 &&
+      parts[1] &&
+      (parts[2] === 'lock' || parts[2] === 'unlock')
+    ) {
+      await setPageLock(userId, parts[1], parts[2] === 'lock')
+      return json({ ok: true })
+    }
 
     if (method === 'POST' && parts.length === 1 && parts[0] === 'teams') {
       const body = await readJson(request)

@@ -28,6 +28,8 @@ export type TreeNode = {
   parentId: string | null
   position: number
   canDelete: boolean
+  canLock: boolean
+  locked: boolean
   children: TreeNode[]
 }
 
@@ -42,6 +44,9 @@ export type PageView = {
   updatedAt: string
   updatedByName: string
   canDelete: boolean
+  canLock: boolean
+  canEdit: boolean
+  lockedByName: string | null
   breadcrumbs: Array<{ id: string; title: string }>
   people: MentionPerson[]
   drawing: {
@@ -58,6 +63,18 @@ export function canDeletePage(
   userId: string,
 ) {
   return role === 'personal' || role === 'owner' || createdBy === userId
+}
+
+function canManagePageLock(role: SpaceRole, createdBy: string, userId: string) {
+  return role === 'personal' || role === 'owner' || createdBy === userId
+}
+
+function canWriteLockedPage(
+  role: SpaceRole,
+  lockedBy: string | null,
+  userId: string,
+) {
+  return role === 'personal' || role === 'owner' || lockedBy === userId
 }
 
 function asTree(rows: Page[], userId: string, role: SpaceRole): TreeNode[] {
@@ -79,6 +96,8 @@ function asTree(rows: Page[], userId: string, role: SpaceRole): TreeNode[] {
         parentId: row.parentId,
         position: row.position,
         canDelete: canDeletePage(role, row.createdBy, userId),
+        canLock: canManagePageLock(role, row.createdBy, userId),
+        locked: row.lockedAt != null,
         children: walk(row.id),
       }))
   return walk(null)
@@ -207,6 +226,10 @@ export async function getPageView(
     updatedAt: row.updatedAt.toISOString(),
     updatedByName: authors[0]?.name ?? spaceRow.name,
     canDelete: canDeletePage(access.role, row.createdBy, userId),
+    canLock: canManagePageLock(access.role, row.createdBy, userId),
+    canEdit:
+      !row.lockedAt || canWriteLockedPage(access.role, row.lockedBy, userId),
+    lockedByName: row.lockedAt ? await lockerName(db, row.lockedBy) : null,
     breadcrumbs: await breadcrumbsFor(row),
     people:
       row.kind === 'whiteboard'
@@ -274,13 +297,15 @@ export async function renamePage(
   userId: string,
   input: { pageId: string; title: string },
 ) {
-  await assertAccess(userId, { pageId: input.pageId })
   const title = input.title.trim() || 'Untitled'
   const db = getDb()
-  await db
-    .update(page)
-    .set({ title, updatedBy: userId, updatedAt: new Date() })
-    .where(eq(page.id, input.pageId))
+  await db.transaction(async (tx) => {
+    await lockWritablePage(tx, userId, input.pageId)
+    await tx
+      .update(page)
+      .set({ title, updatedBy: userId, updatedAt: new Date() })
+      .where(eq(page.id, input.pageId))
+  })
   return getPageView(userId, input.pageId)
 }
 
@@ -343,11 +368,25 @@ type PageTx = Parameters<
   Parameters<ReturnType<typeof getDb>['transaction']>[0]
 >[0]
 
+async function lockerName(
+  db: Pick<PageTx, 'select'>,
+  userId: string | null,
+) {
+  if (!userId) return 'someone'
+  const rows = await db
+    .select({ name: user.name })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1)
+  const name = rows[0]?.name.trim()
+  return name || 'someone'
+}
+
 async function lockWritablePage(
   tx: PageTx,
   userId: string,
   pageId: string,
-  options?: { allowArchived?: boolean },
+  options?: { allowArchived?: boolean; purpose?: 'write' | 'lock' },
 ) {
   const preview = await tx
     .select({ spaceId: page.spaceId })
@@ -406,7 +445,42 @@ async function lockWritablePage(
   if (!row || row.spaceId !== spaceId) notFound()
   if (row.archivedAt && !options?.allowArchived) notFound()
   if (await hasArchivedAncestor({ ...row, archivedAt: null })) notFound()
+  if (
+    !row.archivedAt &&
+    row.lockedAt &&
+    options?.purpose !== 'lock' &&
+    !canWriteLockedPage(role, row.lockedBy, userId)
+  ) {
+    throw new HttpError(423, `Page is locked by ${await lockerName(tx, row.lockedBy)}`)
+  }
   return { page: row, space: spaceRow, role }
+}
+
+export async function holdWritablePage(tx: PageTx, userId: string, pageId: string) {
+  return lockWritablePage(tx, userId, pageId)
+}
+
+export async function setPageLock(userId: string, pageId: string, locked: boolean) {
+  const db = getDb()
+  await db.transaction(async (tx) => {
+    const held = await lockWritablePage(tx, userId, pageId, { purpose: 'lock' })
+    if (!canManagePageLock(held.role, held.page.createdBy, userId)) {
+      throw new HttpError(403, 'Forbidden')
+    }
+    if (locked) {
+      await tx
+        .update(page)
+        .set({ lockedBy: userId, lockedAt: new Date() })
+        .where(eq(page.id, pageId))
+      return
+    }
+    if (!held.page.lockedAt) return
+    await tx
+      .update(page)
+      .set({ lockedBy: null, lockedAt: null })
+      .where(eq(page.id, pageId))
+  })
+  return getPageView(userId, pageId)
 }
 
 // A block keeps a drawing id only when that row already belongs to this page
@@ -571,6 +645,7 @@ export async function movePage(
   const db = getDb()
   await db.transaction(async (tx) => {
     await lockSpaces(tx, [row.spaceId, parentSpaceId])
+    await lockWritablePage(tx, userId, row.id)
     const currentRows = await tx
       .select()
       .from(page)
@@ -730,16 +805,18 @@ export async function refreshDocText(
 }
 
 export async function createDiagram(userId: string, pageId: string) {
-  const access = await assertAccess(userId, { pageId })
-  if (!access.page || access.page.kind !== 'doc') notFound()
   const id = newId()
-  await getDb().insert(drawing).values({
-    id,
-    pageId,
-    scene: emptyScene,
-    version: 1,
-    previewSvg: null,
-    updatedAt: new Date(),
+  await getDb().transaction(async (tx) => {
+    const access = await lockWritablePage(tx, userId, pageId)
+    if (access.page.kind !== 'doc') notFound()
+    await tx.insert(drawing).values({
+      id,
+      pageId,
+      scene: emptyScene,
+      version: 1,
+      previewSvg: null,
+      updatedAt: new Date(),
+    })
   })
   return { id, version: 1 }
 }
@@ -748,25 +825,27 @@ export async function cloneDiagram(
   userId: string,
   input: { pageId: string; drawingId: string },
 ) {
-  const access = await assertAccess(userId, { pageId: input.pageId })
-  if (!access.page || access.page.kind !== 'doc') notFound()
   const db = getDb()
-  const rows = await db
-    .select()
-    .from(drawing)
-    .where(eq(drawing.id, input.drawingId))
-    .limit(1)
-  const source = rows[0]
-  if (!source) notFound()
-  await assertAccess(userId, { pageId: source.pageId })
   const id = newId()
-  await db.insert(drawing).values({
-    id,
-    pageId: input.pageId,
-    scene: source.scene,
-    version: 1,
-    previewSvg: cleanPreviewSvg(source.previewSvg),
-    updatedAt: new Date(),
+  await db.transaction(async (tx) => {
+    const access = await lockWritablePage(tx, userId, input.pageId)
+    if (access.page.kind !== 'doc') notFound()
+    const rows = await tx
+      .select()
+      .from(drawing)
+      .where(eq(drawing.id, input.drawingId))
+      .limit(1)
+    const source = rows[0]
+    if (!source) notFound()
+    await assertAccess(userId, { pageId: source.pageId })
+    await tx.insert(drawing).values({
+      id,
+      pageId: input.pageId,
+      scene: source.scene,
+      version: 1,
+      previewSvg: cleanPreviewSvg(source.previewSvg),
+      updatedAt: new Date(),
+    })
   })
   return { id, version: 1 }
 }

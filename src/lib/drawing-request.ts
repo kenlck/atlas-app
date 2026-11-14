@@ -16,7 +16,7 @@ import {
 import type { DrawingScene } from './drawing'
 import { HttpError, notFound } from './http'
 import { saveOriginAllowed } from './page-save-request'
-import { refreshDocText } from './pages'
+import { holdWritablePage, refreshDocText } from './pages'
 import { page, drawing } from './schema'
 import { requireUnlockedSession } from './session'
 import { touchLastSpace } from './spaces'
@@ -200,6 +200,7 @@ export async function handleDrawingRequest(request: Request) {
 
     const db = getDb()
     const written = await db.transaction(async (tx) => {
+      await holdWritablePage(tx, caller.userId, board.page.id)
       const rows = await tx
         .update(drawing)
         .set({
