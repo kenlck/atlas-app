@@ -702,8 +702,6 @@ export async function movePage(
       .set({
         parentId: input.parentId,
         position,
-        updatedBy: userId,
-        updatedAt: new Date(),
       })
       .where(eq(page.id, current.id))
   })

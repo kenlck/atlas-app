@@ -483,19 +483,20 @@ function serverFnPayload(data: unknown) {
   return { t: node(data), f: 127, m: [] as unknown[] }
 }
 
-async function serverFnId() {
-  const dir = join(repoRoot, '.output/server/_ssr')
+async function serverFnId(name = 'savePageFn', root = repoRoot) {
+  const dir = join(root, '.output/server/_ssr')
   const files = (await readdir(dir)).filter(
     (file) => file.startsWith('fns-') && file.endsWith('.mjs'),
   )
-  const pattern =
-    /var savePageFn = createServerFn\(\{ method: "POST" \}\)[\s\S]*?createSsrRpc\("([a-f0-9]{64})"\)/
+  const pattern = new RegExp(
+    `var ${name} = createServerFn\\(\\{ method: "POST" \\}\\)[\\s\\S]*?createSsrRpc\\("([a-f0-9]{64})"\\)`,
+  )
   for (const file of files) {
     const text = await readFile(join(dir, file), 'utf8')
     const match = pattern.exec(text)
     if (match?.[1]) return match[1]
   }
-  throw new Error('savePageFn id missing')
+  throw new Error(`${name} id missing`)
 }
 
 async function callSaveFn(
@@ -1810,6 +1811,158 @@ async function fc8Head() {
   )
 }
 
+const FC9_PIN = '636c66cbfe49ee8c17ff330a1069a435de0eedfd'
+
+async function moveRetype(base: string, buildRoot: string) {
+  const app = await headApp()
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+  const saves: Array<{ marker: string; status: number }> = []
+  const markers = new Map<object, string>()
+  page.on('request', (request) => {
+    if (request.method() !== 'POST' || !request.url().includes('_serverFn'))
+      return
+    let post = ''
+    try {
+      post = request.postData() ?? ''
+    } catch {
+      return
+    }
+    const marker = post.includes('fc9next')
+      ? 'fc9next'
+      : post.includes('fc9mark')
+        ? 'fc9mark'
+        : ''
+    if (marker) markers.set(request, marker)
+  })
+  page.on('response', (response) => {
+    const marker = markers.get(response.request())
+    if (!marker) return
+    saves.push({ marker, status: response.status() })
+  })
+  let move = 0
+  try {
+    const ada = await signUp(base, 'Ada')
+    const team = await app.createTeam(ada.userId, 'Move')
+    const made = await app.createPage(ada.userId, {
+      spaceId: team.spaceId,
+      title: 'Notes',
+    })
+    const parent = await app.createPage(ada.userId, {
+      spaceId: team.spaceId,
+      title: 'Parent',
+    })
+    await signIn(page, base, ada.email, ada.password)
+    await page.goto(`${base}/s/${team.spaceId}/p/${made.id}`, {
+      waitUntil: 'domcontentloaded',
+    })
+    await page.locator('#page-title').waitFor()
+    await enterEdit(page)
+    await page.locator('.doc-editor').click()
+    const beforeType = saves.length
+    await page.keyboard.type('fc9mark')
+    const typeDeadline = Date.now() + 12000
+    while (saves.length === beforeType) {
+      if (Date.now() > typeDeadline) throw new Error('text save missing')
+      await page.waitForTimeout(100)
+    }
+    const typed = saves[beforeType]
+    if (!typed || typed.status !== 200) throw new Error('text save failed')
+    const moveId = await serverFnId('movePageFn', buildRoot)
+    const body = JSON.stringify(
+      serverFnPayload({
+        data: { pageId: made.id, parentId: parent.id },
+      }),
+    )
+    move = await page.evaluate(
+      async ({ id, payload }) => {
+        const response = await fetch(`/_serverFn/${id}`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-tsr-serverFn': 'true',
+          },
+          credentials: 'same-origin',
+          body: payload,
+        })
+        await response.text()
+        return response.status
+      },
+      { id: moveId, payload: body },
+    )
+    if (move !== 200) throw new Error('move failed')
+    await page.getByText('fc9mark', { exact: true }).click()
+    await page.keyboard.press('End')
+    const beforeNext = saves.length
+    await page.keyboard.type(' fc9next')
+    const nextDeadline = Date.now() + 12000
+    while (!saves.slice(beforeNext).some((save) => save.marker === 'fc9next')) {
+      if (Date.now() > nextDeadline) throw new Error('follow-up save missing')
+      await page.waitForTimeout(100)
+    }
+    const again = saves
+      .slice(beforeNext)
+      .find((save) => save.marker === 'fc9next')
+    const conflict = page.getByText(
+      'Someone else changed this page since you opened it.',
+    )
+    await conflict.waitFor({ timeout: 4000 }).catch(() => undefined)
+    const banner = await conflict.count()
+    const stored = await app.getPageView(ada.userId, made.id)
+    const text = JSON.stringify(stored.body)
+    return {
+      type: typed.status,
+      move,
+      again: again?.status ?? 0,
+      banner: banner > 0,
+      persisted: text.includes('fc9mark') && text.includes('fc9next'),
+    }
+  } finally {
+    await browser.close()
+    await app.closeDb().catch(() => undefined)
+  }
+}
+
+async function fc9Planted() {
+  databaseUrl()
+  ensureAuthEnv()
+  const root = await materializePin(FC9_PIN)
+  const server = await bootPinServer(root)
+  try {
+    const result = await moveRetype(server.base, root)
+    line('50_fc9_planted_type', result.type)
+    line('50_fc9_planted_move', result.move)
+    line('50_fc9_planted_again', result.again)
+    line('50_fc9_planted_banner', result.banner)
+    line('50_fc9_planted_persisted', result.persisted)
+    return result.again !== 200 || result.banner || !result.persisted
+  } finally {
+    server.stop()
+    rmSync(root, { recursive: true, force: true })
+  }
+}
+
+async function fc9Head() {
+  const base = assertLocalBaseUrl(
+    process.env.BASE_URL ?? 'http://127.0.0.1:3000',
+  )
+  const result = await moveRetype(base, repoRoot)
+  line('50_fc9_head_type', result.type)
+  line('50_fc9_head_move', result.move)
+  line('50_fc9_head_again', result.again)
+  line('50_fc9_head_banner', result.banner)
+  line('50_fc9_head_persisted', result.persisted)
+  return (
+    result.type === 200 &&
+    result.move === 200 &&
+    result.again === 200 &&
+    !result.banner &&
+    result.persisted
+  )
+}
+
 const mode = process.argv[2]
 try {
   if (mode === 'fc1-planted') {
@@ -1856,6 +2009,12 @@ try {
     process.exit(bug ? 1 : 0)
   } else if (mode === 'fc8') {
     const ok = await fc8Head()
+    process.exit(ok ? 0 : 1)
+  } else if (mode === 'fc9-planted') {
+    const bug = await fc9Planted()
+    process.exit(bug ? 1 : 0)
+  } else if (mode === 'fc9') {
+    const ok = await fc9Head()
     process.exit(ok ? 0 : 1)
   } else {
     throw new Error('usage')
