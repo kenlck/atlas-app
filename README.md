@@ -12,6 +12,7 @@ The app is configured only by:
 - `ADMIN_API_SECRET` — required in production (the process refuses to boot if it is missing or empty). If it is unset, empty, or shorter than 32 characters, `POST /api/admin/reset-password` returns 404.
 - `TRUST_PROXY` — optional. Default off. When `1`, the client IP is the hop `TRUSTED_PROXY_HOPS` from the right of `X-Forwarded-For` (default 1, the rightmost hop). Admin reset and the auth rate limiter use that same address. Otherwise both use the TCP socket peer.
 - `TRUSTED_PROXY_HOPS` — optional. Default `1` when unset. A set value must be a positive integer, or production refuses to boot.
+- `AUTO_MIGRATE` — optional. Off unless the value is exactly `1`. When it is `1`, the start command applies the SQL in `drizzle/` and starts the server only after that exits 0. Concurrent starts take one Postgres advisory lock, so one start applies the migrations and the others wait, then continue. Any other value, including unset, execs `node .output/server/index.mjs` and does not open a migration connection.
 
 ## Local
 
@@ -48,7 +49,7 @@ docker run --rm -p 3000:3000 \
   atlas-app
 ```
 
-Nitro `node-server` listens on `PORT` (default 3000).
+The image command is `scripts/start.sh`. It honors `AUTO_MIGRATE`, then runs the server. Nitro `node-server` listens on `PORT` (default 3000).
 
 ## Admin password reset
 
