@@ -28,6 +28,7 @@ Preconditions:
 - **Screenshot of the banner.** Run `pnpm visual-shots`. `artifacts/<head sha>/1280-page-autosave-retry.png` is the banner. The recipe log is the pass condition. The PNG is the picture of it.
 - **New page after a failed or hung save.** Run `./scripts/verify-fail-conditions.sh 18-fc5`. The log shows `fc5_fail_text_kept=true`, `fc5_fail_url_kept=true`, `fc5_hang_timed_out=true`, and `fc5_hang_text_kept=true`. The planted run exits non-zero.
 - **Someone else saved.** Run `./scripts/verify-fail-conditions.sh 50-fc3`. The log shows `50_fc3_head_banner=true`, `50_fc3_head_reload=1`, `50_fc3_head_retry=0`, `50_fc3_head_readonly=true`, and `50_fc3_head_text_visible=true`. Screenshots are `50-fc3-conflict-1280.png` and `50-fc3-conflict-390.png`.
+- **Several autosaves.** Run `./scripts/verify-fail-conditions.sh 50-fc6`. One person types three times. The log shows `50_fc6_head_statuses=200,200,200` and `50_fc6_head_banner=false`.
 
 ## Gotchas
 

@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
-import type { Page } from 'playwright'
+import type { Page, Request } from 'playwright'
 import type { Json } from '../src/lib/body-text.ts'
 import { rejectEverySave, requireTokenStamp } from './fixtures/issue50-save.ts'
 import {
@@ -1108,15 +1108,15 @@ async function omitViaHandler(root: string) {
   }
 }
 
-async function fc4Planted() {
+async function fc7Planted() {
   databaseUrl()
   ensureAuthEnv()
   const plain = await materializePin()
   const pin = await omitViaHandler(plain)
-  line('50_fc4_planted_pin_status', pin.status)
-  line('50_fc4_planted_pin_stored', pin.stored)
+  line('50_fc7_planted_pin_status', pin.status)
+  line('50_fc7_planted_pin_stored', pin.stored)
   const pinOk = pin.status === 200 && pin.stored
-  line('50_fc4_planted_pin_ok', pinOk)
+  line('50_fc7_planted_pin_ok', pinOk)
   if (!pinOk) return true
   const tight = await materializePin()
   writeFileSync(
@@ -1124,9 +1124,9 @@ async function fc4Planted() {
     requireTokenStamp(readFileSync(join(tight, 'src/lib/pages.ts'), 'utf8')),
   )
   const rejected = await omitViaHandler(tight)
-  line('50_fc4_planted_fixture', 'require-stamp')
-  line('50_fc4_planted_status', rejected.status)
-  line('50_fc4_planted_stored', rejected.stored)
+  line('50_fc7_planted_fixture', 'require-stamp')
+  line('50_fc7_planted_status', rejected.status)
+  line('50_fc7_planted_stored', rejected.stored)
   return rejected.status !== 200 || !rejected.stored
 }
 
@@ -1163,7 +1163,7 @@ async function mcpCall(
   return { status: response.status, data: mcpData(text) }
 }
 
-async function fc4Head() {
+async function fc7Head() {
   const base = assertLocalBaseUrl(
     process.env.BASE_URL ?? 'http://127.0.0.1:3000',
   )
@@ -1198,10 +1198,421 @@ async function fc4Head() {
     })
     const stored = await app.getPageView(ada.userId, made.data.id)
     const kept = JSON.stringify(stored.body).includes(TOKEN_BODY)
-    line('50_fc4_head_status', updated.status)
-    line('50_fc4_head_stored', kept)
+    line('50_fc7_head_status', updated.status)
+    line('50_fc7_head_stored', kept)
     return updated.status === 200 && kept
   } finally {
+    await app.closeDb().catch(() => undefined)
+  }
+}
+
+async function staleLibrary(app: App) {
+  const owner = await app.createUser('Ada')
+  const made = await app.createPage(owner.user.id, {
+    spaceId: owner.space.id,
+    title: 'Shared',
+  })
+  await app.savePage(owner.user.id, {
+    pageId: made.id,
+    title: 'Shared',
+    body: doc('base'),
+  })
+  const loaded = await app.getPageView(owner.user.id, made.id)
+  await app.savePage(owner.user.id, {
+    pageId: made.id,
+    title: 'Shared',
+    body: doc('newer text survives'),
+    updatedAt: loaded.updatedAt,
+  })
+  const stale = await statusOf(() =>
+    app.savePage(owner.user.id, {
+      pageId: made.id,
+      title: 'Shared',
+      body: doc('stale text lost'),
+      updatedAt: loaded.updatedAt,
+    }),
+  )
+  const stored = JSON.stringify((await app.getPageView(owner.user.id, made.id)).body)
+  return {
+    stale,
+    newer: stored.includes('newer text survives') && !stored.includes('stale text lost'),
+  }
+}
+
+async function fc4Planted() {
+  databaseUrl()
+  ensureAuthEnv()
+  const serverFn = sliceFn(
+    pinText('src/server/fns.ts'),
+    'export const savePageFn',
+    '\nexport const ',
+  )
+  const api = sliceFn(
+    pinText('src/lib/page-save-request.ts'),
+    'export async function handlePageSave',
+    '\nexport ',
+  )
+  line(
+    '50_fc4_planted_server_fn_unversioned',
+    serverFn.length > 0 && !serverFn.includes('updatedAt'),
+  )
+  line(
+    '50_fc4_planted_api_unversioned',
+    api.length > 0 && !api.includes('updatedAt'),
+  )
+  const serverRoot = await materializePin()
+  const server = await withApp(serverRoot, (app) => staleLibrary(app))
+  line('50_fc4_planted_server_status', server.stale)
+  line('50_fc4_planted_server_newer', server.newer)
+  const apiRoot = await materializePin()
+  const apiSave = await withApp(apiRoot, (app) => staleLibrary(app))
+  line('50_fc4_planted_api_status', apiSave.stale)
+  line('50_fc4_planted_api_newer', apiSave.newer)
+  return (
+    serverFn.length > 0 &&
+    !serverFn.includes('updatedAt') &&
+    api.length > 0 &&
+    !api.includes('updatedAt') &&
+    server.stale === 200 &&
+    !server.newer &&
+    apiSave.stale === 200 &&
+    !apiSave.newer
+  )
+}
+
+async function fc4Head() {
+  const base = assertLocalBaseUrl(
+    process.env.BASE_URL ?? 'http://127.0.0.1:3000',
+  )
+  const app = await headApp()
+  try {
+    const fn = await serverFnId()
+    const ada = await signUp(base, 'Ada')
+    const team = await app.createTeam(ada.userId, 'Paths')
+    const serverPage = await app.createPage(ada.userId, {
+      spaceId: team.spaceId,
+      title: 'Server',
+    })
+    const serverBase = await callSaveFn(base, ada.cookie, fn, {
+      pageId: serverPage.id,
+      title: 'Server',
+      body: doc('base'),
+      updatedAt: serverPage.updatedAt,
+    })
+    if (serverBase !== 200) throw new Error('server base save failed')
+    const serverLoaded = await app.getPageView(ada.userId, serverPage.id)
+    const serverNewer = await callSaveFn(base, ada.cookie, fn, {
+      pageId: serverPage.id,
+      title: 'Server',
+      body: doc('newer text survives'),
+      updatedAt: serverLoaded.updatedAt,
+    })
+    const serverStale = await callSaveFn(base, ada.cookie, fn, {
+      pageId: serverPage.id,
+      title: 'Server',
+      body: doc('stale text lost'),
+      updatedAt: serverLoaded.updatedAt,
+    })
+    const serverStored = JSON.stringify(
+      (await app.getPageView(ada.userId, serverPage.id)).body,
+    )
+    const serverKept =
+      serverStored.includes('newer text survives') &&
+      !serverStored.includes('stale text lost')
+    line('50_fc4_head_server_fresh', serverNewer)
+    line('50_fc4_head_server_status', serverStale)
+    line('50_fc4_head_server_newer', serverKept)
+
+    const apiPage = await app.createPage(ada.userId, {
+      spaceId: team.spaceId,
+      title: 'Api',
+    })
+    const apiBase = await callSaveApi(base, ada.cookie, {
+      pageId: apiPage.id,
+      title: 'Api',
+      body: doc('base'),
+      updatedAt: apiPage.updatedAt,
+    })
+    if (apiBase.status !== 204 || !apiBase.updatedAt)
+      throw new Error('api base save failed')
+    const apiNewer = await callSaveApi(base, ada.cookie, {
+      pageId: apiPage.id,
+      title: 'Api',
+      body: doc('newer text survives'),
+      updatedAt: apiBase.updatedAt,
+    })
+    const apiStale = await callSaveApi(base, ada.cookie, {
+      pageId: apiPage.id,
+      title: 'Api',
+      body: doc('stale text lost'),
+      updatedAt: apiBase.updatedAt,
+    })
+    const apiStored = JSON.stringify(
+      (await app.getPageView(ada.userId, apiPage.id)).body,
+    )
+    const apiKept =
+      apiStored.includes('newer text survives') &&
+      !apiStored.includes('stale text lost')
+    line('50_fc4_head_api_fresh', apiNewer.status)
+    line('50_fc4_head_api_status', apiStale.status)
+    line('50_fc4_head_api_newer', apiKept)
+    return (
+      serverNewer === 200 &&
+      serverStale === 409 &&
+      serverKept &&
+      apiNewer.status === 204 &&
+      apiStale.status === 409 &&
+      apiKept
+    )
+  } finally {
+    await app.closeDb().catch(() => undefined)
+  }
+}
+
+async function bareWrite(app: App, stamp: string | null) {
+  const owner = await app.createUser('Ada')
+  const made = await app.createPage(owner.user.id, {
+    spaceId: owner.space.id,
+    title: 'Bare',
+  })
+  await app.savePage(owner.user.id, {
+    pageId: made.id,
+    title: 'Bare',
+    body: doc('base'),
+  })
+  const input: {
+    pageId: string
+    title: string
+    body: Json
+    updatedAt?: string
+  } = {
+    pageId: made.id,
+    title: 'Bare',
+    body: doc('unversioned write'),
+  }
+  if (stamp !== null) input.updatedAt = stamp
+  const status = await statusOf(() => app.savePage(owner.user.id, input))
+  const stored = JSON.stringify(
+    (await app.getPageView(owner.user.id, made.id)).body,
+  ).includes('unversioned write')
+  return { status, stored }
+}
+
+async function fc5Planted() {
+  databaseUrl()
+  ensureAuthEnv()
+  const labels = ['missing', 'empty', 'bad'] as const
+  const stamps: Array<string | null> = [null, '', 'not-a-date']
+  const server: Array<{ status: number; stored: boolean }> = []
+  const api: Array<{ status: number; stored: boolean }> = []
+  for (let i = 0; i < stamps.length; i += 1) {
+    const serverRoot = await materializePin()
+    server.push(await withApp(serverRoot, (app) => bareWrite(app, stamps[i])))
+    const apiRoot = await materializePin()
+    api.push(await withApp(apiRoot, (app) => bareWrite(app, stamps[i])))
+    line(`50_fc5_planted_server_${labels[i]}`, server[i].status)
+    line(`50_fc5_planted_server_${labels[i]}_stored`, server[i].stored)
+    line(`50_fc5_planted_api_${labels[i]}`, api[i].status)
+    line(`50_fc5_planted_api_${labels[i]}_stored`, api[i].stored)
+  }
+  return [...server, ...api].every((item) => item.status === 200 && item.stored)
+}
+
+async function refusedWrite(
+  base: string,
+  cookie: string,
+  fn: string,
+  pageId: string,
+  route: 'server' | 'api',
+  stamp: string | undefined,
+) {
+  const data: Record<string, unknown> = {
+    pageId,
+    title: 'Bare',
+    body: doc('unversioned write'),
+  }
+  if (stamp !== undefined) data.updatedAt = stamp
+  if (route === 'server') return callSaveFn(base, cookie, fn, data)
+  return (await callSaveApi(base, cookie, data)).status
+}
+
+async function fc5Head() {
+  const base = assertLocalBaseUrl(
+    process.env.BASE_URL ?? 'http://127.0.0.1:3000',
+  )
+  const app = await headApp()
+  try {
+    const fn = await serverFnId()
+    const ada = await signUp(base, 'Ada')
+    const team = await app.createTeam(ada.userId, 'Bare')
+    const stamps: Array<{ label: string; value: string | undefined }> = [
+      { label: 'missing', value: undefined },
+      { label: 'empty', value: '' },
+      { label: 'bad', value: 'not-a-date' },
+    ]
+    let ok = true
+    for (const route of ['server', 'api'] as const) {
+      const made = await app.createPage(ada.userId, {
+        spaceId: team.spaceId,
+        title: 'Bare',
+      })
+      const opened =
+        route === 'server'
+          ? await callSaveFn(base, ada.cookie, fn, {
+              pageId: made.id,
+              title: 'Bare',
+              body: doc('base'),
+              updatedAt: made.updatedAt,
+            })
+          : (await callSaveApi(base, ada.cookie, {
+              pageId: made.id,
+              title: 'Bare',
+              body: doc('base'),
+              updatedAt: made.updatedAt,
+            })).status
+      if (opened !== (route === 'server' ? 200 : 204))
+        throw new Error(`${route} base save failed`)
+      const before = await app.getPageView(ada.userId, made.id)
+      for (const stamp of stamps) {
+        const status = await refusedWrite(
+          base,
+          ada.cookie,
+          fn,
+          made.id,
+          route,
+          stamp.value,
+        )
+        const after = await app.getPageView(ada.userId, made.id)
+        const stored = JSON.stringify(after.body).includes('unversioned write')
+        const kept =
+          !stored &&
+          after.updatedAt === before.updatedAt &&
+          status >= 400 &&
+          status < 500
+        line(`50_fc5_head_${route}_${stamp.label}`, status)
+        line(`50_fc5_head_${route}_${stamp.label}_stored`, stored)
+        if (!kept) ok = false
+      }
+    }
+    return ok
+  } finally {
+    await app.closeDb().catch(() => undefined)
+  }
+}
+
+async function threeSaves(app: App) {
+  const owner = await app.createUser('Ada')
+  const made = await app.createPage(owner.user.id, {
+    spaceId: owner.space.id,
+    title: 'Solo',
+  })
+  let stamp = made.updatedAt
+  const statuses: number[] = []
+  for (const text of ['one', 'two', 'three']) {
+    const status = await statusOf(() =>
+      app.savePage(owner.user.id, {
+        pageId: made.id,
+        title: 'Solo',
+        body: doc(text),
+        updatedAt: stamp,
+      }),
+    )
+    statuses.push(status)
+    if (status === 200) {
+      stamp = (await app.getPageView(owner.user.id, made.id)).updatedAt
+    }
+  }
+  return statuses
+}
+
+async function fc6Planted() {
+  databaseUrl()
+  ensureAuthEnv()
+  const banner = pinText('src/components/PageEditor.tsx').includes(
+    'Someone else changed this page since you opened it.',
+  )
+  line('50_fc6_planted_banner', banner)
+  const plain = await materializePin()
+  const pinOk = await withApp(plain, async (app) => {
+    const statuses = await threeSaves(app)
+    line('50_fc6_planted_pin_statuses', statuses.join(','))
+    return statuses.length === 3 && statuses.every((status) => status === 200)
+  })
+  line('50_fc6_planted_pin_ok', pinOk)
+  if (!pinOk) throw new Error('pin already self-conflicts')
+  const tight = await materializePin()
+  writeFileSync(
+    join(tight, 'src/lib/pages.ts'),
+    rejectEverySave(readFileSync(join(tight, 'src/lib/pages.ts'), 'utf8')),
+  )
+  const rejected = await withApp(tight, async (app) => {
+    const statuses = await threeSaves(app)
+    return statuses[0] ?? 0
+  })
+  line('50_fc6_planted_fixture', 'reject-save')
+  line('50_fc6_planted_status', rejected)
+  return rejected === 409
+}
+
+async function fc6Head() {
+  const base = assertLocalBaseUrl(
+    process.env.BASE_URL ?? 'http://127.0.0.1:3000',
+  )
+  const app = await headApp()
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+  const statuses: number[] = []
+  const marked = new Set<Request>()
+  page.on('request', (request) => {
+    if (request.method() !== 'POST' || !request.url().includes('_serverFn')) return
+    let post = ''
+    try {
+      post = request.postData() ?? ''
+    } catch {
+      return
+    }
+    if (post.includes('fc6mark')) marked.add(request)
+  })
+  page.on('response', (response) => {
+    if (!marked.has(response.request())) return
+    statuses.push(response.status())
+  })
+  try {
+    const ada = await signUp(base, 'Ada')
+    const team = await app.createTeam(ada.userId, 'Solo')
+    const made = await app.createPage(ada.userId, {
+      spaceId: team.spaceId,
+      title: 'Solo',
+    })
+    await signIn(page, base, ada.email, ada.password)
+    await page.goto(`${base}/s/${team.spaceId}/p/${made.id}`, {
+      waitUntil: 'domcontentloaded',
+    })
+    await page.locator('#page-title').waitFor()
+    await enterEdit(page)
+    await page.locator('.doc-editor').click()
+    for (const extra of ['fc6mark', ' two', ' three']) {
+      const before = statuses.length
+      await page.keyboard.type(extra)
+      const deadline = Date.now() + 8000
+      while (statuses.length === before) {
+        if (Date.now() > deadline) throw new Error('autosave missing')
+        await page.waitForTimeout(100)
+      }
+    }
+    const banner = await page
+      .getByText('Someone else changed this page since you opened it.')
+      .count()
+    const allOk = statuses.length >= 3 && statuses.every((status) => status === 200)
+    line('50_fc6_head_count', statuses.length)
+    line('50_fc6_head_statuses', statuses.join(','))
+    line('50_fc6_head_all_200', allOk)
+    line('50_fc6_head_banner', banner > 0)
+    return allOk && banner === 0
+  } finally {
+    await browser.close()
     await app.closeDb().catch(() => undefined)
   }
 }
@@ -1231,6 +1642,24 @@ try {
     process.exit(bug ? 1 : 0)
   } else if (mode === 'fc4') {
     const ok = await fc4Head()
+    process.exit(ok ? 0 : 1)
+  } else if (mode === 'fc5-planted') {
+    const bug = await fc5Planted()
+    process.exit(bug ? 1 : 0)
+  } else if (mode === 'fc5') {
+    const ok = await fc5Head()
+    process.exit(ok ? 0 : 1)
+  } else if (mode === 'fc6-planted') {
+    const bug = await fc6Planted()
+    process.exit(bug ? 1 : 0)
+  } else if (mode === 'fc6') {
+    const ok = await fc6Head()
+    process.exit(ok ? 0 : 1)
+  } else if (mode === 'fc7-planted') {
+    const bug = await fc7Planted()
+    process.exit(bug ? 1 : 0)
+  } else if (mode === 'fc7') {
+    const ok = await fc7Head()
     process.exit(ok ? 0 : 1)
   } else {
     throw new Error('usage')
