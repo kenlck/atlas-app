@@ -123,7 +123,6 @@ Prefer the recipe script. It is the maintained check for issue 1.
 ./scripts/verify-fail-conditions.sh 37-fc10
 ./scripts/verify-fail-conditions.sh 37-fc11
 ./scripts/verify-fail-conditions.sh 49-fc1
-./scripts/verify-fail-conditions.sh 49-fc1b
 ./scripts/verify-fail-conditions.sh 49-fc2
 ./scripts/verify-fail-conditions.sh 49-fc3
 ./scripts/verify-fail-conditions.sh 49-fc4

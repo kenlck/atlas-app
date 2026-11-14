@@ -302,11 +302,14 @@ async function fc1(app: App, prefix: string) {
     parentId: child.id,
     title: 'Teammate grandchild',
   })
+  const before = await placement(app.getSql(), parent.id)
+  const archiveStatus = await statusOf(() =>
+    app.archivePage(member.user.id, parent.id),
+  )
   const own = await app.createPage(member.user.id, {
     spaceId,
     title: 'Member page',
   })
-  const before = await placement(app.getSql(), parent.id)
   const moveStatus = await statusOf(() =>
     app.movePage(member.user.id, { pageId: parent.id, parentId: own.id }),
   )
@@ -329,13 +332,19 @@ async function fc1(app: App, prefix: string) {
   ).every((status) => status === 200)
   const after = await placement(app.getSql(), parent.id)
   const parentSame = after.parent === before.parent
+  line(`${prefix}_archive_status`, archiveStatus)
   line(`${prefix}_move_status`, moveStatus)
   line(`${prefix}_delete_status`, deleteStatus)
   line(`${prefix}_archived_null`, archivedNull && present)
   line(`${prefix}_owner_read`, ownerRead)
   line(`${prefix}_parent_same`, parentSame)
   return (
-    !is4xx(moveStatus) || !archivedNull || !present || !ownerRead || !parentSame
+    archiveStatus !== 403 ||
+    !is4xx(moveStatus) ||
+    !archivedNull ||
+    !present ||
+    !ownerRead ||
+    !parentSame
   )
 }
 
@@ -762,180 +771,177 @@ async function isNested(page: Page, child: string, parent: string) {
   return page.evaluate(nestedExpression(child, parent))
 }
 
-async function fc5(prefix: string, planted: boolean) {
+async function menuScene(app: App, prefix: string) {
+  const base = baseUrl()
+  const { owner, member, spaceId } = await roster(app, 'Fc5')
+  await app.createPage(member.user.id, { spaceId, title: 'Member row' })
+  await app.createPage(owner.user.id, { spaceId, title: 'Teammate row' })
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 800 },
+  })
+  page.setDefaultTimeout(20000)
+  try {
+    await signIn(page, base, member.user.email, member.password)
+    await page.goto(`${base}/s/${spaceId}`, { waitUntil: 'domcontentloaded' })
+    await page
+      .locator('.tree a.it')
+      .filter({ hasText: 'Teammate row' })
+      .waitFor()
+    const foreignHandle = await handleCount(page, 'Teammate row')
+    await openRowMenu(page, 'Teammate row')
+    const foreignMove = await menuHasMove(page)
+    await shot(page, '49-fc5-teammate-1280.png')
+    await closeMenu(page)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await openRowMenu(page, 'Teammate row')
+    const foreignMoveNarrow = await menuHasMove(page)
+    const foreignHandleNarrow = await handleCount(page, 'Teammate row')
+    await shot(page, '49-fc5-teammate-390.png')
+    await closeMenu(page)
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await openRowMenu(page, 'Member row')
+    const ownMove = await menuHasMove(page)
+    const ownHandle = await handleCount(page, 'Member row')
+    line(
+      `${prefix}_foreign_handle`,
+      foreignHandle !== 0 || foreignHandleNarrow !== 0,
+    )
+    line(`${prefix}_foreign_move`, foreignMove || foreignMoveNarrow)
+    line(`${prefix}_own_handle`, ownHandle === 1)
+    line(`${prefix}_own_move`, ownMove)
+    return (
+      foreignHandle !== 0 ||
+      foreignHandleNarrow !== 0 ||
+      foreignMove ||
+      foreignMoveNarrow ||
+      ownHandle !== 1 ||
+      !ownMove
+    )
+  } finally {
+    await browser.close()
+  }
+}
+
+async function snapScene(app: App, prefix: string) {
+  const base = baseUrl()
+  const { member, spaceId } = await roster(app, 'Fc6')
+  const mine = await app.createPage(member.user.id, {
+    spaceId,
+    title: 'Snap mine',
+  })
+  await app.createPage(member.user.id, { spaceId, title: 'Snap nest' })
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 800 },
+  })
+  page.setDefaultTimeout(20000)
+  let moved = false
+  await page.route(/_serverFn|serverFn/, async (route) => {
+    const body = route.request().postData() ?? ''
+    if (
+      route.request().method() === 'POST' &&
+      body.includes(mine.id) &&
+      body.includes('parentId')
+    ) {
+      const saw = await page
+        .waitForFunction(
+          nestedExpression('Snap mine', 'Snap nest'),
+          undefined,
+          {
+            timeout: 5000,
+          },
+        )
+        .then(() => true)
+        .catch(() => false)
+      moved = moved || saw
+      await route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: '{"error":"Forbidden"}',
+      })
+      return
+    }
+    await route.continue()
+  })
+  try {
+    await signIn(page, base, member.user.email, member.password)
+    await page.goto(`${base}/s/${spaceId}`, { waitUntil: 'domcontentloaded' })
+    await page.locator('.tree a.it').filter({ hasText: 'Snap mine' }).waitFor()
+    await openRowMenu(page, 'Snap mine')
+    await page
+      .locator('.menu')
+      .getByRole('button', { name: 'Move', exact: true })
+      .click()
+    await page.getByRole('heading', { name: 'Move page' }).waitFor()
+    await page.getByRole('button', { name: 'Snap nest', exact: true }).click()
+    const toast = page.getByText("You can't move this page.", { exact: true })
+    const apart = `!${nestedExpression('Snap mine', 'Snap nest')}`
+    await toast.waitFor()
+    await page.waitForFunction(apart)
+    const snapped = !(await isNested(page, 'Snap mine', 'Snap nest'))
+    await shot(page, '49-fc5-toast-1280.png')
+    await toast.waitFor({ state: 'hidden', timeout: 6000 })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await openRowMenu(page, 'Snap mine')
+    await page
+      .locator('.menu')
+      .getByRole('button', { name: 'Move', exact: true })
+      .click()
+    await page.getByRole('heading', { name: 'Move page' }).waitFor()
+    await page.getByRole('button', { name: 'Snap nest', exact: true }).click()
+    await toast.waitFor()
+    await page.waitForFunction(apart)
+    const snappedNarrow = !(await isNested(page, 'Snap mine', 'Snap nest'))
+    await shot(page, '49-fc5-toast-390.png')
+    line(`${prefix}_moved`, moved)
+    line(`${prefix}_snapped`, snapped && snappedNarrow)
+    line(`${prefix}_toast`, true)
+    return missed(moved) || missed(snapped) || missed(snappedNarrow)
+  } finally {
+    await browser.close()
+  }
+}
+
+async function ui(prefix: string, planted: boolean) {
   if (planted) {
     const tree = pinText('src/components/PageTree.tsx')
     const moveAt = tree.indexOf('onMove(node.id)')
     const before =
       moveAt < 0 ? '' : tree.slice(Math.max(0, moveAt - 400), moveAt)
     const ungated = moveAt >= 0 && !before.includes('canDelete')
-    line(`${prefix}_move_ungated`, ungated)
-    return ungated
-  }
-  const base = baseUrl()
-  return withApp(repoRoot, async (app) => {
-    const { owner, member, spaceId } = await roster(app, 'Fc5')
-    await app.createPage(member.user.id, { spaceId, title: 'Member row' })
-    await app.createPage(owner.user.id, { spaceId, title: 'Teammate row' })
-    const browser = await chromium.launch({
-      args: ['--no-sandbox', '--disable-dev-shm-usage'],
-    })
-    const page = await browser.newPage({
-      viewport: { width: 1280, height: 800 },
-    })
-    page.setDefaultTimeout(20000)
-    try {
-      await signIn(page, base, member.user.email, member.password)
-      await page.goto(`${base}/s/${spaceId}`, { waitUntil: 'domcontentloaded' })
-      await page
-        .locator('.tree a.it')
-        .filter({ hasText: 'Teammate row' })
-        .waitFor()
-      const foreignHandle = await handleCount(page, 'Teammate row')
-      await openRowMenu(page, 'Teammate row')
-      const foreignMove = await menuHasMove(page)
-      await shot(page, '49-fc5-teammate-1280.png')
-      await closeMenu(page)
-      await page.setViewportSize({ width: 390, height: 844 })
-      await openRowMenu(page, 'Teammate row')
-      const foreignMoveNarrow = await menuHasMove(page)
-      const foreignHandleNarrow = await handleCount(page, 'Teammate row')
-      await shot(page, '49-fc5-teammate-390.png')
-      await closeMenu(page)
-      await page.setViewportSize({ width: 1280, height: 800 })
-      await openRowMenu(page, 'Member row')
-      const ownMove = await menuHasMove(page)
-      const ownHandle = await handleCount(page, 'Member row')
-      line(
-        `${prefix}_foreign_handle`,
-        foreignHandle !== 0 || foreignHandleNarrow !== 0,
-      )
-      line(`${prefix}_foreign_move`, foreignMove || foreignMoveNarrow)
-      line(`${prefix}_own_handle`, ownHandle === 1)
-      line(`${prefix}_own_move`, ownMove)
-      return (
-        foreignHandle !== 0 ||
-        foreignHandleNarrow !== 0 ||
-        foreignMove ||
-        foreignMoveNarrow ||
-        ownHandle !== 1 ||
-        !ownMove
-      )
-    } finally {
-      await browser.close()
-    }
-  })
-}
-
-async function fc6(prefix: string, planted: boolean) {
-  if (planted) {
     const frame = pinText('src/components/AppFrame.tsx')
     const missing = !frame.includes("You can't move this page.")
+    line(`${prefix}_move_ungated`, ungated)
     line(`${prefix}_toast_missing`, missing)
-    return missing
+    return ungated || missing
   }
-  const base = baseUrl()
   return withApp(repoRoot, async (app) => {
-    const { member, spaceId } = await roster(app, 'Fc6')
-    const mine = await app.createPage(member.user.id, {
-      spaceId,
-      title: 'Snap mine',
-    })
-    await app.createPage(member.user.id, { spaceId, title: 'Snap nest' })
-    const browser = await chromium.launch({
-      args: ['--no-sandbox', '--disable-dev-shm-usage'],
-    })
-    const page = await browser.newPage({
-      viewport: { width: 1280, height: 800 },
-    })
-    page.setDefaultTimeout(20000)
-    let moved = false
-    await page.route(/_serverFn|serverFn/, async (route) => {
-      const body = route.request().postData() ?? ''
-      if (
-        route.request().method() === 'POST' &&
-        body.includes(mine.id) &&
-        body.includes('parentId')
-      ) {
-        const saw = await page
-          .waitForFunction(
-            nestedExpression('Snap mine', 'Snap nest'),
-            undefined,
-            {
-              timeout: 5000,
-            },
-          )
-          .then(() => true)
-          .catch(() => false)
-        moved = moved || saw
-        await route.fulfill({
-          status: 403,
-          contentType: 'application/json',
-          body: '{"error":"Forbidden"}',
-        })
-        return
-      }
-      await route.continue()
-    })
-    try {
-      await signIn(page, base, member.user.email, member.password)
-      await page.goto(`${base}/s/${spaceId}`, { waitUntil: 'domcontentloaded' })
-      await page
-        .locator('.tree a.it')
-        .filter({ hasText: 'Snap mine' })
-        .waitFor()
-      await openRowMenu(page, 'Snap mine')
-      await page
-        .locator('.menu')
-        .getByRole('button', { name: 'Move', exact: true })
-        .click()
-      await page.getByRole('heading', { name: 'Move page' }).waitFor()
-      await page.getByRole('button', { name: 'Snap nest', exact: true }).click()
-      const toast = page.getByText("You can't move this page.", { exact: true })
-      const apart = `!${nestedExpression('Snap mine', 'Snap nest')}`
-      await toast.waitFor()
-      await page.waitForFunction(apart)
-      const snapped = !(await isNested(page, 'Snap mine', 'Snap nest'))
-      await shot(page, '49-fc6-toast-1280.png')
-      await toast.waitFor({ state: 'hidden', timeout: 6000 })
-      await page.setViewportSize({ width: 390, height: 844 })
-      await openRowMenu(page, 'Snap mine')
-      await page
-        .locator('.menu')
-        .getByRole('button', { name: 'Move', exact: true })
-        .click()
-      await page.getByRole('heading', { name: 'Move page' }).waitFor()
-      await page.getByRole('button', { name: 'Snap nest', exact: true }).click()
-      await toast.waitFor()
-      await page.waitForFunction(apart)
-      const snappedNarrow = !(await isNested(page, 'Snap mine', 'Snap nest'))
-      await shot(page, '49-fc6-toast-390.png')
-      line(`${prefix}_moved`, moved)
-      line(`${prefix}_snapped`, snapped && snappedNarrow)
-      line(`${prefix}_toast`, true)
-      return missed(moved) || missed(snapped) || missed(snappedNarrow)
-    } finally {
-      await browser.close()
-    }
+    const menuBug = await menuScene(app, prefix)
+    const snapBug = await snapScene(app, prefix)
+    return menuBug || snapBug
   })
 }
 
 async function run(which: string, planted: boolean) {
   const prefix = `49_${which}_${planted ? 'planted' : 'head'}`
   line(`${prefix}_pin`, PIN)
-  if (!planted || (which !== 'fc5' && which !== 'fc6')) {
+  if (!(planted && which === 'fc5')) {
     databaseUrl()
     ensureAuthEnv()
   }
-  if (which === 'fc5') return fc5(prefix, planted)
-  if (which === 'fc6') return fc6(prefix, planted)
-  if (which === 'fc2') return fc2(prefix, planted)
-  if (which === 'fc3') return fc3(prefix, planted)
-  if (which === 'fc4') return fc4(prefix, planted)
+  if (which === 'fc5') return ui(prefix, planted)
+  if (which === 'fc6') return fc4(prefix, planted)
+  if (which === 'fc3') return fc2(prefix, planted)
+  if (which === 'fc4') return fc3(prefix, planted)
   const root = planted ? await materializePin() : repoRoot
   return withApp(root, async (app) => {
     if (which === 'fc1') return fc1(app, prefix)
-    if (which === 'fc1b') return fc1b(app, prefix, planted)
+    if (which === 'fc2') return fc1b(app, prefix, planted)
     throw new Error(`unknown ${which}`)
   })
 }
@@ -944,8 +950,8 @@ const mode = process.argv[2] ?? ''
 const planted = mode.endsWith('-planted')
 const which = mode.replace(/-planted$/, '')
 
-if (!['fc1', 'fc1b', 'fc2', 'fc3', 'fc4', 'fc5', 'fc6'].includes(which)) {
-  console.error('usage: issue49-fail.ts fc1|fc1b|fc2|fc3|fc4|fc5|fc6[-planted]')
+if (!['fc1', 'fc2', 'fc3', 'fc4', 'fc5', 'fc6'].includes(which)) {
+  console.error('usage: issue49-fail.ts fc1|fc2|fc3|fc4|fc5|fc6[-planted]')
   process.exit(2)
 }
 

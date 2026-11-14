@@ -36,5 +36,5 @@ Preconditions:
 
 - Both root buttons are named `+ New page`. `Create page` is a different name, so a locator for `+ New page` does not click the header control. While the space is empty, the main-column `+ New page` is the last one.
 - The Move dialog does not offer the page or its descendants. The 400 comes from replaying the move request with the ids swapped.
-- In a team, Move and the drag handle are only on pages the signed-in person can delete: a page they created, or any page when they are the team owner. A refused move snaps the row back and shows `You can't move this page.` Run `./scripts/verify-fail-conditions.sh 49-fc1` through `49-fc6`.
+- In a team, Move and the drag handle are only on pages the signed-in person can delete: a page they created, or any page when they are the team owner. The personal-space owner can move pages in that space. A refused move snaps the row back and shows `You can't move this page.` Run `./scripts/verify-fail-conditions.sh 49-fc1` through `49-fc6`.
 - Archiving the parent hides the child. The child URL then renders `Page not found.`
