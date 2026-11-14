@@ -592,7 +592,13 @@ async function writeDocBody(
   const db = getDb()
   const people = await peopleForSavedBody(pageId, body)
   await db.transaction(async (tx) => {
-    await lockWritablePage(tx, userId, pageId)
+    const locked = await lockWritablePage(tx, userId, pageId)
+    if (
+      expectedUpdatedAt &&
+      locked.page.updatedAt.getTime() !== expectedUpdatedAt.getTime()
+    ) {
+      throw new HttpError(409, 'Conflict')
+    }
     const adopted = await adoptDiagrams(tx, userId, pageId, body)
     const bodyText = await indexedBodyText(tx, adopted, people)
     const rows = await tx
@@ -605,11 +611,7 @@ async function writeDocBody(
         updatedAt: new Date(),
         ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
       })
-      .where(
-        expectedUpdatedAt
-          ? and(eq(page.id, pageId), eq(page.updatedAt, expectedUpdatedAt))
-          : eq(page.id, pageId),
-      )
+      .where(eq(page.id, pageId))
       .returning({ id: page.id })
     if (rows.length === 0) throw new HttpError(409, 'Conflict')
   })
@@ -617,7 +619,7 @@ async function writeDocBody(
 
 export async function savePage(
   userId: string,
-  input: { pageId: string; title: string; body: Json },
+  input: { pageId: string; title: string; body: Json; updatedAt?: string | null },
 ) {
   const access = await assertAccess(userId, { pageId: input.pageId })
   const title = input.title.trim() || 'Untitled'
@@ -632,7 +634,14 @@ export async function savePage(
     })
     return getPageView(userId, input.pageId)
   }
-  await writeDocBody(userId, input.pageId, title, input.body, null, null)
+  const stamp = input.updatedAt
+  let expected: Date | null = null
+  if (stamp !== undefined && stamp !== null) {
+    const parsed = Date.parse(stamp)
+    if (!Number.isFinite(parsed)) throw new HttpError(400, 'Bad request')
+    expected = new Date(parsed)
+  }
+  await writeDocBody(userId, input.pageId, title, input.body, null, expected)
   return getPageView(userId, input.pageId)
 }
 
@@ -693,8 +702,6 @@ export async function movePage(
       .set({
         parentId: input.parentId,
         position,
-        updatedBy: userId,
-        updatedAt: new Date(),
       })
       .where(eq(page.id, current.id))
   })
@@ -806,8 +813,6 @@ export async function refreshDocText(
     .update(page)
     .set({
       bodyText: await indexedBodyText(getDb(), body, people),
-      updatedBy: userId,
-      updatedAt: new Date(),
       ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
     })
     .where(eq(page.id, pageId))

@@ -177,4 +177,43 @@ describe('save races', () => {
       if (!finished) await closeDb()
     }
   })
+
+  it('rejects a stale updatedAt and keeps the newer body', async () => {
+    const owner = await createUser('Ada')
+    const made = await createPage(owner.user.id, {
+      spaceId: owner.space.id,
+      title: 'Notes',
+    })
+    const doc = (text: string) => ({
+      type: 'doc' as const,
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    })
+    const first = await savePage(owner.user.id, {
+      pageId: made.id,
+      title: 'Notes',
+      body: doc('one'),
+      updatedAt: made.updatedAt,
+    })
+    const second = await savePage(owner.user.id, {
+      pageId: made.id,
+      title: 'Notes',
+      body: doc('two'),
+      updatedAt: first.updatedAt,
+    })
+    await expect(
+      savePage(owner.user.id, {
+        pageId: made.id,
+        title: 'Notes',
+        body: doc('stale'),
+        updatedAt: first.updatedAt,
+      }),
+    ).rejects.toMatchObject({ status: 409 })
+    const stored = await getDb()
+      .select({ bodyText: pageTable.bodyText })
+      .from(pageTable)
+      .where(eq(pageTable.id, made.id))
+    expect(stored[0]?.bodyText).toContain('two')
+    expect(stored[0]?.bodyText).not.toContain('stale')
+    expect(JSON.stringify(second.body)).toContain('two')
+  })
 })

@@ -110,7 +110,14 @@ async function main() {
   const moveOptions = await dialog.getByRole('button').allTextContents()
   console.log(`move_options=${JSON.stringify(moveOptions)}`)
   armed = true
+  const moved = page.waitForResponse((response) => {
+    if (!response.ok() || response.request().method() !== 'POST') return false
+    if (!response.url().includes('_serverFn')) return false
+    const body = response.request().postData() ?? ''
+    return body.includes('"pageId"') && body.includes('"parentId"')
+  })
   await dialog.getByRole('button', { name: 'Parent', exact: true }).click()
+  await moved
   await page.getByRole('link', { name: /▾\s*Parent/ }).waitFor()
   armed = false
   console.log('nested_child_under_parent=true')

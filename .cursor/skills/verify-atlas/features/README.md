@@ -34,7 +34,7 @@ Each feature file has an H1, one paragraph, then these H2 sections in order: `Su
 - [Sign up and sign in](./sign-up-and-sign-in.md) covers account creation, bad credentials, and the signed-out gate.
 - [Personal space and nested pages](./personal-space.md) covers the private space, creating a page, and nesting it.
 - [Admin reset](./admin-reset.md) covers the reset route, the lock, and the log grep.
-- [Failed save](./failed-save.md) covers reload, the Retry banner, and stopping New page when the flush fails.
+- [Failed save](./failed-save.md) covers reload, the Retry banner, the conflict strip, and stopping New page when the flush fails.
 - [Invites and saves](./invites-and-saves.md) covers one pending invite, a save that loses its member, and the settings error.
 - [Tables and dates](./tables-and-dates.md) covers editor tables, date chips, and paste from Sheets or Excel.
 - [Team calendar](./team-calendar.md) covers the team month view, the add panel, and the 390px agenda.

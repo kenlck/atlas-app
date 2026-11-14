@@ -629,6 +629,7 @@ async function fail3(dir: string) {
     pageId,
     title: 'Stolen',
     body: { type: 'doc', content: [{ type: 'paragraph' }] },
+    updatedAt: '2000-01-01T00:00:00.000Z',
   }
   const missingSaveBody = { ...saveBody, pageId: 'missing-page' }
   const savePayload = await writeJson(dir, 'save.json', saveBody)
@@ -759,8 +760,8 @@ async function fail3(dir: string) {
       'savePageFn',
       'save page',
       serverFn(fns, 'savePageFn'),
-      { pageId: 'missing-page', title: 'Stolen', body: pageDoc },
-      { pageId, title: 'Stolen', body: pageDoc },
+      { pageId: 'missing-page', title: 'Stolen', body: pageDoc, updatedAt: '2000-01-01T00:00:00.000Z' },
+      { pageId, title: 'Stolen', body: pageDoc, updatedAt: '2000-01-01T00:00:00.000Z' },
     ],
     [
       'movePageFn',
@@ -1000,6 +1001,7 @@ async function fail4(dir: string) {
     pageId,
     title: 'Stolen',
     body: { type: 'doc', content: [{ type: 'paragraph' }] },
+    updatedAt: '2000-01-01T00:00:00.000Z',
   })
   const save = await dump('removed member saves via editor endpoint', [
     '-b',
