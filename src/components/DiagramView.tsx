@@ -62,7 +62,6 @@ export function DiagramView({ node, updateAttributes, editor, getPos }: NodeView
   }, [editor])
 
   useEffect(() => {
-    if (!pageEditing) return
     const cancel = { current: false }
     setPhase('loading')
     setPreview(null)
@@ -87,7 +86,9 @@ export function DiagramView({ node, updateAttributes, editor, getPos }: NodeView
       const readPos = getPosRef.current
       const pos = typeof readPos === 'function' ? readPos() : null
       const extra = pos != null && laterCopy(editor, drawingId, pos)
-      if (data.pageId !== pageId || extra) {
+      // View still reads and paints the preview, including a drawing owned
+      // by another page. The copy and its save wait for the first Edit.
+      if (pageEditing && (data.pageId !== pageId || extra)) {
         try {
           const created = await cloneDiagramFn({ data: { pageId, drawingId } })
           if (isCancelled(cancel)) return

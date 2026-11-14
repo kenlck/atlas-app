@@ -901,18 +901,22 @@ recipe_37() {
 }
 
 recipe_37_fc11() {
-  local work planted head
+  local work planted skip head
   work=$(mktemp -d)
   planted=0
+  skip=0
   head=0
   pnpm exec tsx scripts/view-mode-fail.ts fc11-planted >"$work/planted.out" 2>&1 || planted=$?
+  pnpm exec tsx scripts/view-mode-fail.ts fc11-planted-skip >"$work/skip.out" 2>&1 || skip=$?
   pnpm exec tsx scripts/view-mode-fail.ts fc11 >"$work/head.out" 2>&1 || head=$?
   cat "$work/planted.out"
+  cat "$work/skip.out"
   cat "$work/head.out"
   echo "37_fc11_planted_exit=${planted}"
+  echo "37_fc11_planted_skip_exit=${skip}"
   echo "37_fc11_head_exit=${head}"
   rm -rf "$work"
-  if [[ "$planted" -ne 0 && "$head" -eq 0 ]]; then
+  if [[ "$planted" -ne 0 && "$skip" -ne 0 && "$head" -eq 0 ]]; then
     echo "37_fc11=pass"
     return 0
   fi

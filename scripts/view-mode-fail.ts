@@ -9,6 +9,7 @@ import { closeDb, getSql } from '../src/lib/db'
 import { createDiagram, createPage } from '../src/lib/pages'
 import { assertLocalBaseUrl, assertLocalDatabaseUrl, clickNewDoc, enterEdit, submitAuthForm } from './verify-local.ts'
 import { PINNED_ADOPT_SHA, PINNED_ADOPT_SNIPPET, runEb07cd14ViewAdopt } from './fixtures/eb07cd14-adopt.ts'
+import { PINNED_SKIP_SHA, PINNED_SKIP_SNIPPET, run82b255faViewPreview } from './fixtures/82b255fa-view-fetch.ts'
 
 const BASE = assertLocalBaseUrl(process.env.BASE_URL ?? 'http://127.0.0.1:3000')
 const PASSWORD = 'view-mode-password'
@@ -654,10 +655,48 @@ async function recipeFc11Planted() {
       counts.save += 1
     },
   })
+  line('fc11_planted_view_drawings', counts.drawings)
   expectLine('fc11_planted_view_save', counts.save, 0)
-  expectLine('fc11_planted_view_drawings', counts.drawings, 0)
   expectLine('fc11_planted_view_clone', counts.clone, 0)
   if (failed) process.exit(1)
+}
+
+async function recipeFc11PlantedSkip() {
+  const pinned = execFileSync('git', ['show', `${PINNED_SKIP_SHA}:src/components/DiagramView.tsx`], {
+    encoding: 'utf8',
+  })
+  const guard = pinned.indexOf(PINNED_SKIP_SNIPPET)
+  const fetchAt = pinned.indexOf('const response = await fetch(')
+  expectLine('fc11_planted_skip_pin_match', guard >= 0 && fetchAt > guard, true)
+  const counts: AdoptCounts = { save: 0, drawings: 0, clone: 0 }
+  const outcome = await run82b255faViewPreview(false, {
+    fetchDrawing: async () => {
+      counts.drawings += 1
+      return { previewSvg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>' }
+    },
+  })
+  line('fc11_planted_skip_drawings', counts.drawings)
+  expectLine('fc11_planted_skip_preview', outcome.rendered, true)
+  if (failed) process.exit(1)
+}
+
+const PREVIEW_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="#0f766e"/></svg>'
+
+async function viewPreview(page: Page) {
+  const block = page.locator('.diagram-block')
+  await block.waitFor({ timeout: 8_000 })
+  const graphic = block.locator('img[src], svg')
+  try {
+    await graphic.first().waitFor({ timeout: 8_000 })
+  } catch {
+    return false
+  }
+  const empty = await block.locator('.diagram-empty').count()
+  const src = await block.locator('img').first().getAttribute('src')
+  const svgCount = await block.locator('svg').count()
+  const hasImage = typeof src === 'string' && src.length > 0
+  return empty === 0 && (hasImage || svgCount > 0)
 }
 
 async function recipeFc11() {
@@ -677,7 +716,10 @@ async function recipeFc11() {
     type: 'doc',
     content: [{ type: 'diagram', attrs: { drawingId: created.id } }],
   }
-  await getSql()`update page set body = ${JSON.stringify(planted)}::jsonb where id = ${dest.id}`
+  const plantedBody = JSON.stringify(planted)
+  await getSql()`update drawing set preview_svg = ${PREVIEW_SVG} where id = ${created.id}`
+  await getSql()`update page set body = ${plantedBody}::jsonb where id = ${source.id}`
+  await getSql()`update page set body = ${plantedBody}::jsonb where id = ${dest.id}`
   const opened = await browserPage()
   browser = opened.browser
   const page = opened.page
@@ -688,13 +730,18 @@ async function recipeFc11() {
       return { name: name ?? '', value: rest.join('='), url: BASE }
     }),
   )
-  await page.goto(`${BASE}/s/${spaceId}/p/${dest.id}`, { waitUntil: 'domcontentloaded' })
-  await page.locator('.diagram-block').waitFor()
+  await page.goto(`${BASE}/s/${spaceId}/p/${source.id}`, { waitUntil: 'domcontentloaded' })
+  const ownedFirst = await viewPreview(page)
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await page.locator('.diagram-block').waitFor()
-  await page.waitForTimeout(1000)
+  const ownedReload = await viewPreview(page)
+  expectLine('fc11_view_preview_owned', ownedFirst && ownedReload, true)
+  await page.goto(`${BASE}/s/${spaceId}/p/${dest.id}`, { waitUntil: 'domcontentloaded' })
+  const foreignFirst = await viewPreview(page)
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  const foreignReload = await viewPreview(page)
+  expectLine('fc11_view_preview_foreign', foreignFirst && foreignReload, true)
+  line('fc11_view_drawings', counts.drawings)
   expectLine('fc11_view_save', counts.save, 0)
-  expectLine('fc11_view_drawings', counts.drawings, 0)
   expectLine('fc11_view_clone', counts.clone, 0)
   await enterEdit(page)
   const started = Date.now()
@@ -754,12 +801,13 @@ const recipes: Record<string, () => Promise<void>> = {
   fc10: recipeFc10,
   fc11: recipeFc11,
   'fc11-planted': recipeFc11Planted,
+  'fc11-planted-skip': recipeFc11PlantedSkip,
 }
 
 const name = process.argv[2] ?? ''
 const recipe = recipes[name]
 if (!recipe) {
-  console.error('usage: view-mode-fail.ts fc1|fc2|fc3|fc4|fc5|fc7|fc8|fc9|fc10|fc11|fc11-planted')
+  console.error('usage: view-mode-fail.ts fc1|fc2|fc3|fc4|fc5|fc7|fc8|fc9|fc10|fc11|fc11-planted|fc11-planted-skip')
   process.exit(2)
 }
 

@@ -811,17 +811,6 @@ async function recipeForeign(base: string) {
   await sql`update page set body = ${JSON.stringify(planted)}::jsonb where id = ${dest.id}`
   const browserApp = await browser()
   const page = await browserApp.newPage({ viewport: { width: 1280, height: 800 } })
-  await page.addInitScript((foreign) => {
-    const mark = () => {
-      const block = document.querySelector(`[data-drawing-id="${foreign}"] img`)
-      if (block) (window as unknown as { __foreignShown?: boolean }).__foreignShown = true
-    }
-    new MutationObserver(mark).observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-    })
-  }, created.id)
   await addSession(page, base, owner.cookie)
   await page.goto(`${base}/s/${spaceId}/p/${dest.id}`, { waitUntil: 'domcontentloaded' })
   await page.locator('.diagram-block').waitFor()
@@ -836,10 +825,8 @@ async function recipeForeign(base: string) {
     created.id,
     { timeout: 15_000 },
   )
-  const shown = await page.evaluate(
-    () => (window as unknown as { __foreignShown?: boolean }).__foreignShown === true,
-  )
-  expectLine('foreign_id_rendered', shown, false)
+  const shown = await page.locator(`[data-drawing-id="${created.id}"] img`).count()
+  expectLine('foreign_id_rendered', shown > 0, false)
   let nextId = ''
   const start = Date.now()
   while (Date.now() - start < 15_000) {
