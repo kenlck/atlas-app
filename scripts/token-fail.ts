@@ -1049,7 +1049,7 @@ async function conflict(base: string) {
   const staleUnchanged =
     afterStale.status === 200 &&
     stalePage.title === 'Original' &&
-    stalePage.body === 'agent clobber'
+    stalePage.body === 'Original'
   console.log(`stale_status=${stale.status}`)
   console.log(`stale_unchanged=${staleUnchanged}`)
   const other = await mcp(base, created.token, {
@@ -1102,14 +1102,14 @@ async function conflict(base: string) {
   const unchanged =
     after.status === 200 &&
     finalPage.title === 'Original' &&
-    finalPage.body === 'agent clobber' &&
+    finalPage.body === 'Original' &&
     finalPage.parent_id == null
   console.log(`parent_status=${parent.status}`)
   console.log(`reparent_status=${reparent.status}`)
   console.log(`parent_unchanged=${unchanged}`)
   if (
-    missing.status !== 200 ||
-    missingUnchanged ||
+    missing.status !== 409 ||
+    !missingUnchanged ||
     stale.status !== 409 ||
     !staleUnchanged ||
     parent.status !== 400 ||

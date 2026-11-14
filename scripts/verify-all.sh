@@ -451,7 +451,7 @@ require_step_log token-image "app_containers=1" "same_image=true" "mcp_status=40
 run_step token-fidelity ./scripts/verify-fail-conditions.sh token-fidelity
 require_step_log token-fidelity "get_status=200" "update_status=200" "mention_link=true" "date_link=true" "table_markup=true" "stored_body_identical=true"
 run_step token-conflict ./scripts/verify-fail-conditions.sh token-conflict
-require_step_log token-conflict "missing_status=200" "missing_unchanged=false" "stale_status=409" "stale_unchanged=true" "parent_status=400" "reparent_status=400" "parent_unchanged=true"
+require_step_log token-conflict "missing_status=409" "missing_unchanged=true" "stale_status=409" "stale_unchanged=true" "parent_status=400" "reparent_status=400" "parent_unchanged=true"
 run_step token-scope ./scripts/verify-fail-conditions.sh token-scope
 require_step_log token-scope "read_create_status=403" "read_update_status=403" "read_get_status=200" "read_create_stored=false" "read_title_unchanged=true" "read_search_status=200" "read_search_visible=true" "write_search_status=200" "write_search_visible=true"
 run_step token-expiry ./scripts/verify-fail-conditions.sh token-expiry
@@ -689,8 +689,8 @@ run_step 50-fc5 ./scripts/verify-fail-conditions.sh 50-fc5
 require_step_log 50-fc5 "50_fc5_planted_server_missing=200" "50_fc5_planted_server_missing_stored=true" "50_fc5_planted_api_missing=200" "50_fc5_planted_api_missing_stored=true" "50_fc5_planted_server_empty=200" "50_fc5_planted_server_empty_stored=true" "50_fc5_planted_api_empty=200" "50_fc5_planted_api_empty_stored=true" "50_fc5_planted_server_bad=200" "50_fc5_planted_server_bad_stored=true" "50_fc5_planted_api_bad=200" "50_fc5_planted_api_bad_stored=true" "50_fc5_head_server_missing=400" "50_fc5_head_server_missing_stored=false" "50_fc5_head_server_empty=400" "50_fc5_head_server_empty_stored=false" "50_fc5_head_server_bad=400" "50_fc5_head_server_bad_stored=false" "50_fc5_head_api_missing=400" "50_fc5_head_api_missing_stored=false" "50_fc5_head_api_empty=400" "50_fc5_head_api_empty_stored=false" "50_fc5_head_api_bad=400" "50_fc5_head_api_bad_stored=false" "50_fc5_planted_exit=1" "50_fc5_head_exit=0" "50_fc5=pass" "recipe_exit=0"
 run_step 50-fc6 ./scripts/verify-fail-conditions.sh 50-fc6
 require_step_log 50-fc6 "50_fc6_planted_banner=false" "50_fc6_planted_pin_ok=true" "50_fc6_planted_pin_statuses=200,200,200" "50_fc6_planted_fixture=reject-save" "50_fc6_planted_status=409" "50_fc6_head_count=3" "50_fc6_head_statuses=200,200,200" "50_fc6_head_all_200=true" "50_fc6_head_banner=false" "50_fc6_planted_exit=1" "50_fc6_head_exit=0" "50_fc6=pass" "recipe_exit=0"
-run_step 50-fc7 ./scripts/verify-fail-conditions.sh 50-fc7
-require_step_log 50-fc7 "50_fc7_planted_pin_status=409" "50_fc7_planted_pin_stored=false" "50_fc7_planted_pin_ok=false" "50_fc7_head_status=200" "50_fc7_head_stored=true" "50_fc7_planted_exit=1" "50_fc7_head_exit=0" "50_fc7=pass" "recipe_exit=0"
+run_step 50-reg-mcp ./scripts/verify-fail-conditions.sh 50-reg-mcp
+require_step_log 50-reg-mcp "50_reg_mcp_head_with_stamp=200" "50_reg_mcp_head_with_stamp_stored=true" "50_reg_mcp_head_without_stamp=409" "50_reg_mcp_head_without_stamp_stored=false" "50_reg_mcp_pin_with_stamp=200" "50_reg_mcp_pin_with_stamp_stored=true" "50_reg_mcp_pin_without_stamp=409" "50_reg_mcp_pin_without_stamp_stored=false" "50_reg_mcp_same=true" "50_reg_mcp_exit=0" "50_reg_mcp=pass" "recipe_exit=0"
 run_step fail10-3 ./scripts/verify-fail-conditions.sh 10-3
 require_step_log fail10-3 "grandchild_status=400" "grandchild_error_clear=true" "parents_unchanged=true" "grandchild_rows_unchanged=true" "self_status=400" "self_error_clear=true" "self_unchanged=true" "self_rows_unchanged=true" "valid_status=200" "valid_parent_updated=true" "cycle_walk_within_500ms=true" "statement_timeout=false" "cycle_rows_unchanged=true"
 run_step fail13 ./scripts/verify-fail-conditions.sh 13

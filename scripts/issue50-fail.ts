@@ -13,7 +13,7 @@ import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
 import type { Page } from 'playwright'
 import type { Json } from '../src/lib/body-text.ts'
-import { rejectEverySave, requireTokenStamp } from './fixtures/issue50-save.ts'
+import { rejectEverySave } from './fixtures/issue50-save.ts'
 import {
   assertLocalBaseUrl,
   assertLocalDatabaseUrl,
@@ -1052,9 +1052,14 @@ async function fc3Head() {
   }
 }
 
-const TOKEN_BODY = 'token omits the stamp'
+type StampPair = {
+  withStamp: number
+  withStored: boolean
+  withoutStamp: number
+  withoutStored: boolean
+}
 
-async function omitViaHandler(root: string) {
+async function mcpStampPair(root: string): Promise<StampPair> {
   const href = (rel: string) => pathToFileURL(join(root, rel)).href
   const app = await loadApp(root)
   try {
@@ -1073,34 +1078,47 @@ async function omitViaHandler(root: string) {
       scope: 'read_write',
       expiry: '90d',
     })
-    const made = await app.createPage(owner.user.id, {
-      spaceId: owner.space.id,
-      title: 'Notes',
-    })
-    const response = await mcp.handleMcp(
-      new Request('http://127.0.0.1/mcp', {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${issued.token}`,
-          'content-type': 'application/json',
-          accept: 'application/json',
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'tools/call',
-          params: {
-            name: 'update_page',
-            arguments: { page_id: made.id, body: TOKEN_BODY },
+    const update = async (pageId: string, args: Record<string, unknown>) => {
+      const response = await mcp.handleMcp(
+        new Request('http://127.0.0.1/mcp', {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${issued.token}`,
+            'content-type': 'application/json',
+            accept: 'application/json',
           },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'tools/call',
+            params: { name: 'update_page', arguments: { page_id: pageId, ...args } },
+          }),
         }),
-      }),
-    )
-    await response.text()
-    const stored = await app.getPageView(owner.user.id, made.id)
+      )
+      await response.text()
+      return response.status
+    }
+    const stamped = await app.createPage(owner.user.id, {
+      spaceId: owner.space.id,
+      title: 'Stamped',
+    })
+    const stamp = (await app.getPageView(owner.user.id, stamped.id)).updatedAt
+    const withStamp = await update(stamped.id, {
+      body: 'stamped write',
+      updated_at: stamp,
+    })
+    const withView = await app.getPageView(owner.user.id, stamped.id)
+    const bare = await app.createPage(owner.user.id, {
+      spaceId: owner.space.id,
+      title: 'Bare',
+    })
+    const withoutStamp = await update(bare.id, { body: 'unstamped write' })
+    const withoutView = await app.getPageView(owner.user.id, bare.id)
     return {
-      status: response.status,
-      stored: JSON.stringify(stored.body).includes(TOKEN_BODY),
+      withStamp,
+      withStored: JSON.stringify(withView.body).includes('stamped write'),
+      withoutStamp,
+      withoutStored: JSON.stringify(withoutView.body).includes('unstamped write'),
     }
   } finally {
     await app.closeDb().catch(() => undefined)
@@ -1108,102 +1126,36 @@ async function omitViaHandler(root: string) {
   }
 }
 
-async function fc7Planted() {
+function strictPair(pair: StampPair) {
+  return (
+    pair.withStamp === 200 &&
+    pair.withStored &&
+    pair.withoutStamp === 409 &&
+    !pair.withoutStored
+  )
+}
+
+async function regMcp() {
   databaseUrl()
   ensureAuthEnv()
-  const plain = await materializePin()
-  const pin = await omitViaHandler(plain)
-  line('50_fc7_planted_pin_status', pin.status)
-  line('50_fc7_planted_pin_stored', pin.stored)
-  const pinOk = pin.status === 200 && pin.stored
-  line('50_fc7_planted_pin_ok', pinOk)
-  if (!pinOk) return true
-  const tight = await materializePin()
-  writeFileSync(
-    join(tight, 'src/lib/pages.ts'),
-    requireTokenStamp(readFileSync(join(tight, 'src/lib/pages.ts'), 'utf8')),
-  )
-  const rejected = await omitViaHandler(tight)
-  line('50_fc7_planted_fixture', 'require-stamp')
-  line('50_fc7_planted_status', rejected.status)
-  line('50_fc7_planted_stored', rejected.stored)
-  return rejected.status !== 200 || !rejected.stored
-}
-
-function mcpData(text: string) {
-  const parsed = JSON.parse(text) as {
-    result?: { content?: Array<{ text?: string }> }
-  }
-  const inner = parsed.result?.content?.[0]?.text
-  if (!inner) return null
-  return JSON.parse(inner) as { id?: string; body?: string; spaces?: Array<{ id?: string; kind?: string }> }
-}
-
-async function mcpCall(
-  base: string,
-  token: string,
-  name: string,
-  args: Record<string, unknown>,
-) {
-  const response = await fetch(`${base}/mcp`, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${token}`,
-      'content-type': 'application/json',
-      accept: 'application/json',
-    },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'tools/call',
-      params: { name, arguments: args },
-    }),
-  })
-  const text = await response.text()
-  return { status: response.status, data: mcpData(text) }
-}
-
-async function fc7Head() {
-  const base = assertLocalBaseUrl(
-    process.env.BASE_URL ?? 'http://127.0.0.1:3000',
-  )
-  const app = await headApp()
-  try {
-    const ada = await signUp(base, 'Ada')
-    const created = await fetch(`${base}/api/atlas/tokens`, {
-      method: 'POST',
-      headers: {
-        cookie: ada.cookie,
-        origin: base,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ name: 'agent', scope: 'read_write', expiry: '90d' }),
-    })
-    const createdText = await created.text()
-    if (created.status !== 201) throw new Error('token create failed')
-    const token = (JSON.parse(createdText) as { token?: string }).token
-    if (!token || !token.startsWith('atl_')) throw new Error('token missing')
-    const spaces = await mcpCall(base, token, 'list_spaces', {})
-    const spaceId = spaces.data?.spaces?.find((item) => item.kind === 'personal')?.id
-    if (spaces.status !== 200 || !spaceId) throw new Error('personal space missing')
-    const made = await mcpCall(base, token, 'create_page', {
-      space_id: spaceId,
-      title: 'Notes',
-      body: 'base',
-    })
-    if (made.status !== 200 || !made.data?.id) throw new Error('token create page failed')
-    const updated = await mcpCall(base, token, 'update_page', {
-      page_id: made.data.id,
-      body: TOKEN_BODY,
-    })
-    const stored = await app.getPageView(ada.userId, made.data.id)
-    const kept = JSON.stringify(stored.body).includes(TOKEN_BODY)
-    line('50_fc7_head_status', updated.status)
-    line('50_fc7_head_stored', kept)
-    return updated.status === 200 && kept
-  } finally {
-    await app.closeDb().catch(() => undefined)
-  }
+  const head = await mcpStampPair(repoRoot)
+  line('50_reg_mcp_head_with_stamp', head.withStamp)
+  line('50_reg_mcp_head_with_stamp_stored', head.withStored)
+  line('50_reg_mcp_head_without_stamp', head.withoutStamp)
+  line('50_reg_mcp_head_without_stamp_stored', head.withoutStored)
+  const pinRoot = await materializePin()
+  const pin = await mcpStampPair(pinRoot)
+  line('50_reg_mcp_pin_with_stamp', pin.withStamp)
+  line('50_reg_mcp_pin_with_stamp_stored', pin.withStored)
+  line('50_reg_mcp_pin_without_stamp', pin.withoutStamp)
+  line('50_reg_mcp_pin_without_stamp_stored', pin.withoutStored)
+  const same =
+    head.withStamp === pin.withStamp &&
+    head.withStored === pin.withStored &&
+    head.withoutStamp === pin.withoutStamp &&
+    head.withoutStored === pin.withoutStored
+  line('50_reg_mcp_same', same)
+  return strictPair(head) && strictPair(pin) && same
 }
 
 async function staleLibrary(app: App) {
@@ -1655,11 +1607,8 @@ try {
   } else if (mode === 'fc6') {
     const ok = await fc6Head()
     process.exit(ok ? 0 : 1)
-  } else if (mode === 'fc7-planted') {
-    const bug = await fc7Planted()
-    process.exit(bug ? 1 : 0)
-  } else if (mode === 'fc7') {
-    const ok = await fc7Head()
+  } else if (mode === 'reg-mcp') {
+    const ok = await regMcp()
     process.exit(ok ? 0 : 1)
   } else {
     throw new Error('usage')

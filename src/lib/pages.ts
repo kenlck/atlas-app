@@ -768,23 +768,19 @@ export async function updatePageForToken(
   const access = await assertAccess(userId, { pageId: input.pageId })
   const row = access.page
   if (!row) notFound()
-  const provided = input.updatedAt !== undefined && input.updatedAt !== null
-  let expected: Date | null = null
-  if (provided) {
-    const parsed =
-      typeof input.updatedAt === 'string' ? Date.parse(input.updatedAt) : Number.NaN
-    if (!Number.isFinite(parsed)) throw new HttpError(409, 'Conflict')
-    expected = new Date(parsed)
+  const expected =
+    typeof input.updatedAt === 'string'
+      ? Date.parse(input.updatedAt)
+      : Number.NaN
+  if (!Number.isFinite(expected) || row.updatedAt.getTime() !== expected) {
+    throw new HttpError(409, 'Conflict')
   }
   const db = getDb()
   if (row.kind === 'whiteboard') {
     if (input.title === undefined) return getPageView(userId, row.id)
     const title = input.title.trim() || 'Untitled'
     await db.transaction(async (tx) => {
-      const locked = await lockWritablePage(tx, userId, row.id)
-      if (expected && locked.page.updatedAt.getTime() !== expected.getTime()) {
-        throw new HttpError(409, 'Conflict')
-      }
+      await lockWritablePage(tx, userId, row.id)
       const written = await tx
         .update(page)
         .set({
@@ -793,7 +789,7 @@ export async function updatePageForToken(
           updatedAt: new Date(),
           updatedViaTokenId: tokenId,
         })
-        .where(eq(page.id, row.id))
+        .where(and(eq(page.id, row.id), eq(page.updatedAt, row.updatedAt)))
         .returning({ id: page.id })
       if (written.length === 0) throw new HttpError(409, 'Conflict')
     })
@@ -802,7 +798,7 @@ export async function updatePageForToken(
   const title =
     input.title === undefined ? row.title : input.title.trim() || 'Untitled'
   const body = input.body === undefined ? (row.body as Json) : input.body
-  await writeDocBody(userId, row.id, title, body, tokenId, expected)
+  await writeDocBody(userId, row.id, title, body, tokenId, row.updatedAt)
   return getPageView(userId, row.id)
 }
 
