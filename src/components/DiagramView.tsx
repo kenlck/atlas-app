@@ -156,32 +156,37 @@ export function DiagramView({ node, updateAttributes, editor, getPos }: NodeView
         )
       : null
 
+  const deleted = phase === 'unavailable'
+
   return (
     <NodeViewWrapper
-      className="diagram-block"
+      className={deleted ? 'diagram-block is-deleted' : 'diagram-block'}
       data-drawing-id={drawingId}
+      data-deleted={deleted ? 'true' : 'false'}
       contentEditable={false}
-      onClick={openEditor}
+      onClick={deleted ? undefined : openEditor}
     >
-      {preview ? (
+      {deleted ? (
+        <p className="diagram-deleted">This drawing was deleted.</p>
+      ) : preview ? (
         <img src={src} alt="Drawing" />
-      ) : phase === 'unavailable' ? (
-        <p className="diagram-empty">Drawing unavailable</p>
       ) : phase === 'loading' ? (
         <p className="diagram-empty"> </p>
       ) : (
         <p className="diagram-empty">Empty drawing</p>
       )}
-      <button
-        type="button"
-        className="diagram-edit"
-        onClick={(event) => {
-          event.stopPropagation()
-          openEditor()
-        }}
-      >
-        Edit
-      </button>
+      {deleted ? null : (
+        <button
+          type="button"
+          className="diagram-edit"
+          onClick={(event) => {
+            event.stopPropagation()
+            openEditor()
+          }}
+        >
+          Edit
+        </button>
+      )}
       {screen}
     </NodeViewWrapper>
   )

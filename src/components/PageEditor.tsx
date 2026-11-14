@@ -29,12 +29,31 @@ import { createDiagramExtension } from '#/lib/diagram-node'
 import { TableCursor } from '#/lib/table-cursor'
 import { useSpaceOutlet } from './AppFrame'
 import { NewPageMenu } from './NewPageMenu'
+import { PageMenu } from './PageMenu'
 import { DatePickerHost } from './DatePicker'
 import { EditorToolbar } from './EditorToolbar'
 import { createMentionExtension } from './MentionExtension'
 import { PageModeBar, saveStatusLabel } from './PageModeBar'
 
 type SaveState = 'saved' | 'saving' | 'error'
+
+function isMissing(error: unknown): boolean {
+  if (!error) return false
+  if (typeof error === 'string') return error.includes('Not found')
+  if (typeof error !== 'object') return false
+  const record = error as {
+    message?: unknown
+    status?: unknown
+    statusCode?: unknown
+    cause?: unknown
+    data?: unknown
+  }
+  if (record.status === 404 || record.statusCode === 404) return true
+  if (typeof record.message === 'string' && record.message.includes('Not found')) return true
+  if (record.cause && record.cause !== error && isMissing(record.cause)) return true
+  if (record.data && record.data !== error && isMissing(record.data)) return true
+  return false
+}
 
 const spaceRoute = getRouteApi('/_app/s/$spaceId')
 
@@ -75,7 +94,9 @@ function clearDraft(pageId: string) {
 
 export function PageEditor({ page }: { page: PageView }) {
   const router = useRouter()
-  const { createChild, claimFresh, releaseFresh } = useSpaceOutlet()
+  const { createChild, claimFresh, releaseFresh, requestDelete } = useSpaceOutlet()
+  const [deleted, setDeleted] = useState(false)
+  const deletedRef = useRef(false)
   const openedFresh = useState(() => claimFresh(page.id))[0]
   const [editing, setEditing] = useState(openedFresh)
   const editingRef = useRef(editing)
@@ -126,6 +147,7 @@ export function PageEditor({ page }: { page: PageView }) {
   )
 
   const flushSave = async () => {
+    if (deletedRef.current) return
     if (timer.current) {
       clearTimeout(timer.current)
       timer.current = null
@@ -143,6 +165,12 @@ export function PageEditor({ page }: { page: PageView }) {
       await withTimeout(queueRef.current.flush())
       setSaveState((state) => (state === 'error' ? state : 'saved'))
     } catch (error) {
+      if (isMissing(error)) {
+        deletedRef.current = true
+        dirtyRef.current = false
+        setDeleted(true)
+        return
+      }
       dirtyRef.current = true
       setSaveState('error')
       throw error
@@ -152,6 +180,7 @@ export function PageEditor({ page }: { page: PageView }) {
   flushSaveRef.current = flushSave
 
   const schedule = () => {
+    if (deletedRef.current) return
     dirtyRef.current = true
     writeDraft(pageIdRef.current, titleRef.current, bodyRef.current)
     if (timer.current) clearTimeout(timer.current)
@@ -309,14 +338,25 @@ export function PageEditor({ page }: { page: PageView }) {
         onEdit={() => setEditing(true)}
         onLeave={leaveEdit}
         menu={
-          <NewPageMenu
-            label="Create page"
-            className="create-page"
-            onChoose={(kind) => createChild(page.id, kind)}
-          />
+          <>
+            <NewPageMenu
+              label="Create page"
+              className="create-page"
+              onChoose={(kind) => createChild(page.id, kind)}
+            />
+            <PageMenu
+              canDelete={page.canDelete}
+              onDelete={() => requestDelete(page.id)}
+            />
+          </>
         }
       />
-      {editing ? (
+      {deleted ? (
+        <div className="nf">
+          <h1>This page was deleted.</h1>
+        </div>
+      ) : null}
+      {deleted || !editing ? null : (
         <EditorToolbar
           editor={editor}
           onDrawing={() => {
@@ -335,9 +375,9 @@ export function PageEditor({ page }: { page: PageView }) {
             )
           }}
         />
-      ) : null}
-      <DatePickerHost />
-      {saveState === 'error' ? (
+      )}
+      {deleted ? null : <DatePickerHost />}
+      {deleted || saveState !== 'error' ? null : (
         <div className="retry">
           Couldn't save.
           <button
@@ -347,7 +387,8 @@ export function PageEditor({ page }: { page: PageView }) {
             Retry
           </button>
         </div>
-      ) : null}
+      )}
+      {deleted ? null : (
       <div className="doc">
         <div className="col">
           <input
@@ -379,6 +420,7 @@ export function PageEditor({ page }: { page: PageView }) {
           <EditorContent editor={editor} />
         </div>
       </div>
+      )}
     </>
   )
 }

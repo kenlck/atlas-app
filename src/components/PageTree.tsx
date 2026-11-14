@@ -165,17 +165,36 @@ export function PageTree({
                 >
                   Move
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMenu(null)
-                    onArchive(node.id)
-                  }}
-                >
-                  Archive
-                </button>
+                {node.canDelete ? (
+                  <>
+                    <div className="menu-sep" role="separator" />
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => {
+                        setMenu(null)
+                        onArchive(node.id)
+                      }}
+                    >
+                      Delete page
+                    </button>
+                  </>
+                ) : null}
               </div>
             ) : null}
+            <button
+              type="button"
+              className="row-more"
+              aria-label="Page menu"
+              aria-expanded={menu === node.id}
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setMenu((current) => (current === node.id ? null : node.id))
+              }}
+            >
+              ⋯
+            </button>
           </div>
           {hasKids && expanded ? render(node.children, depth + 1) : null}
         </div>

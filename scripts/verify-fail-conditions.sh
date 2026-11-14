@@ -992,6 +992,48 @@ PY
   return 1
 }
 
+recipe_44() {
+  local name=$1
+  local work planted head
+  work=$(mktemp -d)
+  planted=0
+  head=0
+  pnpm exec tsx scripts/issue44-fail.ts "${name}-planted" >"$work/planted.out" 2>&1 || planted=$?
+  pnpm exec tsx scripts/issue44-fail.ts "$name" >"$work/head.out" 2>&1 || head=$?
+  cat "$work/planted.out"
+  cat "$work/head.out"
+  echo "44_${name}_planted_exit=${planted}"
+  echo "44_${name}_head_exit=${head}"
+  rm -rf "$work"
+  if [[ "$planted" -eq 1 && "$head" -eq 0 ]]; then
+    echo "44_${name}=pass"
+    return 0
+  fi
+  echo "44_${name}=fail"
+  return 1
+}
+
+recipe_44_fc1() { recipe_44 fc1; }
+recipe_44_fc2() { recipe_44 fc2; }
+recipe_44_fc3() { recipe_44 fc3; }
+recipe_44_fc4() { recipe_44 fc4; }
+recipe_44_fc5() { recipe_44 fc5; }
+recipe_44_fc6() { recipe_44 fc6; }
+recipe_44_fc7() { recipe_44 fc7; }
+recipe_44_fc8() { recipe_44 fc8; }
+recipe_44_fc9() { recipe_44 fc9; }
+recipe_44_fc10() { recipe_44 fc10; }
+recipe_44_fc11() { recipe_44 fc11; }
+recipe_44_fc12() { recipe_44 fc12; }
+recipe_44_fc13() { recipe_44 fc13; }
+recipe_44_fc14() { recipe_44 fc14; }
+recipe_44_fc15() { recipe_44 fc15; }
+recipe_44_fc16() { recipe_44 fc16; }
+recipe_44_fc17() { recipe_44 fc17; }
+recipe_44_fc18() { recipe_44 fc18; }
+recipe_44_fc19() { recipe_44 fc19; }
+recipe_44_fc20() { recipe_44 fc20; }
+
 recipe_42_fc3() {
   local work planted head
   work=$(mktemp -d)
@@ -1325,6 +1367,26 @@ case "${1:-}" in
   42-fc1) run_recipe recipe_42_fc1 ;;
   42-fc2) run_recipe recipe_42_fc2 ;;
   42-fc3) run_recipe recipe_42_fc3 ;;
+  44-fc1) run_recipe recipe_44_fc1 ;;
+  44-fc2) run_recipe recipe_44_fc2 ;;
+  44-fc3) run_recipe recipe_44_fc3 ;;
+  44-fc4) run_recipe recipe_44_fc4 ;;
+  44-fc5) run_recipe recipe_44_fc5 ;;
+  44-fc6) run_recipe recipe_44_fc6 ;;
+  44-fc7) run_recipe recipe_44_fc7 ;;
+  44-fc8) run_recipe recipe_44_fc8 ;;
+  44-fc9) run_recipe recipe_44_fc9 ;;
+  44-fc10) run_recipe recipe_44_fc10 ;;
+  44-fc11) run_recipe recipe_44_fc11 ;;
+  44-fc12) run_recipe recipe_44_fc12 ;;
+  44-fc13) run_recipe recipe_44_fc13 ;;
+  44-fc14) run_recipe recipe_44_fc14 ;;
+  44-fc15) run_recipe recipe_44_fc15 ;;
+  44-fc16) run_recipe recipe_44_fc16 ;;
+  44-fc17) run_recipe recipe_44_fc17 ;;
+  44-fc18) run_recipe recipe_44_fc18 ;;
+  44-fc19) run_recipe recipe_44_fc19 ;;
+  44-fc20) run_recipe recipe_44_fc20 ;;
   fc1) run_recipe recipe_fc1 ;;
   fc2) run_recipe recipe_fc2 ;;
   fc3) run_recipe recipe_fc3 ;;
@@ -1345,7 +1407,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|8-1|8-2|8-3|8-4|8-5|8-6|8-7|8-8|8-9|8-10|8-11|8-12|8-13|test-db-guard|fc1|fc2|fc3|fc4|10-3|10-4|auto-migrate-a|auto-migrate-b|auto-migrate-c|auto-migrate-d|auto-migrate-e|auto-migrate-f|37-fc1|37-fc2|37-fc3|37-fc4|37-fc5|37-fc7|37-fc8|37-fc9|37-fc10|37-fc11|42-fc1|42-fc2|42-fc3|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|8-1|8-2|8-3|8-4|8-5|8-6|8-7|8-8|8-9|8-10|8-11|8-12|8-13|test-db-guard|fc1|fc2|fc3|fc4|10-3|10-4|auto-migrate-a|auto-migrate-b|auto-migrate-c|auto-migrate-d|auto-migrate-e|auto-migrate-f|37-fc1|37-fc2|37-fc3|37-fc4|37-fc5|37-fc7|37-fc8|37-fc9|37-fc10|37-fc11|42-fc1|42-fc2|42-fc3|44-fc1|44-fc2|44-fc3|44-fc4|44-fc5|44-fc6|44-fc7|44-fc8|44-fc9|44-fc10|44-fc11|44-fc12|44-fc13|44-fc14|44-fc15|44-fc16|44-fc17|44-fc18|44-fc19|44-fc20|all]" >&2
     exit 2
     ;;
 esac

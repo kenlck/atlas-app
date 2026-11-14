@@ -30,7 +30,7 @@ async function loadPage(pageId: string) {
   return rows[0] ?? null
 }
 
-async function hasArchivedAncestor(row: Page) {
+export async function hasArchivedAncestor(row: Page) {
   let current: Page | null = row
   const seen = new Set<string>()
   while (current) {

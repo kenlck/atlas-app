@@ -10,6 +10,7 @@ import { relativeTime } from '#/lib/relative-time'
 import type { PageView } from '#/lib/pages'
 import { useSpaceOutlet } from './AppFrame'
 import { NewPageMenu } from './NewPageMenu'
+import { PageMenu } from './PageMenu'
 import { PageModeBar, saveStatusLabel } from './PageModeBar'
 
 type SaveState = 'saved' | 'saving' | 'error' | 'conflict'
@@ -25,7 +26,9 @@ const SAVE_URL = '/api/drawings'
 
 export function Whiteboard({ page }: { page: PageView }) {
   const router = useRouter()
-  const { createChild } = useSpaceOutlet()
+  const { createChild, requestDelete } = useSpaceOutlet()
+  const [deleted, setDeleted] = useState(false)
+  const deletedRef = useRef(false)
   const board = page.drawing
   const [title, setTitle] = useState(page.title)
   const [saveState, setSaveState] = useState<SaveState>('saved')
@@ -66,6 +69,12 @@ export function Whiteboard({ page }: { page: PageView }) {
   })
 
   const applyResult = async (response: Response) => {
+    if (response.status === 404) {
+      deletedRef.current = true
+      dirtyRef.current = false
+      setDeleted(true)
+      return false
+    }
     if (response.status === 409) {
       dirtyRef.current = false
       setSaveState('conflict')
@@ -90,6 +99,7 @@ export function Whiteboard({ page }: { page: PageView }) {
 
   const flushSave = async () => {
     clearTimer()
+    if (deletedRef.current) return false
     if (saveStateRef.current === 'conflict') return false
     if (!dirtyRef.current) return saveStateRef.current !== 'error'
     const body = JSON.stringify(payload('autosave'))
@@ -113,6 +123,7 @@ export function Whiteboard({ page }: { page: PageView }) {
   flushSaveRef.current = flushSave
 
   const schedule = () => {
+    if (deletedRef.current) return
     if (!editingRef.current || saveStateRef.current === 'conflict') return
     dirtyRef.current = true
     setSaveState('saving')
@@ -164,29 +175,42 @@ export function Whiteboard({ page }: { page: PageView }) {
         onEdit={() => setEditing(true)}
         onLeave={leaveEdit}
         menu={
-          <NewPageMenu
-            label="Create page"
-            className="create-page"
-            onChoose={(kind) => createChild(page.id, kind)}
-          />
+          <>
+            <NewPageMenu
+              label="Create page"
+              className="create-page"
+              onChoose={(kind) => createChild(page.id, kind)}
+            />
+            <PageMenu
+              canDelete={page.canDelete}
+              onDelete={() => requestDelete(page.id)}
+            />
+          </>
         }
       />
-      {saveState === 'error' ? (
+      {deleted ? (
+        <div className="nf">
+          <h1>This page was deleted.</h1>
+        </div>
+      ) : null}
+      {deleted || saveState !== 'error' ? null : (
         <div className="retry">
           Couldn't save.
           <button type="button" onClick={() => void flushSave()}>
             Retry
           </button>
         </div>
-      ) : null}
-      {saveState === 'conflict' ? (
+      )}
+      {deleted || saveState !== 'conflict' ? null : (
         <div className="retry" role="alert">
           board changed, reload
           <button type="button" onClick={() => window.location.reload()}>
             Reload
           </button>
         </div>
-      ) : null}
+      )}
+      {deleted ? null : (
+      <>
       <div className="board-head">
         <input
           id="page-title"
@@ -233,6 +257,8 @@ export function Whiteboard({ page }: { page: PageView }) {
           />
         ) : null}
       </div>
+      </>
+      )}
     </div>
   )
 }

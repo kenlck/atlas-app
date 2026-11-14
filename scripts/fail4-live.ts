@@ -145,8 +145,10 @@ async function main() {
     .click({ button: 'right' })
   await page
     .locator('.menu')
-    .getByRole('button', { name: 'Archive', exact: true })
+    .getByRole('button', { name: 'Delete page', exact: true })
     .click()
+  const deleteDialog = page.getByRole('dialog', { name: /Delete/ })
+  await deleteDialog.getByRole('button', { name: 'Delete', exact: true }).click()
   await page
     .locator('.tree a.it', { hasText: 'Child' })
     .waitFor({ state: 'detached' })
