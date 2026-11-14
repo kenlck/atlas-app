@@ -1012,6 +1012,10 @@ body {
   width: auto;
 }
 
+.delete-actions .btn.danger {
+  margin-top: 0;
+}
+
 .toast {
   position: fixed;
   left: 50%;

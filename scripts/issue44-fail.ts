@@ -8,6 +8,9 @@ import type { Page } from 'playwright'
 import { assertLocalBaseUrl, assertLocalDatabaseUrl, submitAuthForm } from './verify-local.ts'
 
 const PIN = '48258d6067f510f4d1bfe9c9655de912d2f43d76'
+const COPY_PIN = 'ac0ea2fabf39e77fcc8431b8f6b9e63e3ead6405'
+const SINGULAR = 'Its 1 sub-page and its whiteboard will be deleted too.'
+const PLURAL = 'Its 2 sub-pages and their whiteboards will be deleted too.'
 const repoRoot = join(import.meta.dirname, '..')
 const PASSWORD = 'issue44-password'
 const LIBRARY_PASSWORD = 'correct-horse-battery'
@@ -710,7 +713,7 @@ async function dialogChecks(prefix: string) {
     })
     line(`${prefix}_archive_in_menu`, archive)
     line(`${prefix}_shows_title`, dialogText.includes('Dialog parent'))
-    line(`${prefix}_shows_count`, dialogText.includes('Its 1 sub-pages'))
+    line(`${prefix}_shows_count`, dialogText.includes(SINGULAR))
     line(`${prefix}_shows_undone`, dialogText.includes("This can't be undone."))
     line(`${prefix}_cancel_focused`, focused === 'Cancel')
     await page.keyboard.press('Enter')
@@ -731,10 +734,27 @@ async function dialogChecks(prefix: string) {
     line(`${prefix}_cancel_closed`, (await dialog.count()) === 0 || !(await dialog.isVisible()))
     const still = await page.locator('.tree a.it').filter({ hasText: 'Dialog parent' }).count()
     line(`${prefix}_still_there`, still === 1)
+    await page.locator('.tree a.it').filter({ hasText: 'Dialog parent' }).first().click()
+    await page.getByRole('button', { name: 'Create page', exact: true }).click()
+    await page.getByRole('button', { name: 'Page', exact: true }).click()
+    await page.waitForFunction((href) => location.href !== href, page.url())
+    await page.locator('#page-title').waitFor()
+    await renameInTree(page, 'Untitled', 'Dialog second')
+    await page.locator('.tree a.it').filter({ hasText: 'Dialog parent' }).first().click()
+    await page.waitForFunction(
+      () => (document.getElementById('page-title') as HTMLInputElement | null)?.value === 'Dialog parent',
+    )
+    await page.locator('.page-menu-btn').click()
+    await page.locator('.menu').getByRole('button', { name: 'Delete page', exact: true }).click()
+    await dialog.waitFor()
+    const pluralText = await dialog.innerText()
+    line(`${prefix}_shows_plural`, pluralText.includes(PLURAL))
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
     return (
       archive ||
       !dialogText.includes('Dialog parent') ||
-      !dialogText.includes('Its 1 sub-pages') ||
+      !dialogText.includes(SINGULAR) ||
+      !pluralText.includes(PLURAL) ||
       !dialogText.includes("This can't be undone.") ||
       focused !== 'Cancel' ||
       still !== 1 ||
@@ -987,7 +1007,19 @@ async function menus(app: App, prefix: string) {
 
 async function sourceBug(which: string) {
   if (which === 'fc4') {
-    return !pinIncludes('src/components/DeletePageDialog.tsx', "This can't be undone.")
+    let prior = ''
+    try {
+      prior = execFileSync('git', ['show', `${COPY_PIN}:src/components/DeletePageDialog.tsx`], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+      })
+    } catch {
+      prior = ''
+    }
+    const grammarBug =
+      prior.includes('Its {childCount} sub-pages and their whiteboards will be deleted too.') &&
+      !prior.includes(SINGULAR)
+    return !pinIncludes('src/components/DeletePageDialog.tsx', "This can't be undone.") && grammarBug
   }
   if (which === 'fc10') {
     const frame = pinText('src/components/AppFrame.tsx')

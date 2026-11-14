@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 
+function subPageLine(childCount: number) {
+  if (childCount === 1) return 'Its 1 sub-page and its whiteboard will be deleted too.'
+  if (childCount > 1) {
+    return `Its ${childCount} sub-pages and their whiteboards will be deleted too.`
+  }
+  return null
+}
+
 export function DeletePageDialog({
   title,
   childCount,
@@ -40,6 +48,8 @@ export function DeletePageDialog({
     return () => node.removeEventListener('keydown', onKey)
   }, [onCancel])
 
+  const subPages = subPageLine(childCount)
+
   const confirm = () => {
     if (busy.current) return
     busy.current = true
@@ -65,9 +75,7 @@ export function DeletePageDialog({
         aria-labelledby="delete-page-title"
       >
         <h1 id="delete-page-title">Delete “{title}”?</h1>
-        <p className="delete-copy">
-          Its {childCount} sub-pages and their whiteboards will be deleted too.
-        </p>
+        {subPages ? <p className="delete-copy">{subPages}</p> : null}
         <p className="delete-copy">This can't be undone.</p>
         {failed ? (
           <p className="banner" role="alert">

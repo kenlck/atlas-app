@@ -608,7 +608,7 @@ require_step_log 44-fc2 "44_fc2_planted_token_status=400" "44_fc2_head_outsider_
 run_step 44-fc3 ./scripts/verify-fail-conditions.sh 44-fc3
 require_step_log 44-fc3 "44_fc3_planted_member_status=200" "44_fc3_head_member_status=403" "44_fc3_head_creator_status=200" "44_fc3_head_owner_status=200" "44_fc3_head_personal_status=200" "44_fc3_head_ui_cancel_focused=true" "44_fc3_head_ui_enter_open=true" "44_fc3_planted_exit=1" "44_fc3_head_exit=0" "44_fc3=pass" "recipe_exit=0"
 run_step 44-fc4 ./scripts/verify-fail-conditions.sh 44-fc4
-require_step_log 44-fc4 "44_fc4_planted_bug=true" "44_fc4_head_shows_title=true" "44_fc4_head_shows_count=true" "44_fc4_head_cancel_focused=true" "44_fc4_planted_exit=1" "44_fc4_head_exit=0" "44_fc4=pass" "recipe_exit=0"
+require_step_log 44-fc4 "44_fc4_planted_bug=true" "44_fc4_head_shows_title=true" "44_fc4_head_shows_count=true" "44_fc4_head_shows_plural=true" "44_fc4_head_cancel_focused=true" "44_fc4_planted_exit=1" "44_fc4_head_exit=0" "44_fc4=pass" "recipe_exit=0"
 run_step 44-fc5 ./scripts/verify-fail-conditions.sh 44-fc5
 require_step_log 44-fc5 "44_fc5_planted_member_status=200" "44_fc5_head_parent_status=404" "44_fc5_head_child_status=404" "44_fc5_head_search=false" "44_fc5_head_tree=false" "44_fc5_head_mcp_parent=404" "44_fc5_planted_exit=1" "44_fc5_head_exit=0" "44_fc5=pass" "recipe_exit=0"
 run_step 44-fc6 ./scripts/verify-fail-conditions.sh 44-fc6
