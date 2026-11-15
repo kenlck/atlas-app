@@ -1,5 +1,11 @@
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,6 +13,7 @@ import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
 import type { Page } from 'playwright'
 import postgres from 'postgres'
+import { restoreSceneElements } from '../src/lib/drawing.ts'
 import { editedByLine } from '../src/lib/relative-time.ts'
 import { stopChild } from './stop-child.ts'
 import { assertLocalDatabaseUrl, submitAuthForm } from './verify-local.ts'
@@ -19,6 +26,7 @@ const PINS: Record<string, string> = {
   fc5: '5158c5a07f01059d6224ece00e46c696a3e0d85d',
   fc6: 'ef5a8e0d5ca8515d3331ca3b0ee0f85bcd9c8287',
   fc7: '1f8aa77f66f7aeafb915e6aad6931b175ae6187c',
+  fc8: 'df8b3b1bae80c41cfceb8867a11915b1a526fd64',
 }
 const repoRoot = join(import.meta.dirname, '..')
 const arg = process.argv[2] ?? ''
@@ -49,14 +57,30 @@ type App = {
   savePage: (userId: string, input: Record<string, unknown>) => Promise<View>
   getPageView: (userId: string, pageId: string) => Promise<View>
   movePage: (userId: string, input: Record<string, unknown>) => Promise<View>
-  setPageLock: (userId: string, pageId: string, locked: boolean) => Promise<View>
-  refreshDocText: (userId: string, pageId: string, tokenId: string | null) => Promise<void>
-  createDiagram: (userId: string, pageId: string) => Promise<{ id: string; version: number }>
+  setPageLock: (
+    userId: string,
+    pageId: string,
+    locked: boolean,
+  ) => Promise<View>
+  refreshDocText: (
+    userId: string,
+    pageId: string,
+    tokenId: string | null,
+  ) => Promise<void>
+  createDiagram: (
+    userId: string,
+    pageId: string,
+  ) => Promise<{ id: string; version: number }>
   handleDrawingRequest: (request: Request) => Promise<Response>
   updatePageForToken: (
     userId: string,
     tokenId: string,
-    input: { pageId: string; title?: string; body?: unknown; updatedAt: unknown },
+    input: {
+      pageId: string
+      title?: string
+      body?: unknown
+      updatedAt: unknown
+    },
   ) => Promise<View>
   createUser: (name?: string) => Promise<Account>
   closeDb: () => Promise<void>
@@ -64,16 +88,26 @@ type App = {
     userId: string,
     input: { name: string; scope: string },
   ) => Promise<{ id: string; token: string }>
-  createTeam: (userId: string, name: string) => Promise<{ id: string; spaceId: string }>
+  createTeam: (
+    userId: string,
+    name: string,
+  ) => Promise<{ id: string; spaceId: string }>
   createInvite: (
     actorId: string,
     teamId: string,
     inviteeUserId: string,
   ) => Promise<{ id: string }>
   acceptInvite: (userId: string, inviteId: string) => Promise<unknown>
-  removeMember: (actorId: string, teamId: string, memberUserId: string) => Promise<unknown>
+  removeMember: (
+    actorId: string,
+    teamId: string,
+    memberUserId: string,
+  ) => Promise<unknown>
   deleteTeam: (actorId: string, teamId: string) => Promise<unknown>
-  searchVisiblePages: (userId: string, query: string) => Promise<Array<{ id: string }>>
+  searchVisiblePages: (
+    userId: string,
+    query: string,
+  ) => Promise<Array<{ id: string }>>
 }
 
 type Stamp = {
@@ -152,7 +186,8 @@ function runFile(cmd: string, args: string[]) {
 }
 
 async function ensureDatabase() {
-  const inherited = process.env.DATABASE_URL || process.env.TEST_DATABASE_URL || ''
+  const inherited =
+    process.env.DATABASE_URL || process.env.TEST_DATABASE_URL || ''
   if (inherited) {
     assertLocalDatabaseUrl(inherited)
     remember(inherited)
@@ -162,12 +197,18 @@ async function ensureDatabase() {
   }
   const port = await freePort()
   if (port === 5432) throw new Error('refusing database port 5432')
-  const password = Buffer.from(crypto.getRandomValues(new Uint8Array(18))).toString('hex')
+  const password = Buffer.from(
+    crypto.getRandomValues(new Uint8Array(18)),
+  ).toString('hex')
   remember(password)
   pgEnv = join(tmpdir(), `atlas-51m-${process.pid}.env`)
-  writeFileSync(pgEnv, `POSTGRES_USER=atlas\nPOSTGRES_PASSWORD=${password}\nPOSTGRES_DB=atlas\n`, {
-    mode: 0o600,
-  })
+  writeFileSync(
+    pgEnv,
+    `POSTGRES_USER=atlas\nPOSTGRES_PASSWORD=${password}\nPOSTGRES_DB=atlas\n`,
+    {
+      mode: 0o600,
+    },
+  )
   pgName = `atlas-51m-pg-${process.pid}`
   await runFile('docker', [
     'run',
@@ -185,7 +226,16 @@ async function ensureDatabase() {
   const deadline = Date.now() + 60000
   let ready = false
   while (Date.now() < deadline) {
-    ready = await runFile('docker', ['exec', pgName, 'pg_isready', '-q', '-h', '127.0.0.1', '-U', 'atlas']).then(
+    ready = await runFile('docker', [
+      'exec',
+      pgName,
+      'pg_isready',
+      '-q',
+      '-h',
+      '127.0.0.1',
+      '-U',
+      'atlas',
+    ]).then(
       () => true,
       () => false,
     )
@@ -200,11 +250,17 @@ async function ensureDatabase() {
 }
 
 function ensureAuth(base = 'http://127.0.0.1:9') {
-  if (!process.env.BETTER_AUTH_SECRET || process.env.BETTER_AUTH_SECRET.length < 32) {
+  if (
+    !process.env.BETTER_AUTH_SECRET ||
+    process.env.BETTER_AUTH_SECRET.length < 32
+  ) {
     process.env.BETTER_AUTH_SECRET = 'issue51m-fail-secret-not-a-credential'
   }
   remember(process.env.BETTER_AUTH_SECRET)
-  if (!process.env.ADMIN_API_SECRET || process.env.ADMIN_API_SECRET.length < 32) {
+  if (
+    !process.env.ADMIN_API_SECRET ||
+    process.env.ADMIN_API_SECRET.length < 32
+  ) {
     process.env.ADMIN_API_SECRET = 'issue51m-fail-admin-not-a-credential'
   }
   remember(process.env.ADMIN_API_SECRET)
@@ -270,14 +326,27 @@ async function loadApp(root: string): Promise<App> {
     App,
     'handleDrawingRequest'
   >
-  const helpers = (await import(href('tests/helpers.ts'))) as Pick<App, 'createUser'>
+  const helpers = (await import(href('tests/helpers.ts'))) as Pick<
+    App,
+    'createUser'
+  >
   const db = (await import(href('src/lib/db.ts'))) as Pick<App, 'closeDb'>
-  const tokens = (await import(href('src/lib/api-tokens.ts'))) as Pick<App, 'createApiToken'>
+  const tokens = (await import(href('src/lib/api-tokens.ts'))) as Pick<
+    App,
+    'createApiToken'
+  >
   const teams = (await import(href('src/lib/teams.ts'))) as Pick<
     App,
-    'createTeam' | 'createInvite' | 'acceptInvite' | 'removeMember' | 'deleteTeam'
+    | 'createTeam'
+    | 'createInvite'
+    | 'acceptInvite'
+    | 'removeMember'
+    | 'deleteTeam'
   >
-  const search = (await import(href('src/lib/search.ts'))) as Pick<App, 'searchVisiblePages'>
+  const search = (await import(href('src/lib/search.ts'))) as Pick<
+    App,
+    'searchVisiblePages'
+  >
   return {
     createPage: pages.createPage,
     savePage: pages.savePage,
@@ -337,26 +406,37 @@ function sameStamp(left: Stamp, right: Stamp) {
     left.last_edited_by === right.last_edited_by &&
     left.updated_by === right.updated_by &&
     left.updated_at.getTime() === right.updated_at.getTime() &&
-    (left.last_edited_at?.getTime() ?? null) === (right.last_edited_at?.getTime() ?? null)
+    (left.last_edited_at?.getTime() ?? null) ===
+      (right.last_edited_at?.getTime() ?? null)
   )
 }
 
 function shownLine(view: View, now: Date) {
   if (Object.prototype.hasOwnProperty.call(view, 'lastEditedAt')) {
-    return editedByLine(view.lastEditedByName ?? null, view.lastEditedAt ?? view.updatedAt, now)
+    return editedByLine(
+      view.lastEditedByName ?? null,
+      view.lastEditedAt ?? view.updatedAt,
+      now,
+    )
   }
   return editedByLine(view.updatedByName ?? '', view.updatedAt, now)
 }
 
 async function userName(userId: string) {
   const rows = await withSql(
-    (sql) => sql<Array<{ name: string }>>`select name from "user" where id = ${userId}`,
+    (sql) =>
+      sql<
+        Array<{ name: string }>
+      >`select name from "user" where id = ${userId}`,
   )
   return rows[0]?.name ?? ''
 }
 
 async function teamWith(app: App, owner: Account, member: Account) {
-  const team = await app.createTeam(owner.user.id, `Edit ${crypto.randomUUID().slice(0, 8)}`)
+  const team = await app.createTeam(
+    owner.user.id,
+    `Edit ${crypto.randomUUID().slice(0, 8)}`,
+  )
   const invite = await app.createInvite(owner.user.id, team.id, member.user.id)
   await app.acceptInvite(member.user.id, invite.id)
   return team
@@ -409,7 +489,9 @@ async function fc1(app: App) {
     }),
   )
   const storedView = await app.getPageView(ada.user.id, target.id)
-  const stored = JSON.stringify(storedView.body).includes(`kept-after-diagram ${token}`)
+  const stored = JSON.stringify(storedView.body).includes(
+    `kept-after-diagram ${token}`,
+  )
   const rank = hits[0]?.id === target.id
   const editor = meta.includes(`Edited by ${bea.user.name}`)
   line('rank_target', rank)
@@ -426,11 +508,25 @@ async function bootDev(root: string) {
   ensureAuth(base)
   const child = spawn(
     'pnpm',
-    ['exec', 'vite', 'dev', '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
+    [
+      'exec',
+      'vite',
+      'dev',
+      '--host',
+      '127.0.0.1',
+      '--port',
+      String(port),
+      '--strictPort',
+    ],
     {
       cwd: root,
       detached: true,
-      env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), BETTER_AUTH_URL: base },
+      env: {
+        ...process.env,
+        HOST: '127.0.0.1',
+        PORT: String(port),
+        BETTER_AUTH_URL: base,
+      },
       stdio: 'ignore',
     },
   )
@@ -458,7 +554,9 @@ async function signIn(page: Page, base: string, account: Account) {
   await page.waitForFunction(() => {
     const field = document.getElementById('email')
     if (!field) return false
-    return Object.getOwnPropertyNames(field).some((key) => key.startsWith('__reactProps$'))
+    return Object.getOwnPropertyNames(field).some((key) =>
+      key.startsWith('__reactProps$'),
+    )
   })
   await page.locator('#email').fill(account.user.email)
   await page.locator('#password').fill(account.password)
@@ -470,7 +568,9 @@ async function signIn(page: Page, base: string, account: Account) {
 async function enterEdit(page: Page) {
   await page.locator('.doc-editor').waitFor()
   await page.locator('.doc-editor[contenteditable="false"]').waitFor()
-  const edit = page.locator('.mode-switch').getByRole('radio', { name: 'Edit', exact: true })
+  const edit = page
+    .locator('.mode-switch')
+    .getByRole('radio', { name: 'Edit', exact: true })
   if ((await edit.getAttribute('aria-checked')) !== 'true') await edit.click()
   await page.locator('.top.is-editing').waitFor()
   await page.locator('.doc-editor[contenteditable="true"]').waitFor()
@@ -485,7 +585,10 @@ async function typeSave(page: Page, marker: string) {
   await page.locator('.doc-editor').click()
   await page.keyboard.type(marker)
   await page.waitForFunction(
-    (needle) => (document.querySelector('.doc-editor')?.textContent ?? '').includes(needle),
+    (needle) =>
+      (document.querySelector('.doc-editor')?.textContent ?? '').includes(
+        needle,
+      ),
     marker,
   )
   const response = await seen
@@ -507,15 +610,22 @@ async function fc2(app: App, root: string) {
     body: doc('base'),
     updatedAt: made.updatedAt,
   })
-  const token = await app.createApiToken(ada.user.id, { name: 'agent', scope: 'read_write' })
+  const token = await app.createApiToken(ada.user.id, {
+    name: 'agent',
+    scope: 'read_write',
+  })
   remember(token.token)
   const base = await bootDev(root)
-  const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
   page.setDefaultTimeout(20000)
   try {
     await signIn(page, base, ada)
-    await page.goto(`${base}/s/${ada.space.id}/p/${made.id}`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`${base}/s/${ada.space.id}/p/${made.id}`, {
+      waitUntil: 'domcontentloaded',
+    })
     await page.locator('#page-title').waitFor()
     await enterEdit(page)
     const editor = await typeSave(page, 'm2open')
@@ -595,7 +705,8 @@ async function fc3(app: App) {
   const now = new Date()
   const unchanged =
     sameStamp(before, after) &&
-    beforeHits.map((hit) => hit.id).join() === afterHits.map((hit) => hit.id).join() &&
+    beforeHits.map((hit) => hit.id).join() ===
+      afterHits.map((hit) => hit.id).join() &&
     shownLine(beforeView, now) === shownLine(afterView, now)
   const follows =
     beforeHits[0]?.id === child.id &&
@@ -646,7 +757,8 @@ async function fc4(app: App) {
       order by updated_at desc
     `,
   )
-  const backfillOrder = hits.map((hit) => hit.id).join() === rows.map((row) => row.id).join()
+  const backfillOrder =
+    hits.map((hit) => hit.id).join() === rows.map((row) => row.id).join()
   await withSql(async (sql) => {
     await sql`
       update page
@@ -698,16 +810,23 @@ async function fc5(app: App, root: string) {
     await withSql((sql) => sql`delete from "user" where id = ${bea.user.id}`)
     userDelete = true
   } catch (error) {
-    line('user_delete_error', redact(error instanceof Error ? error.message : 'failed'))
+    line(
+      'user_delete_error',
+      redact(error instanceof Error ? error.message : 'failed'),
+    )
   }
   const base = await bootDev(root)
-  const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
   page.setDefaultTimeout(20000)
   let meta = ''
   try {
     await signIn(page, base, ada)
-    await page.goto(`${base}/s/${team.spaceId}/p/${made.id}`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`${base}/s/${team.spaceId}/p/${made.id}`, {
+      waitUntil: 'domcontentloaded',
+    })
     meta = (await page.locator('.doc .meta').innerText()).trim()
   } finally {
     await browser.close()
@@ -717,7 +836,10 @@ async function fc5(app: App, root: string) {
     await app.deleteTeam(ada.user.id, team.id)
     teamDelete = true
   } catch (error) {
-    line('team_delete_error', redact(error instanceof Error ? error.message : 'failed'))
+    line(
+      'team_delete_error',
+      redact(error instanceof Error ? error.message : 'failed'),
+    )
   }
   const cleared = noName(meta)
   line('membership', membership)
@@ -785,7 +907,10 @@ async function fc6(app: App) {
     `
   })
   const before = await readStamp(target.id)
-  const beaToken = await app.createApiToken(bea.user.id, { name: 'noop', scope: 'read_write' })
+  const beaToken = await app.createApiToken(bea.user.id, {
+    name: 'noop',
+    scope: 'read_write',
+  })
   const status = await postDrawing(app, beaToken.token, {
     drawingId: diagram.id,
     version: diagram.version,
@@ -794,15 +919,216 @@ async function fc6(app: App) {
   const after = await readStamp(target.id)
   const hits = await app.searchVisiblePages(ada.user.id, token)
   const stillEditor = after.last_edited_by === ada.user.id
-  const stillTime = after.last_edited_at?.getTime() === before.last_edited_at?.getTime()
+  const stillTime =
+    after.last_edited_at?.getTime() === before.last_edited_at?.getTime()
   const recency = hits[0]?.id === other.id
-  const versionStamp = after.updated_at.getTime() === before.updated_at.getTime()
+  const versionStamp =
+    after.updated_at.getTime() === before.updated_at.getTime()
+  const version = await withSql(async (sql) => {
+    const rows = await sql<Array<{ version: number }>>`
+      select version from drawing where id = ${diagram.id}
+    `
+    return rows[0]?.version ?? 0
+  })
+  const changedStatus = await postDrawing(app, beaToken.token, {
+    drawingId: diagram.id,
+    version,
+    elements: [{ id: 'rect-1', type: 'rectangle', x: 9, y: 2 }],
+  })
+  const changed = await readStamp(target.id)
+  const changedHits = await app.searchVisiblePages(ada.user.id, token)
+  const changedEditor = changed.last_edited_by === bea.user.id
+  const changedTime =
+    (changed.last_edited_at?.getTime() ?? 0) > frozen.getTime()
+  const changedRank = changedHits[0]?.id === target.id
   line('status', status)
   line('still_editor', stillEditor)
   line('still_time', stillTime)
   line('recency', recency)
   line('version_stamp', versionStamp)
-  return status === 200 && stillEditor && stillTime && recency && versionStamp
+  line('changed_status', changedStatus)
+  line('changed_editor', changedEditor)
+  line('changed_time', changedTime)
+  line('changed_rank', changedRank)
+  return (
+    status === 200 &&
+    stillEditor &&
+    stillTime &&
+    recency &&
+    versionStamp &&
+    changedStatus === 200 &&
+    changedEditor &&
+    changedTime &&
+    changedRank
+  )
+}
+
+async function fc8(app: App) {
+  const ada = await app.createUser('Ada Open')
+  const bea = await app.createUser('Bea Open')
+  remember(ada.password)
+  remember(bea.password)
+  const team = await teamWith(app, ada, bea)
+  const beaToken = await app.createApiToken(bea.user.id, {
+    name: 'open',
+    scope: 'read_write',
+  })
+  const frozen = new Date('2024-01-01T00:00:00Z')
+  const newer = new Date('2025-06-01T00:00:00Z')
+  const sparse = [{ id: 'rect-1', type: 'rectangle', x: 4, y: 8 }]
+  const sized = [
+    {
+      id: 'rect-2',
+      type: 'rectangle',
+      x: 4,
+      y: 8,
+      width: 30,
+      height: 20,
+      angle: 0,
+      strokeColor: '#1e1e1e',
+      backgroundColor: 'transparent',
+      fillStyle: 'solid',
+      strokeWidth: 2,
+      strokeStyle: 'solid',
+      roughness: 1,
+      opacity: 100,
+      groupIds: [],
+      frameId: null,
+      roundness: null,
+      boundElements: [],
+      isDeleted: false,
+      link: null,
+      locked: false,
+    },
+  ]
+
+  const park = async (pageId: string, otherId: string) => {
+    await withSql(async (sql) => {
+      await sql`
+        update page
+        set last_edited_at = ${frozen}, last_edited_by = ${ada.user.id}
+        where id = ${pageId}
+      `
+      await sql`
+        update page
+        set last_edited_at = ${newer}, last_edited_by = ${ada.user.id}
+        where id = ${otherId}
+      `
+    })
+  }
+
+  const mark = `open-${crypto.randomUUID().slice(0, 8)}`
+  const diagramPage = await app.createPage(ada.user.id, {
+    spaceId: team.spaceId,
+    title: `${mark} diagram`,
+  })
+  const diagramOther = await app.createPage(ada.user.id, {
+    spaceId: team.spaceId,
+    title: `${mark} diagram other`,
+  })
+  const diagram = await app.createDiagram(ada.user.id, diagramPage.id)
+  const written = await postDrawing(app, beaToken.token, {
+    drawingId: diagram.id,
+    version: diagram.version,
+    elements: sparse,
+  })
+  if (written !== 200) {
+    line('diagram_status', written)
+    line('diagram_still_editor', false)
+    line('diagram_still_time', false)
+    line('diagram_recency', false)
+    line('diagram_version_stamp', false)
+    line('board_status', 0)
+    line('board_still_editor', false)
+    line('board_still_time', false)
+    line('board_recency', false)
+    return false
+  }
+  await park(diagramPage.id, diagramOther.id)
+  const diagramBefore = await readStamp(diagramPage.id)
+  const diagramVersion = await withSql(async (sql) => {
+    const rows = await sql<Array<{ version: number }>>`
+      select version from drawing where id = ${diagram.id}
+    `
+    return rows[0]?.version ?? 0
+  })
+  const diagramStatus = await postDrawing(app, beaToken.token, {
+    drawingId: diagram.id,
+    version: diagramVersion,
+    elements: restoreSceneElements(sparse),
+  })
+  const diagramAfter = await readStamp(diagramPage.id)
+  const diagramHits = await app.searchVisiblePages(
+    ada.user.id,
+    `${mark} diagram`,
+  )
+  const diagramStillEditor = diagramAfter.last_edited_by === ada.user.id
+  const diagramStillTime =
+    diagramAfter.last_edited_at?.getTime() ===
+    diagramBefore.last_edited_at?.getTime()
+  const diagramRecency = diagramHits[0]?.id === diagramOther.id
+  const diagramVersionStamp =
+    diagramAfter.updated_at.getTime() === diagramBefore.updated_at.getTime()
+
+  const boardPage = await app.createPage(ada.user.id, {
+    spaceId: team.spaceId,
+    title: `${mark} board`,
+    kind: 'whiteboard',
+  })
+  const boardOther = await app.createPage(ada.user.id, {
+    spaceId: team.spaceId,
+    title: `${mark} board other`,
+    kind: 'whiteboard',
+  })
+  const boardView = await app.getPageView(bea.user.id, boardPage.id)
+  const boardWritten = await postDrawing(app, beaToken.token, {
+    drawingId: boardView.drawing?.id ?? '',
+    version: boardView.drawing?.version ?? 0,
+    elements: sized,
+  })
+  await park(boardPage.id, boardOther.id)
+  const boardBefore = await readStamp(boardPage.id)
+  const boardVersion = await withSql(async (sql) => {
+    const rows = await sql<Array<{ version: number }>>`
+      select version from drawing where id = ${boardView.drawing?.id ?? ''}
+    `
+    return rows[0]?.version ?? 0
+  })
+  const boardStatus = await postDrawing(app, beaToken.token, {
+    drawingId: boardView.drawing?.id ?? '',
+    version: boardVersion,
+    elements: restoreSceneElements(sized),
+  })
+  const boardAfter = await readStamp(boardPage.id)
+  const boardHits = await app.searchVisiblePages(ada.user.id, `${mark} board`)
+  const boardStillEditor = boardAfter.last_edited_by === ada.user.id
+  const boardStillTime =
+    boardAfter.last_edited_at?.getTime() ===
+    boardBefore.last_edited_at?.getTime()
+  const boardRecency = boardHits[0]?.id === boardOther.id
+
+  line('diagram_status', diagramStatus)
+  line('diagram_still_editor', diagramStillEditor)
+  line('diagram_still_time', diagramStillTime)
+  line('diagram_recency', diagramRecency)
+  line('diagram_version_stamp', diagramVersionStamp)
+  line('board_write', boardWritten)
+  line('board_status', boardStatus)
+  line('board_still_editor', boardStillEditor)
+  line('board_still_time', boardStillTime)
+  line('board_recency', boardRecency)
+  return (
+    diagramStatus === 200 &&
+    diagramStillEditor &&
+    diagramStillTime &&
+    diagramRecency &&
+    diagramVersionStamp &&
+    boardWritten === 200 &&
+    boardStatus === 200 &&
+    boardStillEditor &&
+    boardStillTime &&
+    boardRecency
+  )
 }
 
 async function fc7(app: App) {
@@ -811,7 +1137,10 @@ async function fc7(app: App) {
   remember(ada.password)
   remember(bea.password)
   const team = await teamWith(app, ada, bea)
-  const beaToken = await app.createApiToken(bea.user.id, { name: 'board', scope: 'read_write' })
+  const beaToken = await app.createApiToken(bea.user.id, {
+    name: 'board',
+    scope: 'read_write',
+  })
   const oldAt = new Date('2020-01-01T00:00:00Z')
   const midAt = new Date('2024-06-01T00:00:00Z')
 
@@ -853,7 +1182,9 @@ async function fc7(app: App) {
   const sceneAfter = await readStamp(scene.target.id)
   const sceneHits = await app.searchVisiblePages(ada.user.id, scene.mark)
   const sceneBy = sceneAfter.last_edited_by === bea.user.id
-  const sceneAt = (sceneAfter.last_edited_at?.getTime() ?? 0) > (sceneBefore.last_edited_at?.getTime() ?? 0)
+  const sceneAt =
+    (sceneAfter.last_edited_at?.getTime() ?? 0) >
+    (sceneBefore.last_edited_at?.getTime() ?? 0)
   const sceneRank = sceneHits[0]?.id === scene.target.id
 
   const title = await prepare('title')
@@ -868,7 +1199,9 @@ async function fc7(app: App) {
   const titleAfter = await readStamp(title.target.id)
   const titleHits = await app.searchVisiblePages(ada.user.id, title.mark)
   const titleBy = titleAfter.last_edited_by === bea.user.id
-  const titleAt = (titleAfter.last_edited_at?.getTime() ?? 0) > (titleBefore.last_edited_at?.getTime() ?? 0)
+  const titleAt =
+    (titleAfter.last_edited_at?.getTime() ?? 0) >
+    (titleBefore.last_edited_at?.getTime() ?? 0)
   const titleRank = titleHits[0]?.id === title.target.id
 
   const token = await prepare('token')
@@ -882,7 +1215,9 @@ async function fc7(app: App) {
   const tokenAfter = await readStamp(token.target.id)
   const tokenHits = await app.searchVisiblePages(ada.user.id, token.mark)
   const tokenBy = tokenAfter.last_edited_by === bea.user.id
-  const tokenAt = (tokenAfter.last_edited_at?.getTime() ?? 0) > (tokenBefore.last_edited_at?.getTime() ?? 0)
+  const tokenAt =
+    (tokenAfter.last_edited_at?.getTime() ?? 0) >
+    (tokenBefore.last_edited_at?.getTime() ?? 0)
   const tokenRank = tokenHits[0]?.id === token.target.id
 
   line('scene_status', sceneStatus)
@@ -913,7 +1248,8 @@ async function cleanup() {
   if (stopping) return
   stopping = true
   for (const child of children) await stopChild(child).catch(() => undefined)
-  if (pgName) await runFile('docker', ['rm', '-f', pgName]).catch(() => undefined)
+  if (pgName)
+    await runFile('docker', ['rm', '-f', pgName]).catch(() => undefined)
   if (pgEnv) rmSync(pgEnv, { force: true })
   for (const dir of temps) rmSync(dir, { recursive: true, force: true })
 }
@@ -938,6 +1274,7 @@ const checks: Record<string, (app: App, root: string) => Promise<boolean>> = {
   fc5,
   fc6,
   fc7,
+  fc8,
 }
 
 async function main() {
@@ -946,7 +1283,10 @@ async function main() {
   if (!check || !pin) throw new Error('unknown step')
   const sha = planted
     ? pin
-    : execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+    : execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+      }).trim()
   line('sha', sha)
   await ensureDatabase()
   ensureAuth()

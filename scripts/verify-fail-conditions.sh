@@ -1224,6 +1224,7 @@ recipe_51m_fc4() { recipe_51m fc4; }
 recipe_51m_fc5() { recipe_51m fc5; }
 recipe_51m_fc6() { recipe_51m fc6; }
 recipe_51m_fc7() { recipe_51m fc7; }
+recipe_51m_fc8() { recipe_51m fc8; }
 recipe_50_reg_mcp() {
   local work status
   work=$(mktemp -d)
@@ -1653,6 +1654,7 @@ case "${1:-}" in
   51m-fc5) run_recipe recipe_51m_fc5 ;;
   51m-fc6) run_recipe recipe_51m_fc6 ;;
   51m-fc7) run_recipe recipe_51m_fc7 ;;
+  51m-fc8) run_recipe recipe_51m_fc8 ;;
   fc1) run_recipe recipe_fc1 ;;
   fc2) run_recipe recipe_fc2 ;;
   fc3) run_recipe recipe_fc3 ;;
@@ -1673,7 +1675,7 @@ case "${1:-}" in
     echo "END $(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$SHA"
     ;;
   *)
-    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|8-1|8-2|8-3|8-4|8-5|8-6|8-7|8-8|8-9|8-10|8-11|8-12|8-13|test-db-guard|fc1|fc2|fc3|fc4|10-3|10-4|auto-migrate-a|auto-migrate-b|auto-migrate-c|auto-migrate-d|auto-migrate-e|auto-migrate-f|37-fc1|37-fc2|37-fc3|37-fc4|37-fc5|37-fc7|37-fc8|37-fc9|37-fc10|37-fc11|42-fc1|42-fc2|42-fc3|44-fc1|44-fc2|44-fc3|44-fc4|44-fc5|44-fc6|44-fc7|44-fc8|44-fc9|44-fc10|44-fc11|44-fc12|44-fc13|44-fc14|44-fc15|44-fc16|44-fc17|44-fc18|44-fc19|44-fc20|38-fc1|38-fc2|38-fc3|38-fc4|38-fc5|38-fc6|38-fc7|38-fc8|38-fc9|38-fc10|38-fc11|38-fc12|49-fc1|49-fc2|49-fc3|49-fc4|49-fc5|49-fc6|50-fc1|50-fc2|50-fc3|50-fc4|50-fc5|50-fc6|50-fc8|50-fc9|50-reg-mcp|47-fc1|47-fc2|47-fc3|47-fc4|47-fc5|47-fc6|47-fc7|47-fc8|47-fc9|51-fc1|51-fc2|51-fc3|51-fc4|51-fc5|51-fc6|51-fc7|51-fc8|51-fc9|51-fc10|51-fc11|51-fc12|51-fc13|51-fc14|51-fc15|51-fc16|51-fc18|51m-fc1|51m-fc2|51m-fc3|51m-fc4|51m-fc5|51m-fc6|51m-fc7|all]" >&2
+    echo "usage: $0 [1|2|3|4|5a|5b|5c|5d|5e|5f|5g|5h|forgot-password|design-lock|3-1|3-2|3-3|3-4|3-5|space-error|6|7|7a|8|9|9a|10|5-1|5-2|5-3|5-4|4-1|4-2|4-3|4-4|4-5|4-6|4-7|13|20|token-revoked|token-cross|token-secret|token-bearer|token-writes|token-team|token-reset|token-roundtrip|token-image|token-fidelity|token-conflict|token-scope|token-expiry|token-rate|token-body|token-search|token-mention|healthcheck|7-1|7-2|7-3|7-4|7-5|7-6|7-7|7-8|7-9|7-10|7-11|7-12|7-13|8-1|8-2|8-3|8-4|8-5|8-6|8-7|8-8|8-9|8-10|8-11|8-12|8-13|test-db-guard|fc1|fc2|fc3|fc4|10-3|10-4|auto-migrate-a|auto-migrate-b|auto-migrate-c|auto-migrate-d|auto-migrate-e|auto-migrate-f|37-fc1|37-fc2|37-fc3|37-fc4|37-fc5|37-fc7|37-fc8|37-fc9|37-fc10|37-fc11|42-fc1|42-fc2|42-fc3|44-fc1|44-fc2|44-fc3|44-fc4|44-fc5|44-fc6|44-fc7|44-fc8|44-fc9|44-fc10|44-fc11|44-fc12|44-fc13|44-fc14|44-fc15|44-fc16|44-fc17|44-fc18|44-fc19|44-fc20|38-fc1|38-fc2|38-fc3|38-fc4|38-fc5|38-fc6|38-fc7|38-fc8|38-fc9|38-fc10|38-fc11|38-fc12|49-fc1|49-fc2|49-fc3|49-fc4|49-fc5|49-fc6|50-fc1|50-fc2|50-fc3|50-fc4|50-fc5|50-fc6|50-fc8|50-fc9|50-reg-mcp|47-fc1|47-fc2|47-fc3|47-fc4|47-fc5|47-fc6|47-fc7|47-fc8|47-fc9|51-fc1|51-fc2|51-fc3|51-fc4|51-fc5|51-fc6|51-fc7|51-fc8|51-fc9|51-fc10|51-fc11|51-fc12|51-fc13|51-fc14|51-fc15|51-fc16|51-fc18|51m-fc1|51m-fc2|51m-fc3|51m-fc4|51m-fc5|51m-fc6|51m-fc7|51m-fc8|all]" >&2
     exit 2
     ;;
 esac

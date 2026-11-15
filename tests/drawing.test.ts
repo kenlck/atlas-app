@@ -7,6 +7,8 @@ import {
   WHITEBOARD_PLACEHOLDER,
   canonicalElements,
   drawingLabelText,
+  restoreSceneElements,
+  sceneChanged,
   sceneRejection,
 } from '../src/lib/drawing'
 import { handleDrawingRequest } from '../src/lib/drawing-request'
@@ -30,7 +32,14 @@ function scene() {
   return [
     { id: SECRET, type: 'rectangle', text: SECRET, x: 1, y: 2 },
     { id: 'label-1', type: 'text', text: LABEL, x: 3, y: 4 },
-    { id: 'arrow-1', type: 'arrow', points: [[0, 0], [8, 8]] },
+    {
+      id: 'arrow-1',
+      type: 'arrow',
+      points: [
+        [0, 0],
+        [8, 8],
+      ],
+    },
   ]
 }
 
@@ -296,7 +305,11 @@ describe('drawings', () => {
       files: {},
     })
     expect(first.status).toBe(200)
-    const changed = await getDb().select().from(page).where(eq(page.id, doc.id)).limit(1)
+    const changed = await getDb()
+      .select()
+      .from(page)
+      .where(eq(page.id, doc.id))
+      .limit(1)
     expect(changed[0]?.lastEditedBy).toBe(ada.user.id)
     await getDb()
       .update(page)
@@ -314,10 +327,105 @@ describe('drawings', () => {
       files: {},
     })
     expect(again.status).toBe(200)
-    const kept = await getDb().select().from(page).where(eq(page.id, doc.id)).limit(1)
+    const kept = await getDb()
+      .select()
+      .from(page)
+      .where(eq(page.id, doc.id))
+      .limit(1)
     expect(kept[0]?.lastEditedBy).toBe(bea.user.id)
-    expect(kept[0]?.lastEditedAt?.toISOString()).toBe('2024-01-01T00:00:00.000Z')
+    expect(kept[0]?.lastEditedAt?.toISOString()).toBe(
+      '2024-01-01T00:00:00.000Z',
+    )
     expect(kept[0]?.updatedBy).toBe(changed[0]?.updatedBy)
     expect(kept[0]?.updatedAt).toEqual(changed[0]?.updatedAt)
+    const moved = await post(token.token, {
+      drawingId: diagram.id,
+      version: (await again.json()).version as number,
+      elements: [{ id: 'rect-1', type: 'rectangle', x: 9, y: 2 }],
+      appState: {},
+      files: {},
+    })
+    expect(moved.status).toBe(200)
+    const stamped = await getDb()
+      .select()
+      .from(page)
+      .where(eq(page.id, doc.id))
+      .limit(1)
+    expect(stamped[0]?.lastEditedBy).toBe(ada.user.id)
+    expect(stamped[0]?.lastEditedAt?.toISOString()).not.toBe(
+      '2024-01-01T00:00:00.000Z',
+    )
+  })
+
+  it('treats restore defaults as the same scene and a reorder as a change', async () => {
+    const sparse = [{ id: 'rect-1', type: 'rectangle', x: 1, y: 2 }]
+    const sized = [
+      { id: 'rect-1', type: 'rectangle', x: 1, y: 2, width: 8, height: 4 },
+    ]
+    expect(sceneChanged(sparse, restoreSceneElements(sparse))).toBe(false)
+    expect(sceneChanged(sized, restoreSceneElements(sized))).toBe(false)
+    const first = {
+      id: 'a',
+      type: 'rectangle',
+      x: 1,
+      y: 2,
+      width: 3,
+      height: 4,
+      index: 'a0',
+    }
+    const second = {
+      id: 'b',
+      type: 'rectangle',
+      x: 5,
+      y: 6,
+      width: 3,
+      height: 4,
+      index: 'a1',
+    }
+    expect(sceneChanged([first, second], [second, first])).toBe(true)
+
+    const ada = await createUser('Restore Ada')
+    const doc = await createPage(ada.user.id, {
+      spaceId: ada.space.id,
+      title: 'Restore note',
+    })
+    const diagram = await createDiagram(ada.user.id, doc.id)
+    const writer = await createApiToken(ada.user.id, {
+      name: 'restore',
+      scope: 'read_write',
+      expiry: '30d',
+    })
+    const saved = await post(writer.token, {
+      drawingId: diagram.id,
+      version: diagram.version,
+      elements: sparse,
+      appState: {},
+      files: {},
+    })
+    expect(saved.status).toBe(200)
+    await getDb()
+      .update(page)
+      .set({
+        lastEditedAt: new Date('2024-01-01T00:00:00Z'),
+        lastEditedBy: ada.user.id,
+      })
+      .where(eq(page.id, doc.id))
+    const opened = await post(writer.token, {
+      drawingId: diagram.id,
+      version: ((await saved.json()) as { version: number }).version,
+      elements: restoreSceneElements(sparse),
+      appState: {},
+      files: {},
+    })
+    expect(opened.status).toBe(200)
+    const kept = await getDb()
+      .select()
+      .from(page)
+      .where(eq(page.id, doc.id))
+      .limit(1)
+    expect(kept[0]?.lastEditedBy).toBe(ada.user.id)
+    expect(kept[0]?.lastEditedAt?.toISOString()).toBe(
+      '2024-01-01T00:00:00.000Z',
+    )
   })
 })

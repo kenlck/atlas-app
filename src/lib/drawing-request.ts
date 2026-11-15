@@ -6,11 +6,11 @@ import { getDb } from './db'
 import {
   BOARD_CONFLICT,
   DRAWING_MAX_BYTES,
-  canonicalElements,
   cleanPreviewSvg,
   drawingLabelText,
   plainAppState,
   plainElements,
+  sceneChanged,
   sceneFromStored,
   sceneRejection,
 } from './drawing'
@@ -31,7 +31,10 @@ type Caller = {
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: {
+      'content-type': 'application/json',
+      'cache-control': 'no-store',
+    },
   })
 }
 
@@ -90,7 +93,10 @@ function oneId(pageId: unknown, drawingId: unknown) {
     : { pageId: null, drawingId: drawingId as string }
 }
 
-async function loadTarget(ids: { pageId: string | null; drawingId: string | null }) {
+async function loadTarget(ids: {
+  pageId: string | null
+  drawingId: string | null
+}) {
   const db = getDb()
   if (ids.drawingId) {
     const rows = await db
@@ -110,7 +116,10 @@ async function loadTarget(ids: { pageId: string | null; drawingId: string | null
   return rows[0] ?? null
 }
 
-async function openDrawing(userId: string, ids: { pageId: string | null; drawingId: string | null }) {
+async function openDrawing(
+  userId: string,
+  ids: { pageId: string | null; drawingId: string | null },
+) {
   const target = await loadTarget(ids)
   if (!target) notFound()
   const access = await assertAccess(userId, { pageId: target.page.id })
@@ -152,7 +161,10 @@ export async function handleDrawingRequest(request: Request) {
     const caller = await callerOf(request)
     if (method === 'GET') {
       const url = new URL(request.url)
-      const ids = oneId(url.searchParams.get('pageId'), url.searchParams.get('drawingId'))
+      const ids = oneId(
+        url.searchParams.get('pageId'),
+        url.searchParams.get('drawingId'),
+      )
       if (!ids) return json({ error: 'Bad request' }, 400)
       const board = await openDrawing(caller.userId, ids)
       return json(boardPayload(board.drawing))
@@ -175,14 +187,21 @@ export async function handleDrawingRequest(request: Request) {
 
     const elements = plainElements(record.elements)
     if (!elements) return json({ error: 'Bad request' }, 400)
-    if (record.appState != null && (typeof record.appState !== 'object' || Array.isArray(record.appState))) {
+    if (
+      record.appState != null &&
+      (typeof record.appState !== 'object' || Array.isArray(record.appState))
+    ) {
       return json({ error: 'Bad request' }, 400)
     }
     if (sceneRejection({ files: record.files ?? null, elements })) {
       return json({ error: 'Bad request' }, 400)
     }
     const version = record.version
-    if (typeof version !== 'number' || !Number.isInteger(version) || version < 0) {
+    if (
+      typeof version !== 'number' ||
+      !Number.isInteger(version) ||
+      version < 0
+    ) {
       return json({ error: 'Bad request' }, 400)
     }
     const scene: DrawingScene = {
@@ -190,7 +209,9 @@ export async function handleDrawingRequest(request: Request) {
       appState: plainAppState(record.appState),
     }
     const preview =
-      record.previewSvg === undefined ? undefined : cleanPreviewSvg(record.previewSvg)
+      record.previewSvg === undefined
+        ? undefined
+        : cleanPreviewSvg(record.previewSvg)
     const title =
       record.title === undefined
         ? null
@@ -201,7 +222,17 @@ export async function handleDrawingRequest(request: Request) {
 
     const db = getDb()
     const written = await db.transaction(async (tx) => {
-      await holdWritablePage(tx, caller.userId, board.page.id)
+      const held = await holdWritablePage(tx, caller.userId, board.page.id)
+      const locked = await tx
+        .select({ scene: drawing.scene })
+        .from(drawing)
+        .where(eq(drawing.id, board.drawing.id))
+        .limit(1)
+        .for('update')
+      const sceneEdited = sceneChanged(
+        sceneFromStored(locked[0]?.scene).elements,
+        elements,
+      )
       const rows = await tx
         .update(drawing)
         .set({
@@ -210,10 +241,18 @@ export async function handleDrawingRequest(request: Request) {
           updatedAt: new Date(),
           ...(preview === undefined ? {} : { previewSvg: preview }),
         })
-        .where(and(eq(drawing.id, board.drawing.id), eq(drawing.version, version)))
-        .returning({ id: drawing.id, version: drawing.version, pageId: drawing.pageId })
+        .where(
+          and(eq(drawing.id, board.drawing.id), eq(drawing.version, version)),
+        )
+        .returning({
+          id: drawing.id,
+          version: drawing.version,
+          pageId: drawing.pageId,
+        })
       if (rows.length === 0) return null
       if (board.page.kind === 'whiteboard') {
+        const titleEdited = title !== null && title !== held.page.title
+        const edited = sceneEdited || titleEdited
         await tx
           .update(page)
           .set({
@@ -221,24 +260,35 @@ export async function handleDrawingRequest(request: Request) {
             bodyText: drawingLabelText(elements),
             updatedBy: caller.userId,
             updatedAt: new Date(),
-            lastEditedBy: caller.userId,
-            lastEditedAt: new Date(),
+            ...(edited
+              ? { lastEditedBy: caller.userId, lastEditedAt: new Date() }
+              : {}),
             ...(caller.tokenId ? { updatedViaTokenId: caller.tokenId } : {}),
           })
           .where(eq(page.id, board.page.id))
       }
-      return rows[0]
+      const row = rows[0]
+      if (!row) return null
+      return { ...row, sceneEdited }
     })
     if (!written) return json({ error: BOARD_CONFLICT }, 409)
     if (board.page.kind !== 'whiteboard') {
-      const previous = sceneFromStored(board.drawing.scene).elements
-      const edited = canonicalElements(previous) !== canonicalElements(elements)
-      await refreshDocText(caller.userId, board.page.id, caller.tokenId, edited)
+      await refreshDocText(
+        caller.userId,
+        board.page.id,
+        caller.tokenId,
+        written.sceneEdited,
+      )
     }
     await touchLastSpace(caller.userId, board.spaceId)
-    return json({ id: written.id, pageId: written.pageId, version: written.version })
+    return json({
+      id: written.id,
+      pageId: written.pageId,
+      version: written.version,
+    })
   } catch (error) {
-    if (error instanceof HttpError) return json({ error: error.message }, error.status)
+    if (error instanceof HttpError)
+      return json({ error: error.message }, error.status)
     return json({ error: 'Internal Server Error' }, 500)
   }
 }
