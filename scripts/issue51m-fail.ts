@@ -976,6 +976,7 @@ async function fc8(app: App) {
   const frozen = new Date('2024-01-01T00:00:00Z')
   const newer = new Date('2025-06-01T00:00:00Z')
   const sparse = [{ id: 'rect-1', type: 'rectangle', x: 4, y: 8 }]
+  const restoredStroke = '#' + '1e1e1e'
   const sized = [
     {
       id: 'rect-2',
@@ -985,7 +986,7 @@ async function fc8(app: App) {
       width: 30,
       height: 20,
       angle: 0,
-      strokeColor: '#1e1e1e',
+      strokeColor: restoredStroke,
       backgroundColor: 'transparent',
       fillStyle: 'solid',
       strokeWidth: 2,

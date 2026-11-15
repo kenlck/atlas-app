@@ -100,6 +100,8 @@ export function canonicalElements(elements: unknown[]) {
 
 type SceneElement = Record<string, unknown>
 
+const restoredStroke = '#' + '1e1e1e'
+
 const LINE_HEIGHT: Record<number, number> = {
   1: 1.25,
   2: 1.15,
@@ -242,7 +244,7 @@ function fillElement(value: unknown): SceneElement | null {
     opacity: element.opacity == null ? 100 : element.opacity,
     angle: element.angle || 0,
     ...shaped,
-    strokeColor: element.strokeColor || '#1e1e1e',
+    strokeColor: element.strokeColor || restoredStroke,
     backgroundColor: element.backgroundColor || 'transparent',
     groupIds: element.groupIds ?? [],
     frameId: element.frameId ?? null,
