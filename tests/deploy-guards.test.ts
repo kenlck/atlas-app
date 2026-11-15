@@ -50,6 +50,21 @@ describe('production boot', () => {
     }
   })
 
+  it('refuses to boot when BETTER_AUTH_SECRET is shorter than 32 characters', () => {
+    const short = 'short-secret'
+    const result = boot({ BETTER_AUTH_SECRET: short })
+    const output = outputOf(result)
+    expect(result.status).not.toBe(0)
+    expect(output).toContain('BETTER_AUTH_SECRET must be at least 32 characters')
+    expect(output).not.toContain(short)
+    expect(output).not.toContain(DUMMY_AUTH)
+    expect(output).not.toContain(DUMMY_ADMIN)
+    const ok = boot({ BETTER_AUTH_SECRET: 'a'.repeat(32) })
+    const okOutput = outputOf(ok)
+    expect(ok.status).toBe(0)
+    expect(okOutput).not.toContain('a'.repeat(32))
+  })
+
   it('refuses to boot when ADMIN_API_SECRET is missing', () => {
     const missing = boot({}, ['ADMIN_API_SECRET'])
     const empty = boot({ ADMIN_API_SECRET: '' })

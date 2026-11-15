@@ -18,6 +18,9 @@ export function assertProductionEnv() {
     if (typeof value !== 'string' || value.trim() === '') {
       throw new Error(`${name} is required`)
     }
+    if (name === 'BETTER_AUTH_SECRET' && value.length < 32) {
+      throw new Error('BETTER_AUTH_SECRET must be at least 32 characters')
+    }
   }
   trustedProxyHops()
 }
