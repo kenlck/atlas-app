@@ -713,6 +713,40 @@ run_step 47-fc8 ./scripts/verify-fail-conditions.sh 47-fc8
 require_step_log 47-fc8 "47_fc8_planted_sha=e1a2165408271ed624e24717b52c9f6cf9314165" "47_fc8_head_sha=" "47_fc8_foreign_delete=true" "47_fc8_foreign_delete=false" "47_fc8_planted_exit=1" "47_fc8_head_exit=0" "47_fc8=pass" "recipe_exit=0"
 run_step 47-fc9 ./scripts/verify-fail-conditions.sh 47-fc9
 require_step_log 47-fc9 "47_fc9_planted_sha=e1a2165408271ed624e24717b52c9f6cf9314165" "47_fc9_head_sha=" "47_fc9_page_scroll=true" "47_fc9_page_scroll=false" "47_fc9_reached=14" "47_fc9_planted_exit=1" "47_fc9_head_exit=0" "47_fc9=pass" "recipe_exit=0"
+run_step 51-fc1 ./scripts/verify-fail-conditions.sh 51-fc1
+require_step_log 51-fc1 "51_fc1_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc1_head_sha=" "51_fc1_planted_over=200" "51_fc1_planted_stored=true" "51_fc1_head_over=413" "51_fc1_head_stored=false" "51_fc1_head_small=200" "51_fc1_head_request=413" "51_fc1_planted_exit=1" "51_fc1_head_exit=0" "51_fc1=pass" "recipe_exit=0"
+run_step 51-fc2 ./scripts/verify-fail-conditions.sh 51-fc2
+require_step_log 51-fc2 "51_fc2_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc2_head_sha=" "51_fc2_planted_rename=200" "51_fc2_planted_unchanged=false" "51_fc2_planted_mcp=200" "51_fc2_planted_count_same=false" "51_fc2_head_rename=400" "51_fc2_head_unchanged=true" "51_fc2_head_mcp=400" "51_fc2_head_count_same=true" "51_fc2_head_ok=200" "51_fc2_planted_exit=1" "51_fc2_head_exit=0" "51_fc2=pass" "recipe_exit=0"
+run_step 51-fc3 ./scripts/verify-fail-conditions.sh 51-fc3
+require_step_log 51-fc3 "51_fc3_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc3_head_sha=" "51_fc3_planted_rename=500" "51_fc3_planted_create=500" "51_fc3_planted_move=404" "51_fc3_head_rename=400" "51_fc3_head_title=true" "51_fc3_head_create=400" "51_fc3_head_count_same=true" "51_fc3_head_move=400" "51_fc3_head_parent=true" "51_fc3_planted_exit=1" "51_fc3_head_exit=0" "51_fc3=pass" "recipe_exit=0"
+run_step 51-fc4 ./scripts/verify-fail-conditions.sh 51-fc4
+require_step_log 51-fc4 "51_fc4_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc4_head_sha=" "51_fc4_planted_save=200" "51_fc4_planted_stored=true" "51_fc4_planted_get_page=500" "51_fc4_head_save=400" "51_fc4_head_stored=false" "51_fc4_head_get_page=200" "51_fc4_planted_exit=1" "51_fc4_head_exit=0" "51_fc4=pass" "recipe_exit=0"
+run_step 51-fc5 ./scripts/verify-fail-conditions.sh 51-fc5
+require_step_log 51-fc5 "51_fc5_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc5_head_sha=" "51_fc5_planted_short_status=0" "51_fc5_planted_short_message=false" "51_fc5_head_short_status=1" "51_fc5_head_short_message=true" "51_fc5_head_short_leaked=false" "51_fc5_head_long_status=0" "51_fc5_head_long_leaked=false" "51_fc5_planted_exit=1" "51_fc5_head_exit=0" "51_fc5=pass" "recipe_exit=0"
+run_step 51-fc6 ./scripts/verify-fail-conditions.sh 51-fc6
+require_step_log 51-fc6 "51_fc6_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc6_head_sha=" "51_fc6_planted_stale=200" "51_fc6_planted_kept=false" "51_fc6_head_stale=409" "51_fc6_head_kept=true" "51_fc6_head_fresh=200" "51_fc6_head_omitted=200" "51_fc6_planted_exit=1" "51_fc6_head_exit=0" "51_fc6=pass" "recipe_exit=0"
+run_step 51-fc7 ./scripts/verify-fail-conditions.sh 51-fc7
+require_step_log 51-fc7 "51_fc7_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc7_head_sha=" "51_fc7_planted_saw_wait=true" "51_fc7_planted_body_text=false" "51_fc7_head_saw_wait=true" "51_fc7_head_body_text=true" "51_fc7_planted_exit=1" "51_fc7_head_exit=0" "51_fc7=pass" "recipe_exit=0"
+run_step 51-fc8 ./scripts/verify-fail-conditions.sh 51-fc8
+require_step_log 51-fc8 "51_fc8_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc8_head_sha=" "51_fc8_planted_wired=false" "51_fc8_head_wired=true" "51_fc8_head_locked=true" "51_fc8_head_other=true" "51_fc8_planted_exit=1" "51_fc8_head_exit=0" "51_fc8=pass" "recipe_exit=0"
+run_step 51-fc9 ./scripts/verify-fail-conditions.sh 51-fc9
+require_step_log 51-fc9 "51_fc9_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc9_head_sha=" "51_fc9_planted_configurable=false" "51_fc9_head_configurable=true" "51_fc9_head_only_configured=true" "51_fc9_planted_exit=1" "51_fc9_head_exit=0" "51_fc9=pass" "recipe_exit=0"
+run_step 51-fc10 ./scripts/verify-fail-conditions.sh 51-fc10
+require_step_log 51-fc10 "51_fc10_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc10_head_sha=" "51_fc10_planted_handler=false" "51_fc10_planted_exited=false" "51_fc10_head_handler=true" "51_fc10_head_exited=true" "51_fc10_planted_exit=1" "51_fc10_head_exit=0" "51_fc10=pass" "recipe_exit=0"
+run_step 51-fc11 ./scripts/verify-fail-conditions.sh 51-fc11
+require_step_log 51-fc11 "51_fc11_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc11_head_sha=" "51_fc11_planted_text=false" "51_fc11_planted_bg=false" "51_fc11_planted_color=false" "51_fc11_head_text=true" "51_fc11_head_height=36" "51_fc11_head_bg=true" "51_fc11_head_color=true" "51_fc11_planted_exit=1" "51_fc11_head_exit=0" "51_fc11=pass" "recipe_exit=0"
+run_step 51-fc12 ./scripts/verify-fail-conditions.sh 51-fc12
+require_step_log 51-fc12 "51_fc12_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc12_head_sha=" "51_fc12_planted_cancel_closed=false" "51_fc12_planted_remains=true" "51_fc12_head_cancel_closed=true" "51_fc12_head_confirm_stayed=true" "51_fc12_head_still=true" "51_fc12_planted_exit=1" "51_fc12_head_exit=0" "51_fc12=pass" "recipe_exit=0"
+run_step 51-fc13 ./scripts/verify-fail-conditions.sh 51-fc13
+require_step_log 51-fc13 "51_fc13_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc13_head_sha=" "51_fc13_planted_chip=22" "51_fc13_planted_mode=27" "51_fc13_planted_done=28" "51_fc13_planted_aligned=false" "51_fc13_head_chip=36" "51_fc13_head_mode=36" "51_fc13_head_done=36" "51_fc13_head_aligned=true" "51_fc13_planted_exit=1" "51_fc13_head_exit=0" "51_fc13=pass" "recipe_exit=0"
+run_step 51-fc14 ./scripts/verify-fail-conditions.sh 51-fc14
+require_step_log 51-fc14 "51_fc14_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc14_head_sha=" "51_fc14_planted_contenteditable=false" "51_fc14_planted_aria_readonly=missing" "51_fc14_head_contenteditable=false" "51_fc14_head_aria_readonly=true" "51_fc14_planted_exit=1" "51_fc14_head_exit=0" "51_fc14=pass" "recipe_exit=0"
+run_step 51-fc15 ./scripts/verify-fail-conditions.sh 51-fc15
+require_step_log 51-fc15 "51_fc15_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc15_head_sha=" "51_fc15_planted_crumb=false" "51_fc15_planted_sidebar=false" "51_fc15_head_crumb=true" "51_fc15_head_sidebar=true" "51_fc15_planted_exit=1" "51_fc15_head_exit=0" "51_fc15=pass" "recipe_exit=0"
+run_step 51-fc16 ./scripts/verify-fail-conditions.sh 51-fc16
+require_step_log 51-fc16 "51_fc16_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc16_head_sha=" "51_fc16_planted_rows=1" "51_fc16_head_rows=0" "51_fc16_head_on_page=false" "51_fc16_planted_exit=1" "51_fc16_head_exit=0" "51_fc16=pass" "recipe_exit=0"
+run_step 51-fc17 ./scripts/verify-fail-conditions.sh 51-fc17
+require_step_log 51-fc17 "51_fc17_planted_sha=7addaad4a4ff50a2761dcd41afb78bba05ef3550" "51_fc17_head_sha=" "51_fc17_planted_kills=false" "51_fc17_planted_exited=false" "51_fc17_head_kills=true" "51_fc17_head_exited=true" "51_fc17_planted_exit=1" "51_fc17_head_exit=0" "51_fc17=pass" "recipe_exit=0"
 run_step fail10-3 ./scripts/verify-fail-conditions.sh 10-3
 require_step_log fail10-3 "grandchild_status=400" "grandchild_error_clear=true" "parents_unchanged=true" "grandchild_rows_unchanged=true" "self_status=400" "self_error_clear=true" "self_unchanged=true" "self_rows_unchanged=true" "valid_status=200" "valid_parent_updated=true" "cycle_walk_within_500ms=true" "statement_timeout=false" "cycle_rows_unchanged=true"
 run_step fail13 ./scripts/verify-fail-conditions.sh 13
