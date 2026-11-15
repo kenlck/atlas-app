@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process'
+import { execFile, execFileSync, spawn } from 'node:child_process'
 import { createServer } from 'node:net'
 import {
   closeSync,
@@ -24,6 +24,18 @@ import {
 
 const PIN = '881e9a8a7bda92cbd5783e63b4c28b38cab835ee'
 const PLANT = 'e1a2165408271ed624e24717b52c9f6cf9314165'
+const PLANT_OF: Record<string, string> = {
+  fc1: PIN,
+  fc2: PIN,
+  fc3: PIN,
+  fc4: PIN,
+  fc5: PLANT,
+  fc6: PLANT,
+  fc7: PIN,
+  fc8: PLANT,
+  fc9: PLANT,
+}
+const ORDER = ['fc1', 'fc2', 'fc3', 'fc4', 'fc5', 'fc6', 'fc7', 'fc8', 'fc9']
 const PHONE = { width: 390, height: 844 }
 const DESK = { width: 1280, height: 800 }
 const TITLE = 'Sarah phone width notes'
@@ -1335,6 +1347,28 @@ const steps = [
   ['fc9', fc9],
 ] as const
 
+function repoHead() {
+  return execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  }).trim()
+}
+
+function noteSha(name: string, plantedRun: boolean) {
+  line(
+    plantedRun ? `47_${name}_planted_sha` : `47_${name}_head_sha`,
+    plantedRun ? PLANT_OF[name] : repoHead(),
+  )
+}
+
+async function dispatch(ctx: Ctx, name: string, pinRoot: string | null) {
+  if (name === 'fc5') return fc5(ctx, pinRoot)
+  for (const [step, fn] of steps) {
+    if (step === name) return fn(ctx)
+  }
+  throw new Error(`unknown step ${name}`)
+}
+
 async function main() {
   const mode = process.argv[2] ?? ''
   const planted = mode.endsWith('-planted')
@@ -1372,47 +1406,92 @@ async function main() {
   const portHint = await freePort()
   process.env.BETTER_AUTH_URL = `http://127.0.0.1:${portHint}`
   await migrate()
-  const pinRoot = planted
-    ? await materialize(PLANT)
-    : which === 'fc5' || which === 'all'
-      ? await materialize(PIN)
-      : null
-  const booted = await boot(planted && pinRoot ? pinRoot : repoRoot)
-  process.env.BETTER_AUTH_URL = booted.base
-  const app = await loadApp()
-  const browser = await chromium.launch({
-    args: ['--no-sandbox', '--disable-dev-shm-usage'],
-  })
-  let bug = false
-  try {
-    const people = await roster(app)
-    const ctx: Ctx = { ...people, base: booted.base, planted, app, browser }
-    if (which === 'all' || which === 'fc5') {
-      const fc5bug = await fc5(ctx, pinRoot)
-      line('47_fc5_bug', fc5bug)
-      line('47_fc5', fc5bug ? 'fail' : 'pass')
-      line('47_fc5_exit', fc5bug ? 1 : 0)
-      bug = fc5bug
-    }
+  const dirs: string[] = []
+  const drop = (dir: string | null) => {
+    if (!dir) return
+    rmSync(dir, { recursive: true, force: true })
+  }
+  async function runNames(
+    root: string,
+    names: string[],
+    plantedRun: boolean,
+    comparePin: string | null,
+  ) {
+    const booted = await boot(root)
+    process.env.BETTER_AUTH_URL = booted.base
+    const app = await loadApp()
+    const browser = await chromium.launch({
+      args: ['--no-sandbox', '--disable-dev-shm-usage'],
+    })
+    let bug = false
     const exits: string[] = []
-    if (which === 'all' || which === 'fc5') exits.push(`fc5=${bug ? 1 : 0}`)
-    for (const [name, fn] of steps) {
-      if (which !== 'all' && which !== name) continue
-      const failed = await fn(ctx)
-      line(`47_${name}_bug`, failed)
-      line(`47_${name}`, failed ? 'fail' : 'pass')
-      line(`47_${name}_exit`, failed ? 1 : 0)
-      exits.push(`${name}=${failed ? 1 : 0}`)
-      bug = bug || failed
+    try {
+      const people = await roster(app)
+      const ctx: Ctx = {
+        ...people,
+        base: booted.base,
+        planted: plantedRun,
+        app,
+        browser,
+      }
+      for (const name of names) {
+        noteSha(name, plantedRun)
+        const failed = await dispatch(ctx, name, plantedRun ? null : comparePin)
+        line(`47_${name}_bug`, failed)
+        line(`47_${name}_exit`, failed ? 1 : 0)
+        exits.push(`${name}=${failed ? 1 : 0}`)
+        bug = bug || failed
+      }
+      return { bug, exits }
+    } finally {
+      await browser.close().catch(() => undefined)
+      await app.closeDb().catch(() => undefined)
+      await booted.stop()
     }
-    line('47_exits', exits.join(','))
+  }
+  try {
+    let bug = false
+    const exits: string[] = []
+    if (planted && which === 'all') {
+      const pinDir = await materialize(PIN)
+      const plantDir = await materialize(PLANT)
+      dirs.push(pinDir, plantDir)
+      const first = await runNames(
+        pinDir,
+        ['fc1', 'fc2', 'fc3', 'fc4', 'fc7'],
+        true,
+        null,
+      )
+      const second = await runNames(
+        plantDir,
+        ['fc5', 'fc6', 'fc8', 'fc9'],
+        true,
+        null,
+      )
+      bug = first.bug || second.bug
+      exits.push(...first.exits, ...second.exits)
+    } else if (planted) {
+      const dir = await materialize(PLANT_OF[which])
+      dirs.push(dir)
+      const result = await runNames(dir, [which], true, null)
+      bug = result.bug
+      exits.push(...result.exits)
+    } else {
+      const names = which === 'all' ? [...ORDER] : [which]
+      const comparePin = names.includes('fc5') ? await materialize(PIN) : null
+      if (comparePin) dirs.push(comparePin)
+      const result = await runNames(repoRoot, names, false, comparePin)
+      bug = result.bug
+      exits.push(...result.exits)
+    }
+    const ordered = ORDER.filter((name) =>
+      exits.some((item) => item.startsWith(`${name}=`)),
+    ).map((name) => exits.find((item) => item.startsWith(`${name}=`)) ?? '')
+    line('47_exits', ordered.join(','))
     line('47_result', bug ? 'fail' : 'pass')
     return bug
   } finally {
-    await browser.close().catch(() => undefined)
-    await app.closeDb().catch(() => undefined)
-    await booted.stop()
-    if (pinRoot) rmSync(pinRoot, { recursive: true, force: true })
+    for (const dir of dirs) drop(dir)
   }
 }
 

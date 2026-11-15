@@ -695,6 +695,24 @@ run_step 50-fc9 ./scripts/verify-fail-conditions.sh 50-fc9
 require_step_log 50-fc9 "50_fc9_planted_type=200" "50_fc9_planted_move=200" "50_fc9_planted_again=409" "50_fc9_planted_banner=true" "50_fc9_planted_persisted=false" "50_fc9_planted_exit=1" "50_fc9_head_type=200" "50_fc9_head_move=200" "50_fc9_head_again=200" "50_fc9_head_banner=false" "50_fc9_head_persisted=true" "50_fc9_head_exit=0" "50_fc9=pass" "recipe_exit=0"
 run_step 50-reg-mcp ./scripts/verify-fail-conditions.sh 50-reg-mcp
 require_step_log 50-reg-mcp "50_reg_mcp_head_with_stamp=200" "50_reg_mcp_head_with_stamp_stored=true" "50_reg_mcp_head_without_stamp=409" "50_reg_mcp_head_without_stamp_stored=false" "50_reg_mcp_pin_with_stamp=200" "50_reg_mcp_pin_with_stamp_stored=true" "50_reg_mcp_pin_without_stamp=409" "50_reg_mcp_pin_without_stamp_stored=false" "50_reg_mcp_same=true" "50_reg_mcp_exit=0" "50_reg_mcp=pass" "recipe_exit=0"
+run_step 47-fc1 ./scripts/verify-fail-conditions.sh 47-fc1
+require_step_log 47-fc1 "47_fc1_planted_sha=881e9a8a7bda92cbd5783e63b4c28b38cab835ee" "47_fc1_head_sha=" "47_fc1_bug=true" "47_fc1_bug=false" "47_fc1_planted_exit=1" "47_fc1_head_exit=0" "47_fc1=pass" "recipe_exit=0"
+run_step 47-fc2 ./scripts/verify-fail-conditions.sh 47-fc2
+require_step_log 47-fc2 "47_fc2_planted_sha=881e9a8a7bda92cbd5783e63b4c28b38cab835ee" "47_fc2_head_sha=" "47_fc2_bug=true" "47_fc2_bug=false" "47_fc2_planted_exit=1" "47_fc2_head_exit=0" "47_fc2=pass" "recipe_exit=0"
+run_step 47-fc3 ./scripts/verify-fail-conditions.sh 47-fc3
+require_step_log 47-fc3 "47_fc3_planted_sha=881e9a8a7bda92cbd5783e63b4c28b38cab835ee" "47_fc3_head_sha=" "47_fc3_bug=true" "47_fc3_bug=false" "47_fc3_planted_exit=1" "47_fc3_head_exit=0" "47_fc3=pass" "recipe_exit=0"
+run_step 47-fc4 ./scripts/verify-fail-conditions.sh 47-fc4
+require_step_log 47-fc4 "47_fc4_planted_sha=881e9a8a7bda92cbd5783e63b4c28b38cab835ee" "47_fc4_head_sha=" "47_fc4_bug=true" "47_fc4_bug=false" "47_fc4_planted_exit=1" "47_fc4_head_exit=0" "47_fc4=pass" "recipe_exit=0"
+run_step 47-fc5 ./scripts/verify-fail-conditions.sh 47-fc5
+require_step_log 47-fc5 "47_fc5_planted_sha=e1a2165408271ed624e24717b52c9f6cf9314165" "47_fc5_head_sha=" "47_fc5_desktop=false" "47_fc5_changed=none" "47_fc5_planted_exit=1" "47_fc5_head_exit=0" "47_fc5=pass" "recipe_exit=0"
+run_step 47-fc6 ./scripts/verify-fail-conditions.sh 47-fc6
+require_step_log 47-fc6 "47_fc6_planted_sha=e1a2165408271ed624e24717b52c9f6cf9314165" "47_fc6_head_sha=" "47_fc6_failed_bad=missing" "47_fc6_stale=true" "47_fc6_planted_exit=1" "47_fc6_head_exit=0" "47_fc6=pass" "recipe_exit=0"
+run_step 47-fc7 ./scripts/verify-fail-conditions.sh 47-fc7
+require_step_log 47-fc7 "47_fc7_planted_sha=881e9a8a7bda92cbd5783e63b4c28b38cab835ee" "47_fc7_head_sha=" "47_fc7_icon=false" "47_fc7_icon=true" "47_fc7_planted_exit=1" "47_fc7_head_exit=0" "47_fc7=pass" "recipe_exit=0"
+run_step 47-fc8 ./scripts/verify-fail-conditions.sh 47-fc8
+require_step_log 47-fc8 "47_fc8_planted_sha=e1a2165408271ed624e24717b52c9f6cf9314165" "47_fc8_head_sha=" "47_fc8_foreign_delete=true" "47_fc8_foreign_delete=false" "47_fc8_planted_exit=1" "47_fc8_head_exit=0" "47_fc8=pass" "recipe_exit=0"
+run_step 47-fc9 ./scripts/verify-fail-conditions.sh 47-fc9
+require_step_log 47-fc9 "47_fc9_planted_sha=e1a2165408271ed624e24717b52c9f6cf9314165" "47_fc9_head_sha=" "47_fc9_page_scroll=true" "47_fc9_page_scroll=false" "47_fc9_reached=14" "47_fc9_planted_exit=1" "47_fc9_head_exit=0" "47_fc9=pass" "recipe_exit=0"
 run_step fail10-3 ./scripts/verify-fail-conditions.sh 10-3
 require_step_log fail10-3 "grandchild_status=400" "grandchild_error_clear=true" "parents_unchanged=true" "grandchild_rows_unchanged=true" "self_status=400" "self_error_clear=true" "self_unchanged=true" "self_rows_unchanged=true" "valid_status=200" "valid_parent_updated=true" "cycle_walk_within_500ms=true" "statement_timeout=false" "cycle_rows_unchanged=true"
 run_step fail13 ./scripts/verify-fail-conditions.sh 13
