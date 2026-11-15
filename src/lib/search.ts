@@ -25,7 +25,7 @@ type SearchRow = {
   body_text: string
   space_id: string
   space_name: string
-  updated_at: Date | string
+  recency: Date | string
 }
 
 function escapeLike(value: string) {
@@ -84,7 +84,7 @@ export async function searchVisiblePages(
       page.body_text,
       page.space_id,
       space.name AS space_name,
-      page.updated_at
+      COALESCE(page.last_edited_at, page.updated_at) AS recency
     FROM page
     INNER JOIN space ON space.id = page.space_id
     WHERE page.archived_at IS NULL
@@ -108,7 +108,7 @@ export async function searchVisiblePages(
       )
     ORDER BY
       CASE WHEN page.title ILIKE ${pattern} ESCAPE '\\' THEN 0 ELSE 1 END,
-      page.updated_at DESC
+      COALESCE(page.last_edited_at, page.updated_at) DESC
     LIMIT ${limit}
   `
   return rows.map((row) => {
@@ -118,7 +118,7 @@ export async function searchVisiblePages(
       title: row.title,
       spaceId: row.space_id,
       spaceName: row.space_name,
-      updatedAt: isoTime(row.updated_at),
+      updatedAt: isoTime(row.recency),
       group: titleMatch ? 'title' : 'content',
       snippet: titleMatch ? '' : snippetAround(row.body_text, trimmed),
     }

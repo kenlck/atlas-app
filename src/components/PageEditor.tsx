@@ -23,7 +23,7 @@ import {
   browserPageSaveTransport,
   deliverPageSave,
 } from '#/lib/page-save-keepalive'
-import { relativeTime } from '#/lib/relative-time'
+import { editedByLine } from '#/lib/relative-time'
 import { savePageFn, createDiagramFn, fetchPage } from '#/server/fns'
 import { DateChip } from '#/lib/date-chip'
 import { createDiagramExtension } from '#/lib/diagram-node'
@@ -554,7 +554,7 @@ export function PageEditor({ page }: { page: PageView }) {
               }}
             />
             <div className="meta">
-              Edited by {page.updatedByName} · {relativeTime(page.updatedAt)}
+              {editedByLine(page.lastEditedByName, page.lastEditedAt ?? page.updatedAt)}
             </div>
             <EditorContent editor={editor} />
           </div>

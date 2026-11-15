@@ -6,7 +6,7 @@ import {
   browserDrawingSaveTransport,
   deliverDrawingSave,
 } from '#/lib/drawing-keepalive'
-import { relativeTime } from '#/lib/relative-time'
+import { editedByLine } from '#/lib/relative-time'
 import type { PageView } from '#/lib/pages'
 import { useSpaceOutlet } from './AppFrame'
 import { NewPageMenu } from './NewPageMenu'
@@ -272,7 +272,7 @@ export function Whiteboard({ page }: { page: PageView }) {
           }}
         />
         <div className="meta">
-          Edited by {page.updatedByName} · {relativeTime(page.updatedAt)}
+          {editedByLine(page.lastEditedByName, page.lastEditedAt ?? page.updatedAt)}
         </div>
       </div>
       <div className="board-canvas">
