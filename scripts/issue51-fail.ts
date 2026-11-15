@@ -276,7 +276,13 @@ async function loadApp(root: string): Promise<App> {
   const db = (await import(href('src/lib/db.ts'))) as Pick<App, 'closeDb' | 'getDb'>
   const schema = (await import(href('src/lib/schema.ts'))) as App['schema']
   const tokens = (await import(href('src/lib/api-tokens.ts'))) as Pick<App, 'createApiToken'>
-  const input = (await import(href('src/lib/page-input.ts'))) as Pick<App, 'parseSavePayload'>
+  let parseSavePayload: App['parseSavePayload'] = () => null
+  try {
+    const input = (await import(href('src/lib/page-input.ts'))) as Pick<App, 'parseSavePayload'>
+    if (typeof input.parseSavePayload === 'function') parseSavePayload = input.parseSavePayload
+  } catch {
+    parseSavePayload = () => null
+  }
   const mcp = (await import(href('src/lib/mcp.ts'))) as Pick<App, 'handleMcp'>
   const save = (await import(href('src/lib/page-save-request.ts'))) as Pick<App, 'handlePageSave'>
   let moveFailureToast: App['moveFailureToast']
@@ -302,7 +308,7 @@ async function loadApp(root: string): Promise<App> {
     schema,
     createApiToken: tokens.createApiToken,
     updatePageForToken: pages.updatePageForToken,
-    parseSavePayload: input.parseSavePayload,
+    parseSavePayload,
     handleMcp: mcp.handleMcp,
     handlePageSave: save.handlePageSave,
     moveFailureToast,
