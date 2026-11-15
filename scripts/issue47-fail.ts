@@ -23,6 +23,7 @@ import {
 } from './verify-local.ts'
 
 const PIN = '881e9a8a7bda92cbd5783e63b4c28b38cab835ee'
+const PLANT = 'e1a2165408271ed624e24717b52c9f6cf9314165'
 const PHONE = { width: 390, height: 844 }
 const DESK = { width: 1280, height: 800 }
 const TITLE = 'Sarah phone width notes'
@@ -254,9 +255,9 @@ async function ensureDatabase() {
   line('47_db', 'local')
 }
 
-function materializePin() {
+function materialize(sha: string) {
   const dir = mkdtempSync(join(tmpdir(), 'atlas-47-'))
-  const git = spawn('git', ['archive', '--format=tar', PIN], { cwd: repoRoot })
+  const git = spawn('git', ['archive', '--format=tar', sha], { cwd: repoRoot })
   const tar = spawn('tar', ['-x', '-C', dir])
   git.stdout.pipe(tar.stdin)
   return new Promise<string>((resolve, reject) => {
@@ -939,16 +940,26 @@ async function fc6(ctx: Ctx) {
     failSave = true
     await page.locator('.doc-editor').click()
     await page.keyboard.type('fail')
-    await page.locator('.retry').waitFor({ timeout: 10000 })
-    const failedText = (await page.locator('.retry').innerText()).replace(
-      /\s+/g,
-      ' ',
-    )
-    const menuClosed =
-      (await page.locator('.page-menu-btn').getAttribute('aria-expanded')) !==
-      'true'
-    const retryHit = await pointHits(page, '.retry button')
-    const failedEdges = await bannerInside(page)
+    const failedShown = await page
+      .locator('.retry')
+      .waitFor({ state: 'visible', timeout: 10000 })
+      .then(
+        () => true,
+        () => false,
+      )
+    const failedText = failedShown
+      ? (await page.locator('.retry').innerText()).replace(/\s+/g, ' ')
+      : ''
+    const menuClosed = failedShown
+      ? (await page.locator('.page-menu-btn').getAttribute('aria-expanded')) !==
+        'true'
+      : false
+    const retryHit = failedShown
+      ? await pointHits(page, '.retry button')
+      : false
+    const failedEdges = failedShown
+      ? await bannerInside(page)
+      : { bad: 'missing', scroll: false }
     failSave = false
     await page.reload({ waitUntil: 'domcontentloaded' })
     await page.locator('#page-title').waitFor()
@@ -962,18 +973,29 @@ async function fc6(ctx: Ctx) {
     })
     await page.locator('.doc-editor').click()
     await page.keyboard.type('stale')
-    await page.locator('.retry').waitFor({ timeout: 10000 })
-    const staleText = (await page.locator('.retry').innerText()).replace(
-      /\s+/g,
-      ' ',
-    )
-    const staleMenu =
-      (await page.locator('.page-menu-btn').getAttribute('aria-expanded')) !==
-      'true'
-    const reloadHit = await pointHits(page, '.retry button')
-    const staleEdges = await bannerInside(page)
+    const staleShown = await page
+      .locator('.retry')
+      .waitFor({ state: 'visible', timeout: 10000 })
+      .then(
+        () => true,
+        () => false,
+      )
+    const staleText = staleShown
+      ? (await page.locator('.retry').innerText()).replace(/\s+/g, ' ')
+      : ''
+    const staleMenu = staleShown
+      ? (await page.locator('.page-menu-btn').getAttribute('aria-expanded')) !==
+        'true'
+      : false
+    const reloadHit = staleShown
+      ? await pointHits(page, '.retry button')
+      : false
+    const staleEdges = staleShown
+      ? await bannerInside(page)
+      : { bad: 'missing', scroll: false }
     await shot(page, `47-${ctx.planted ? 'planted' : 'head'}-fc6-stale.png`)
     const failedOk =
+      failedShown &&
       failedText.includes("Couldn't save.") &&
       failedText.includes('Retry') &&
       menuClosed &&
@@ -981,6 +1003,7 @@ async function fc6(ctx: Ctx) {
       !failedEdges.scroll &&
       failedEdges.bad.length === 0
     const staleOk =
+      staleShown &&
       staleText.includes(
         'Someone else changed this page since you opened it.',
       ) &&
@@ -1336,6 +1359,7 @@ async function main() {
   }
   mkdirSync(artifacts, { recursive: true })
   line('47_pin', PIN)
+  line('47_plant', PLANT)
   line('47_planted', planted)
   line('47_artifacts', artifacts)
   await ensureDatabase()
@@ -1348,9 +1372,10 @@ async function main() {
   const portHint = await freePort()
   process.env.BETTER_AUTH_URL = `http://127.0.0.1:${portHint}`
   await migrate()
-  const pinRoot =
-    planted || which === 'fc5' || which === 'all'
-      ? await materializePin()
+  const pinRoot = planted
+    ? await materialize(PLANT)
+    : which === 'fc5' || which === 'all'
+      ? await materialize(PIN)
       : null
   const booted = await boot(planted && pinRoot ? pinRoot : repoRoot)
   process.env.BETTER_AUTH_URL = booted.base
@@ -1366,15 +1391,21 @@ async function main() {
       const fc5bug = await fc5(ctx, pinRoot)
       line('47_fc5_bug', fc5bug)
       line('47_fc5', fc5bug ? 'fail' : 'pass')
+      line('47_fc5_exit', fc5bug ? 1 : 0)
       bug = fc5bug
     }
+    const exits: string[] = []
+    if (which === 'all' || which === 'fc5') exits.push(`fc5=${bug ? 1 : 0}`)
     for (const [name, fn] of steps) {
       if (which !== 'all' && which !== name) continue
       const failed = await fn(ctx)
       line(`47_${name}_bug`, failed)
       line(`47_${name}`, failed ? 'fail' : 'pass')
+      line(`47_${name}_exit`, failed ? 1 : 0)
+      exits.push(`${name}=${failed ? 1 : 0}`)
       bug = bug || failed
     }
+    line('47_exits', exits.join(','))
     line('47_result', bug ? 'fail' : 'pass')
     return bug
   } finally {
