@@ -1264,10 +1264,10 @@ async function fc19(app: App, root: string) {
   })
   children.push(child)
   let output = ''
-  child.stdout?.on('data', (chunk: Buffer) => {
+  child.stdout.on('data', (chunk: Buffer) => {
     output += chunk.toString('utf8')
   })
-  child.stderr?.on('data', (chunk: Buffer) => {
+  child.stderr.on('data', (chunk: Buffer) => {
     output += chunk.toString('utf8')
   })
   const listenDeadline = Date.now() + 30000
