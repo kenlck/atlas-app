@@ -422,6 +422,8 @@ function pinnedFile(path: string) {
 }
 
 const DELETE_PAGE_HUNKS = [
+  'export async function createPage',
+  'async function adoptDiagrams',
   'function assertScope',
   'async function callTool',
   'export type TreeNode',
@@ -446,8 +448,29 @@ const DELETE_PAGE_HUNKS = [
 ]
 
 const VERSION_HUNKS: Record<string, string[]> = {
-  'src/lib/page-save-request.ts': ['export async function handlePageSave'],
-  'src/server/fns.ts': ['export const renamePageFn'],
+  'src/lib/page-save-request.ts': [
+    'export async function handlePageSave',
+    'export function saveOriginAllowed',
+  ],
+  'src/server/fns.ts': [
+    'export const fetchPage',
+    'export const createPageFn',
+    'export const renamePageFn',
+    'export const cloneDiagramFn',
+  ],
+}
+
+function importOnly(hunk: string) {
+  const changed = hunk
+    .split('\n')
+    .filter(
+      (row) =>
+        (row.startsWith('+') || row.startsWith('-')) &&
+        !row.startsWith('+++') &&
+        !row.startsWith('---'),
+    )
+    .map((row) => row.slice(1).trim())
+  return changed.length > 0 && changed.every((row) => row.startsWith('import '))
 }
 
 function hunksAllowed(path: string, names: string[]) {
@@ -458,6 +481,7 @@ function hunksAllowed(path: string, names: string[]) {
   const hunks = diff.split(/^@@/m).slice(1)
   if (hunks.length === 0) return false
   return hunks.every((hunk) => {
+    if (importOnly(hunk)) return true
     const header = hunk.slice(0, hunk.indexOf('\n'))
     const context = header.slice(header.indexOf('@@') + 2).trim()
     if (!names.some((name) => context.startsWith(name))) return false
@@ -476,6 +500,7 @@ function deletePageDiffOnly(path: string) {
   const hunks = diff.split(/^@@/m).slice(1)
   if (hunks.length === 0) return false
   return hunks.every((hunk) => {
+    if (importOnly(hunk)) return true
     const header = hunk.slice(0, hunk.indexOf('\n'))
     const context = header.slice(header.indexOf('@@') + 2).trim()
     if (context === '') {
