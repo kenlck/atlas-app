@@ -1238,6 +1238,110 @@ process.on('SIGINT', () => {
   void shutdown(130)
 })
 
+async function fc19(app: App, root: string) {
+  const account = await app.createUser('Drain')
+  const made = await app.createPage(account.user.id, { spaceId: account.space.id, title: 'Keep' })
+  const seeded = await app.savePage(account.user.id, {
+    pageId: made.id,
+    title: 'Keep',
+    body: doc('original'),
+    updatedAt: made.updatedAt,
+  })
+  const marker = `drained-${made.id}`
+  const nextBody = doc(marker)
+  const url = process.env.DATABASE_URL
+  if (!url) throw new Error('DATABASE_URL is required')
+  const port = await freePort()
+  const child = spawn(process.execPath, ['--import', 'tsx', join(repoRoot, 'scripts/issue51-drain-server.ts')], {
+    cwd: root,
+    env: {
+      ...process.env,
+      ATLAS_DRAIN_ROOT: root,
+      ATLAS_DRAIN_PORT: String(port),
+      DATABASE_URL: url,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  children.push(child)
+  let output = ''
+  child.stdout?.on('data', (chunk: Buffer) => {
+    output += chunk.toString('utf8')
+  })
+  child.stderr?.on('data', (chunk: Buffer) => {
+    output += chunk.toString('utf8')
+  })
+  const listenDeadline = Date.now() + 30000
+  while (!output.includes(`drain-listen ${port}`)) {
+    if (child.exitCode !== null || Date.now() > listenDeadline) {
+      throw new Error(`drain server did not start: ${redact(output).slice(-400)}`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  const sql = postgres(url, { max: 1 })
+  const probe = postgres(url, { max: 1 })
+  let releaseLock = () => {}
+  const released = new Promise<void>((resolve) => {
+    releaseLock = resolve
+  })
+  let markLocked = () => {}
+  const locked = new Promise<void>((resolve) => {
+    markLocked = resolve
+  })
+  const holding = sql.begin(async (tx) => {
+    await tx`select id from page where id = ${made.id} for update`
+    markLocked()
+    await released
+  })
+  await locked
+  const pending = fetch(`http://127.0.0.1:${port}/save`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      userId: account.user.id,
+      pageId: made.id,
+      title: 'Keep',
+      body: nextBody,
+      updatedAt: seeded.updatedAt,
+    }),
+    signal: AbortSignal.timeout(12000),
+  })
+  let waiting = false
+  const waitDeadline = Date.now() + 8000
+  while (Date.now() < waitDeadline) {
+    const rows = await probe<{ n: number }[]>`
+      select count(*)::int as n
+      from pg_stat_activity
+      where pid <> pg_backend_pid()
+        and wait_event_type = 'Lock'
+    `
+    if (Number(rows[0]?.n ?? 0) > 0) {
+      waiting = true
+      break
+    }
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  }
+  child.kill('SIGTERM')
+  const exitPromise = exitedWithin(child, 9000)
+  releaseLock()
+  let status = 0
+  try {
+    status = (await pending).status
+  } catch {
+    status = 0
+  }
+  const exited = await exitPromise
+  await holding.catch(() => undefined)
+  await sql.end({ timeout: 1 }).catch(() => undefined)
+  await probe.end({ timeout: 1 }).catch(() => undefined)
+  const after = await app.getPageView(account.user.id, made.id)
+  const stored = JSON.stringify(after.body).includes(marker)
+  line('waiting', waiting)
+  line('save', status)
+  line('stored', stored)
+  line('exited', exited)
+  return waiting && status >= 200 && status < 300 && stored && exited
+}
+
 const checks: Record<string, (app: App, root: string) => Promise<boolean>> = {
   fc1,
   fc2,
@@ -1256,12 +1360,13 @@ const checks: Record<string, (app: App, root: string) => Promise<boolean>> = {
   fc15,
   fc16,
   fc18,
+  fc19,
 }
 
 async function main() {
   const check = checks[id]
   if (!check) throw new Error('unknown step')
-  const pin = id === 'fc18' ? FC18_PIN : PIN
+  const pin = id === 'fc18' || id === 'fc19' ? FC18_PIN : PIN
   const sha = planted ? pin : execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   line('sha', sha)
   const needsDb = !['fc5', 'fc9', 'fc10'].includes(id)
