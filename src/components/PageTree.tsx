@@ -11,8 +11,22 @@ function depthPad(depth: number) {
 function LockIcon() {
   return (
     <svg className="lock" viewBox="0 0 16 16" role="img" aria-label="Locked">
-      <rect x="3.5" y="7" width="9" height="7" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <rect
+        x="3.5"
+        y="7"
+        width="9"
+        height="7"
+        rx="1.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <path
+        d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
     </svg>
   )
 }
@@ -22,6 +36,31 @@ function PenIcon() {
     <svg className="pen" viewBox="0 0 16 16" aria-hidden="true">
       <path
         d="M11.2 1.8l3 3L5.6 13.4 2.2 14l.6-3.4L11.2 1.8z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+    </svg>
+  )
+}
+
+function DocGlyph() {
+  return (
+    <svg
+      className="rail-icon"
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
+      <path
+        d="M4.25 1.75h5.1L12.75 5.1v9.15a.85.85 0 0 1-.85.85H4.25a.85.85 0 0 1-.85-.85V2.6a.85.85 0 0 1 .85-.85z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <path
+        d="M9.2 1.9V5h3.2"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.4"
@@ -53,6 +92,7 @@ export function PageTree({
   spaceId,
   tree,
   activeId,
+  rail,
   onCreate,
   onRename,
   onMove,
@@ -63,6 +103,7 @@ export function PageTree({
   spaceId: string
   tree: TreeNode[]
   activeId?: string
+  rail?: boolean
   onCreate: (parentId: string | null, kind?: 'doc' | 'whiteboard') => void
   onRename: (pageId: string, title: string) => void
   onMove: (pageId: string) => void
@@ -77,6 +118,10 @@ export function PageTree({
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const expandedFor = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (rail) setMenu(null)
+  }, [rail])
 
   useEffect(() => {
     if (!activeId || expandedFor.current === activeId) return
@@ -121,7 +166,7 @@ export function PageTree({
               <input
                 className="it"
                 aria-label="Page title"
-                style={depthPad(depth)}
+                style={rail ? undefined : depthPad(depth)}
                 value={draft}
                 autoFocus
                 onChange={(event) => setDraft(event.target.value)}
@@ -143,14 +188,22 @@ export function PageTree({
                 params={{ spaceId, pageId: node.id }}
                 preload={false}
                 className={node.id === activeId ? 'it act' : 'it'}
-                style={depthPad(depth)}
-                onContextMenu={(event) => {
-                  event.preventDefault()
-                  setMenu(node.id)
-                }}
+                style={rail ? undefined : depthPad(depth)}
+                title={rail ? node.title : undefined}
+                onContextMenu={
+                  rail
+                    ? undefined
+                    : (event) => {
+                        event.preventDefault()
+                        setMenu(node.id)
+                      }
+                }
               >
                 {node.locked ? <LockIcon /> : null}
                 {node.kind === 'whiteboard' ? <PenIcon /> : null}
+                {!hasKids && node.kind === 'doc' && !node.locked ? (
+                  <DocGlyph />
+                ) : null}
                 {hasKids ? (
                   <span
                     className={node.canDelete ? 'drag-handle' : undefined}
@@ -175,7 +228,6 @@ export function PageTree({
                   <span
                     className={node.canDelete ? 'dot drag-handle' : 'dot'}
                     draggable={node.canDelete ? true : undefined}
-                    style={{ width: 6, height: 6 }}
                     onDragStart={
                       node.canDelete
                         ? (event) => startDrag(event, node.id)
@@ -183,15 +235,7 @@ export function PageTree({
                     }
                   />
                 )}
-                <span
-                  style={{
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {node.title}
-                </span>
+                <span className="tree-title">{node.title}</span>
               </Link>
             )}
             {menu === node.id ? (
@@ -264,6 +308,40 @@ export function PageTree({
       )
     })
 
+  const pages =
+    tree.length === 0 ? (
+      <div className="it empty-pages" style={{ color: 'var(--muted)' }}>
+        No pages
+      </div>
+    ) : (
+      render(tree, 0)
+    )
+  const create = (
+    <NewPageMenu
+      label="+ New page"
+      className="it"
+      style={{ color: 'var(--muted)' }}
+      rail={rail}
+      onChoose={(kind) => onCreate(null, kind)}
+    />
+  )
+
+  if (rail) {
+    return (
+      <>
+        <div
+          className="tree"
+          onClick={() => {
+            setMenu(null)
+          }}
+        >
+          {pages}
+        </div>
+        {create}
+      </>
+    )
+  }
+
   return (
     <div
       className="tree"
@@ -271,19 +349,8 @@ export function PageTree({
         setMenu(null)
       }}
     >
-      {tree.length === 0 ? (
-        <div className="it" style={{ color: 'var(--muted)' }}>
-          No pages
-        </div>
-      ) : (
-        render(tree, 0)
-      )}
-      <NewPageMenu
-        label="+ New page"
-        className="it"
-        style={{ color: 'var(--muted)' }}
-        onChoose={(kind) => onCreate(null, kind)}
-      />
+      {pages}
+      {create}
     </div>
   )
 }

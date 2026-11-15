@@ -1,5 +1,13 @@
-import { createFileRoute, getRouteApi, notFound, redirect, useRouter } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  getRouteApi,
+  notFound,
+  redirect,
+  useRouter,
+} from '@tanstack/react-router'
+import { useLayoutEffect, useState } from 'react'
 import { AppFrame } from '#/components/AppFrame'
+import { readSidebarCollapsed } from '#/lib/sidebar-collapse'
 import { fetchPageTree } from '#/server/fns'
 
 const appRoute = getRouteApi('/_app')
@@ -74,13 +82,18 @@ function SpaceError() {
 }
 
 function SpacePending() {
+  const [collapsed, setCollapsed] = useState(false)
+  useLayoutEffect(() => {
+    const wide = window.matchMedia('(min-width: 900px)').matches
+    setCollapsed(wide && readSidebarCollapsed())
+  }, [])
   return (
     <div className="app">
-      <aside className="side">
+      <aside className={collapsed ? 'side collapsed' : 'side'}>
         <div className="switcher-wrap">
           <div className="sw">
             <div className="av">A</div>
-            Atlas
+            <span className="sw-name">Atlas</span>
           </div>
         </div>
         <div className="lab">Pages</div>

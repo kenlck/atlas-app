@@ -15,6 +15,7 @@ The signed-in person gets one personal space. They create pages and nest one pag
 
 - Submit sign-up. The app redirects to the personal space.
 - Choose `+ New page` in the empty space, or the same button in the sidebar.
+- On a wide window, choose `Collapse sidebar` at the top of the sidebar. The rail keeps Search, page icons, Profile, and Sign out. Choose `Expand sidebar` to restore the list. The choice stays for this browser tab, including a reload. Below 900px the sidebar stays the page drawer.
 - On an open page, choose `Create page` at the top right, to the left of `Saved`.
 - Right-click a page, choose `Move`, then choose the parent.
 - Right-click a page and choose `Archive`.
@@ -27,6 +28,7 @@ Preconditions:
 - `psql` can read `DATABASE_URL`. Recipe `1` compares the page row before and after the other person's save.
 
 - **Create.** Sign up. Choose `+ New page`. The editor shows `#page-title` and `.doc-editor`.
+- **Collapse.** At 1280px, choose `Collapse sidebar`. Choose a page icon. The page opens and the rail stays. Reload. The rail is still collapsed. Choose `Expand sidebar`. The page names return.
 - **Subpage.** On that page, choose `Create page`. The new row's parent is the page that was open, the breadcrumb shows that parent, and the sidebar lists the child under it.
 - **Nest.** Create `Parent`, then `Child`. Right-click `Child`, choose `Move`, choose `Parent`. The tree shows a `▾ Parent` link.
 - **Other person.** Run `./scripts/verify-fail-conditions.sh 1`. The log shows `404` for the open, the save, and the space, `content_unchanged=true`, and `B_tree_contains_A_title=false`.

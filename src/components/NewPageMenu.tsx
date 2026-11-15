@@ -5,11 +5,13 @@ export function NewPageMenu({
   label,
   className,
   style,
+  rail,
   onChoose,
 }: {
   label: string
   className?: string
   style?: CSSProperties
+  rail?: boolean
   onChoose: (kind: 'doc' | 'whiteboard') => void
 }) {
   const [open, setOpen] = useState(false)
@@ -29,9 +31,11 @@ export function NewPageMenu({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={rail ? label : undefined}
+        title={rail ? label : undefined}
         onClick={() => setOpen((value) => !value)}
       >
-        {label}
+        {rail ? <span aria-hidden="true">+</span> : label}
       </button>
       {open ? (
         <div className="menu" role="menu">
