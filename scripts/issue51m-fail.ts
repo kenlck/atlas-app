@@ -11,7 +11,15 @@ import { editedByLine } from '../src/lib/relative-time.ts'
 import { stopChild } from './stop-child.ts'
 import { assertLocalDatabaseUrl, submitAuthForm } from './verify-local.ts'
 
-const PIN = '5158c5a07f01059d6224ece00e46c696a3e0d85d'
+const PINS: Record<string, string> = {
+  fc1: '5158c5a07f01059d6224ece00e46c696a3e0d85d',
+  fc2: '5158c5a07f01059d6224ece00e46c696a3e0d85d',
+  fc3: '5158c5a07f01059d6224ece00e46c696a3e0d85d',
+  fc4: '5158c5a07f01059d6224ece00e46c696a3e0d85d',
+  fc5: '5158c5a07f01059d6224ece00e46c696a3e0d85d',
+  fc6: 'ef5a8e0d5ca8515d3331ca3b0ee0f85bcd9c8287',
+  fc7: '1f8aa77f66f7aeafb915e6aad6931b175ae6187c',
+}
 const repoRoot = join(import.meta.dirname, '..')
 const arg = process.argv[2] ?? ''
 const planted = arg.endsWith('-planted')
@@ -27,6 +35,7 @@ type View = {
   lastEditedByName?: string | null
   body: unknown
   parentId?: string | null
+  drawing?: { id: string; version: number } | null
 }
 
 type Account = {
@@ -42,10 +51,12 @@ type App = {
   movePage: (userId: string, input: Record<string, unknown>) => Promise<View>
   setPageLock: (userId: string, pageId: string, locked: boolean) => Promise<View>
   refreshDocText: (userId: string, pageId: string, tokenId: string | null) => Promise<void>
+  createDiagram: (userId: string, pageId: string) => Promise<{ id: string; version: number }>
+  handleDrawingRequest: (request: Request) => Promise<Response>
   updatePageForToken: (
     userId: string,
     tokenId: string,
-    input: { pageId: string; body?: unknown; updatedAt: unknown },
+    input: { pageId: string; title?: string; body?: unknown; updatedAt: unknown },
   ) => Promise<View>
   createUser: (name?: string) => Promise<Account>
   closeDb: () => Promise<void>
@@ -255,6 +266,10 @@ function materialize(sha: string) {
 async function loadApp(root: string): Promise<App> {
   const href = (rel: string) => pathToFileURL(join(root, rel)).href
   const pages = (await import(href('src/lib/pages.ts'))) as App
+  const drawings = (await import(href('src/lib/drawing-request.ts'))) as Pick<
+    App,
+    'handleDrawingRequest'
+  >
   const helpers = (await import(href('tests/helpers.ts'))) as Pick<App, 'createUser'>
   const db = (await import(href('src/lib/db.ts'))) as Pick<App, 'closeDb'>
   const tokens = (await import(href('src/lib/api-tokens.ts'))) as Pick<App, 'createApiToken'>
@@ -270,6 +285,8 @@ async function loadApp(root: string): Promise<App> {
     movePage: pages.movePage,
     setPageLock: pages.setPageLock,
     refreshDocText: pages.refreshDocText,
+    createDiagram: pages.createDiagram,
+    handleDrawingRequest: drawings.handleDrawingRequest,
     updatePageForToken: pages.updatePageForToken,
     createUser: helpers.createUser,
     closeDb: db.closeDb,
@@ -291,6 +308,16 @@ async function withSql<T>(run: (sql: postgres.Sql) => Promise<T>) {
   } finally {
     await sql.end({ timeout: 5 })
   }
+}
+
+async function updatedWallMs(pageId: string) {
+  const rows = await withSql(
+    (sql) => sql<Array<{ ms: string | number }>>`
+      select ((extract(epoch from updated_at) * 1000)::bigint)::text as ms
+      from page where id = ${pageId}
+    `,
+  )
+  return Number(rows[0]?.ms)
 }
 
 async function readStamp(pageId: string) {
@@ -367,8 +394,9 @@ async function fc1(app: App) {
     `
   })
   const opened = await app.getPageView(ada.user.id, target.id)
+  const openedMs = await updatedWallMs(target.id)
   await app.refreshDocText(bea.user.id, target.id, null)
-  const after = await readStamp(target.id)
+  const stamp = (await updatedWallMs(target.id)) === openedMs
   const hits = await app.searchVisiblePages(ada.user.id, token)
   const view = await app.getPageView(ada.user.id, target.id)
   const meta = shownLine(view, new Date())
@@ -384,7 +412,6 @@ async function fc1(app: App) {
   const stored = JSON.stringify(storedView.body).includes(`kept-after-diagram ${token}`)
   const rank = hits[0]?.id === target.id
   const editor = meta.includes(`Edited by ${bea.user.name}`)
-  const stamp = after.updated_at.toISOString() === opened.updatedAt
   line('rank_target', rank)
   line('line_editor', editor)
   line('text', text)
@@ -700,6 +727,188 @@ async function fc5(app: App, root: string) {
   return membership && userDelete && teamDelete && cleared
 }
 
+const rectangle = [{ id: 'rect-1', type: 'rectangle', x: 1, y: 2 }]
+
+async function postDrawing(
+  app: App,
+  token: string,
+  body: { drawingId: string; version: number; elements: unknown[] },
+) {
+  remember(token)
+  const response = await app.handleDrawingRequest(
+    new Request('http://127.0.0.1/api/drawings', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ ...body, appState: {}, files: {} }),
+    }),
+  )
+  await response.text().catch(() => '')
+  return response.status
+}
+
+async function fc6(app: App) {
+  const ada = await app.createUser('Ada Noop')
+  const bea = await app.createUser('Bea Noop')
+  remember(ada.password)
+  remember(bea.password)
+  const team = await teamWith(app, ada, bea)
+  const token = `noop-${crypto.randomUUID().slice(0, 8)}`
+  const target = await app.createPage(ada.user.id, {
+    spaceId: team.spaceId,
+    title: `${token} target`,
+  })
+  const other = await app.createPage(ada.user.id, {
+    spaceId: team.spaceId,
+    title: `${token} other`,
+  })
+  const diagram = await app.createDiagram(ada.user.id, target.id)
+  const frozen = new Date('2024-01-01T00:00:00Z')
+  const newer = new Date('2025-06-01T00:00:00Z')
+  await withSql(async (sql) => {
+    await sql`
+      update drawing
+      set scene = ${sql.json({ elements: rectangle, appState: {} })}
+      where id = ${diagram.id}
+    `
+    await sql`
+      update page
+      set last_edited_at = ${frozen}, last_edited_by = ${ada.user.id}
+      where id = ${target.id}
+    `
+    await sql`
+      update page
+      set last_edited_at = ${newer}, last_edited_by = ${ada.user.id}
+      where id = ${other.id}
+    `
+  })
+  const before = await readStamp(target.id)
+  const beaToken = await app.createApiToken(bea.user.id, { name: 'noop', scope: 'read_write' })
+  const status = await postDrawing(app, beaToken.token, {
+    drawingId: diagram.id,
+    version: diagram.version,
+    elements: rectangle,
+  })
+  const after = await readStamp(target.id)
+  const hits = await app.searchVisiblePages(ada.user.id, token)
+  const stillEditor = after.last_edited_by === ada.user.id
+  const stillTime = after.last_edited_at?.getTime() === before.last_edited_at?.getTime()
+  const recency = hits[0]?.id === other.id
+  const versionStamp = after.updated_at.getTime() === before.updated_at.getTime()
+  line('status', status)
+  line('still_editor', stillEditor)
+  line('still_time', stillTime)
+  line('recency', recency)
+  line('version_stamp', versionStamp)
+  return status === 200 && stillEditor && stillTime && recency && versionStamp
+}
+
+async function fc7(app: App) {
+  const ada = await app.createUser('Ada Board')
+  const bea = await app.createUser('Bea Board')
+  remember(ada.password)
+  remember(bea.password)
+  const team = await teamWith(app, ada, bea)
+  const beaToken = await app.createApiToken(bea.user.id, { name: 'board', scope: 'read_write' })
+  const oldAt = new Date('2020-01-01T00:00:00Z')
+  const midAt = new Date('2024-06-01T00:00:00Z')
+
+  const prepare = async (name: string) => {
+    const mark = `board-${name}-${crypto.randomUUID().slice(0, 8)}`
+    const target = await app.createPage(ada.user.id, {
+      spaceId: team.spaceId,
+      title: `${mark} target`,
+      kind: 'whiteboard',
+    })
+    const other = await app.createPage(ada.user.id, {
+      spaceId: team.spaceId,
+      title: `${mark} other`,
+      kind: 'whiteboard',
+    })
+    await withSql(async (sql) => {
+      await sql`
+        update page
+        set last_edited_at = ${oldAt}, last_edited_by = ${ada.user.id}
+        where id = ${target.id}
+      `
+      await sql`
+        update page
+        set last_edited_at = ${midAt}, last_edited_by = ${ada.user.id}
+        where id = ${other.id}
+      `
+    })
+    return { mark, target }
+  }
+
+  const scene = await prepare('scene')
+  const sceneView = await app.getPageView(bea.user.id, scene.target.id)
+  const sceneBefore = await readStamp(scene.target.id)
+  const sceneStatus = await postDrawing(app, beaToken.token, {
+    drawingId: sceneView.drawing?.id ?? '',
+    version: sceneView.drawing?.version ?? 0,
+    elements: [{ id: 'label-1', type: 'text', text: 'scene label' }],
+  })
+  const sceneAfter = await readStamp(scene.target.id)
+  const sceneHits = await app.searchVisiblePages(ada.user.id, scene.mark)
+  const sceneBy = sceneAfter.last_edited_by === bea.user.id
+  const sceneAt = (sceneAfter.last_edited_at?.getTime() ?? 0) > (sceneBefore.last_edited_at?.getTime() ?? 0)
+  const sceneRank = sceneHits[0]?.id === scene.target.id
+
+  const title = await prepare('title')
+  const titleBefore = await readStamp(title.target.id)
+  const titleView = await app.getPageView(bea.user.id, title.target.id)
+  await app.savePage(bea.user.id, {
+    pageId: title.target.id,
+    title: `${title.mark} renamed`,
+    body: doc('browser title'),
+    updatedAt: titleView.updatedAt,
+  })
+  const titleAfter = await readStamp(title.target.id)
+  const titleHits = await app.searchVisiblePages(ada.user.id, title.mark)
+  const titleBy = titleAfter.last_edited_by === bea.user.id
+  const titleAt = (titleAfter.last_edited_at?.getTime() ?? 0) > (titleBefore.last_edited_at?.getTime() ?? 0)
+  const titleRank = titleHits[0]?.id === title.target.id
+
+  const token = await prepare('token')
+  const tokenBefore = await readStamp(token.target.id)
+  const tokenView = await app.getPageView(bea.user.id, token.target.id)
+  await app.updatePageForToken(bea.user.id, beaToken.id, {
+    pageId: token.target.id,
+    title: `${token.mark} token title`,
+    updatedAt: tokenView.updatedAt,
+  })
+  const tokenAfter = await readStamp(token.target.id)
+  const tokenHits = await app.searchVisiblePages(ada.user.id, token.mark)
+  const tokenBy = tokenAfter.last_edited_by === bea.user.id
+  const tokenAt = (tokenAfter.last_edited_at?.getTime() ?? 0) > (tokenBefore.last_edited_at?.getTime() ?? 0)
+  const tokenRank = tokenHits[0]?.id === token.target.id
+
+  line('scene_status', sceneStatus)
+  line('scene_by', sceneBy)
+  line('scene_at', sceneAt)
+  line('scene_rank', sceneRank)
+  line('title_by', titleBy)
+  line('title_at', titleAt)
+  line('title_rank', titleRank)
+  line('token_by', tokenBy)
+  line('token_at', tokenAt)
+  line('token_rank', tokenRank)
+  return (
+    sceneStatus === 200 &&
+    sceneBy &&
+    sceneAt &&
+    sceneRank &&
+    titleBy &&
+    titleAt &&
+    titleRank &&
+    tokenBy &&
+    tokenAt &&
+    tokenRank
+  )
+}
+
 async function cleanup() {
   if (stopping) return
   stopping = true
@@ -727,19 +936,22 @@ const checks: Record<string, (app: App, root: string) => Promise<boolean>> = {
   fc3,
   fc4,
   fc5,
+  fc6,
+  fc7,
 }
 
 async function main() {
   const check = checks[id]
-  if (!check) throw new Error('unknown step')
+  const pin = PINS[id]
+  if (!check || !pin) throw new Error('unknown step')
   const sha = planted
-    ? PIN
+    ? pin
     : execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   line('sha', sha)
   await ensureDatabase()
   ensureAuth()
   await migrate()
-  const root = planted ? await materialize(PIN) : repoRoot
+  const root = planted ? await materialize(pin) : repoRoot
   const app = await loadApp(root)
   try {
     const fixed = await check(app, root)
