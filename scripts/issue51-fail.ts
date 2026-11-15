@@ -630,7 +630,7 @@ async function waitForLock() {
 
 async function fc8(app: App) {
   const toast = app.moveFailureToast
-  const wired = show('src/components/AppFrame.tsx').includes('moveFailureToast(error)')
+  const wired = show('src/components/AppFrame.tsx').includes('moveFailureToast(failure)')
   if (!toast) {
     line('wired', wired)
     line('locked', false)
