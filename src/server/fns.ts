@@ -265,12 +265,12 @@ export const cloneDiagramFn = createServerFn({ method: 'POST' })
 export const movePageFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
   .validator((data: unknown) => data)
-  .handler(async ({ data, context }) => {
+  .handler(async ({ data: raw, context }) => {
     try {
-      if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+      if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
         throw new HttpError(400, 'Bad request')
       }
-      const record = data as Record<string, unknown>
+      const record = raw as Record<string, unknown>
       const pageId = record.pageId
       const parentId = record.parentId
       if (typeof pageId !== 'string' || pageId.length === 0) {
@@ -279,7 +279,8 @@ export const movePageFn = createServerFn({ method: 'POST' })
       if (typeof parentId !== 'string' && parentId !== null) {
         throw new HttpError(400, 'Bad request')
       }
-      const view = await movePage(context.userId, { pageId, parentId })
+      const data = { pageId, parentId }
+      const view = await movePage(context.userId, data)
       await touchLastSpace(context.userId, view.spaceId)
       return view
     } catch (error) {
