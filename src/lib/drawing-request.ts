@@ -220,8 +220,6 @@ export async function handleDrawingRequest(request: Request) {
             bodyText: drawingLabelText(elements),
             updatedBy: caller.userId,
             updatedAt: new Date(),
-            lastEditedBy: caller.userId,
-            lastEditedAt: new Date(),
             ...(caller.tokenId ? { updatedViaTokenId: caller.tokenId } : {}),
           })
           .where(eq(page.id, board.page.id))

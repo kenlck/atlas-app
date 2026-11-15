@@ -666,8 +666,6 @@ export async function savePage(
           title,
           updatedBy: userId,
           updatedAt: new Date(),
-          lastEditedBy: userId,
-          lastEditedAt: new Date(),
         })
         .where(eq(page.id, input.pageId))
     })
@@ -821,8 +819,6 @@ export async function updatePageForToken(
           title,
           updatedBy: userId,
           updatedAt: new Date(),
-          lastEditedBy: userId,
-          lastEditedAt: new Date(),
           updatedViaTokenId: tokenId,
         })
         .where(and(eq(page.id, row.id), eq(page.updatedAt, row.updatedAt)))
