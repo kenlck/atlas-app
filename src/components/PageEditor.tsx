@@ -457,6 +457,35 @@ export function PageEditor({ page }: { page: PageView }) {
               locked={Boolean(page.lockedByName)}
               onDelete={() => requestDelete(page.id)}
               onLock={() => requestLock(page.id, !page.lockedByName)}
+              notices={
+                <>
+                  {deleted || held || conflict || saveState !== 'error' ? null : (
+                    <div className="retry">
+                      Couldn't save.
+                      <button
+                        type="button"
+                        onClick={() => void flushSave().catch(() => undefined)}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                  {deleted || held || !conflict ? null : (
+                    <div className="retry" role="alert">
+                      Someone else changed this page since you opened it.
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearDraft(pageIdRef.current)
+                          window.location.reload()
+                        }}
+                      >
+                        Reload
+                      </button>
+                    </div>
+                  )}
+                </>
+              }
             />
           </>
         }
@@ -490,31 +519,6 @@ export function PageEditor({ page }: { page: PageView }) {
       {deleted || !held ? null : (
         <div className="banner" role="alert">
           {lockBannerText(held)}
-        </div>
-      )}
-      {deleted || held || conflict || saveState !== 'error' ? null : (
-        <div className="retry">
-          Couldn't save.
-          <button
-            type="button"
-            onClick={() => void flushSave().catch(() => undefined)}
-          >
-            Retry
-          </button>
-        </div>
-      )}
-      {deleted || held || !conflict ? null : (
-        <div className="retry" role="alert">
-          Someone else changed this page since you opened it.
-          <button
-            type="button"
-            onClick={() => {
-              clearDraft(pageIdRef.current)
-              window.location.reload()
-            }}
-          >
-            Reload
-          </button>
         </div>
       )}
       {deleted ? null : (

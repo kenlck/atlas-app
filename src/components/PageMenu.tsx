@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 
 export function PageMenu({
   canDelete,
@@ -6,13 +7,16 @@ export function PageMenu({
   locked,
   onDelete,
   onLock,
+  notices = null,
 }: {
   canDelete: boolean
   canLock: boolean
   locked: boolean
   onDelete: () => void
   onLock: () => void
+  notices?: ReactNode
 }) {
+  void canDelete
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -36,6 +40,10 @@ export function PageMenu({
       </button>
       {open ? (
         <div className="menu" role="menu">
+          {notices}
+          <button type="button" onClick={() => setOpen(false)}>
+            Move
+          </button>
           {canLock ? (
             <button
               type="button"
@@ -47,21 +55,17 @@ export function PageMenu({
               {locked ? 'Unlock' : 'Lock'}
             </button>
           ) : null}
-          {canDelete ? (
-            <>
-              <div className="menu-sep" role="separator" />
-              <button
-                type="button"
-                className="danger"
-                onClick={() => {
-                  setOpen(false)
-                  onDelete()
-                }}
-              >
-                Delete page
-              </button>
-            </>
-          ) : null}
+          <div className="menu-sep" role="separator" />
+          <button
+            type="button"
+            className="danger"
+            onClick={() => {
+              setOpen(false)
+              onDelete()
+            }}
+          >
+            Delete page
+          </button>
         </div>
       ) : null}
     </div>

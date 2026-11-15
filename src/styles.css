@@ -2207,3 +2207,20 @@ body {
     max-height: calc(100dvh - 32px);
   }
 }
+
+@media (width >= 1000px) {
+  .top .create-page {
+    display: none;
+  }
+}
+
+@media (width < 640px) {
+  html,
+  body,
+  .app,
+  .doc,
+  .col {
+    overflow-x: auto;
+    min-width: 800px;
+  }
+}
