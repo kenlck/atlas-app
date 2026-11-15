@@ -13,6 +13,7 @@ import { stopChild } from './stop-child.ts'
 import { assertLocalDatabaseUrl, submitAuthForm } from './verify-local.ts'
 
 const PIN = '7addaad4a4ff50a2761dcd41afb78bba05ef3550'
+const FC18_PIN = '7e9c2776ee1fc2b4e638d18c57df662278c44d6d'
 const BODY_MAX = 1024 * 1024
 const repoRoot = join(import.meta.dirname, '..')
 const tsxBin = join(repoRoot, 'node_modules/tsx/dist/cli.mjs')
@@ -57,7 +58,13 @@ type App = {
   createApiToken: (
     userId: string,
     input: { name: string; scope: string; expiry: string },
-  ) => Promise<{ token: string }>
+  ) => Promise<{ id: string; token: string }>
+  updatePageForToken: (
+    userId: string,
+    tokenId: string,
+    input: { pageId: string; body?: unknown; updatedAt: unknown },
+  ) => Promise<View>
+  parseSavePayload: (value: unknown) => { pageId: string; title: string; body: unknown } | null
   handleMcp: (request: Request) => Promise<Response>
   handlePageSave: (request: Request) => Promise<Response>
   moveFailureToast?: (error: unknown) => string
@@ -209,10 +216,10 @@ async function migrate() {
   await runFile('pnpm', ['exec', 'tsx', 'scripts/migrate.ts'])
 }
 
-function materialize() {
+function materialize(sha = PIN) {
   const dir = mkdtempSync(join(tmpdir(), 'atlas-51-'))
   temps.push(dir)
-  const git = spawn('git', ['archive', '--format=tar', PIN], { cwd: repoRoot })
+  const git = spawn('git', ['archive', '--format=tar', sha], { cwd: repoRoot })
   const tar = spawn('tar', ['-x', '-C', dir])
   git.stdout.pipe(tar.stdin)
   return new Promise<string>((resolve, reject) => {
@@ -269,6 +276,7 @@ async function loadApp(root: string): Promise<App> {
   const db = (await import(href('src/lib/db.ts'))) as Pick<App, 'closeDb' | 'getDb'>
   const schema = (await import(href('src/lib/schema.ts'))) as App['schema']
   const tokens = (await import(href('src/lib/api-tokens.ts'))) as Pick<App, 'createApiToken'>
+  const input = (await import(href('src/lib/page-input.ts'))) as Pick<App, 'parseSavePayload'>
   const mcp = (await import(href('src/lib/mcp.ts'))) as Pick<App, 'handleMcp'>
   const save = (await import(href('src/lib/page-save-request.ts'))) as Pick<App, 'handlePageSave'>
   let moveFailureToast: App['moveFailureToast']
@@ -293,6 +301,8 @@ async function loadApp(root: string): Promise<App> {
     getDb: db.getDb,
     schema,
     createApiToken: tokens.createApiToken,
+    updatePageForToken: pages.updatePageForToken,
+    parseSavePayload: input.parseSavePayload,
     handleMcp: mcp.handleMcp,
     handlePageSave: save.handlePageSave,
     moveFailureToast,
@@ -678,46 +688,10 @@ async function exitedWithin(child: ReturnType<typeof spawn>, ms: number) {
 }
 
 async function fc10() {
-  const source = show('src/server/production-env.ts')
-  const has = source.includes('function installStopSignals')
-  let exited = false
-  if (planted) {
-    const child = spawnDetached(process.execPath, ['-e', 'process.on("SIGTERM",()=>{});setInterval(()=>{},1000)'])
-    await new Promise((resolve) => setTimeout(resolve, 200))
-    try {
-      process.kill(-child.pid!, 'SIGTERM')
-    } catch {
-      child.kill('SIGTERM')
-    }
-    exited = await exitedWithin(child, 800)
-    if (!exited) await stopChild(child, 200)
-  } else {
-    const file = join(tmpdir(), `atlas-51-stop-${process.pid}.mts`)
-    temps.push(file)
-    const imported = JSON.stringify(join(repoRoot, 'src/server/production-env.ts'))
-    writeFileSync(
-      file,
-      `import { installStopSignals } from ${imported}\nprocess.on('SIGTERM', () => {})\ninstallStopSignals()\nsetInterval(() => {}, 1000)\n`,
-    )
-    const child = spawnDetached(process.execPath, [tsxBin, file])
-    await new Promise((resolve) => setTimeout(resolve, 400))
-    try {
-      process.kill(-child.pid!, 'SIGTERM')
-    } catch {
-      child.kill('SIGTERM')
-    }
-    exited = await exitedWithin(child, 1000)
-    if (!exited) await stopChild(child, 200)
-  }
-  line('handler', has)
-  line('exited', exited)
-  return has && exited
-}
-
-async function fc17() {
   const caller = show('scripts/issue50-fail.ts')
   const helper = readFileSync(join(repoRoot, 'scripts/stop-child.ts'), 'utf8')
   const has = caller.includes('stopChild') && helper.includes("'SIGKILL'")
+  const appHandler = show('src/server/production-env.ts').includes('function installStopSignals')
   const child = spawnDetached(process.execPath, ['-e', 'process.on("SIGTERM",()=>{});setInterval(()=>{},1000)'])
   await new Promise((resolve) => setTimeout(resolve, 200))
   let exited = false
@@ -733,9 +707,178 @@ async function fc17() {
     await stopChild(child, 1000)
     exited = child.exitCode !== null || child.signalCode !== null
   }
-  line('kills', has)
+  line('handler', has)
   line('exited', exited)
-  return has && exited
+  line('app_handler', appHandler)
+  return has && exited && !appHandler
+}
+
+const BAD_BODIES: Array<{ name: string; body: unknown; stored: (json: string) => boolean }> = [
+  {
+    name: 'marks_string',
+    body: {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a', marks: 'bold' }] }],
+    },
+    stored: (json) => json.includes('"marks":"bold"') || json.includes('"marks": "bold"'),
+  },
+  {
+    name: 'marks_null',
+    body: {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a', marks: [null] }] }],
+    },
+    stored: (json) => json.includes('[null]'),
+  },
+  {
+    name: 'cell_attrs',
+    body: {
+      type: 'doc',
+      content: [
+        {
+          type: 'table',
+          content: [
+            { type: 'tableRow', content: [{ type: 'tableCell', attrs: 'x', content: [] }] },
+          ],
+        },
+      ],
+    },
+    stored: (json) => json.includes('"attrs":"x"') || json.includes('"attrs": "x"'),
+  },
+  {
+    name: 'list_attrs',
+    body: { type: 'doc', content: [{ type: 'orderedList', attrs: 'x', content: [] }] },
+    stored: (json) => json.includes('"attrs":"x"') || json.includes('"attrs": "x"'),
+  },
+  {
+    name: 'link_attrs',
+    body: {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: 'a', marks: [{ type: 'link', attrs: 'ab' }] }],
+        },
+      ],
+    },
+    stored: (json) => json.includes('"attrs":"ab"') || json.includes('"attrs": "ab"'),
+  },
+]
+
+async function fc18(app: App) {
+  const account = await app.createUser('Marks')
+  const writer = await app.createApiToken(account.user.id, {
+    name: 'fc18-write',
+    scope: 'read_write',
+    expiry: '30d',
+  })
+  const reader = await app.createApiToken(account.user.id, {
+    name: 'fc18-read',
+    scope: 'read',
+    expiry: '30d',
+  })
+  let ok = true
+  for (const item of BAD_BODIES) {
+    const browser = await saveBad(app, account, reader.token, item.body, item.stored, (userId, pageId, body, updatedAt) => {
+      const parsed = app.parseSavePayload({ pageId, title: 'Keep', body, updatedAt })
+      if (!parsed) return Promise.resolve(400)
+      return attempt(() =>
+        app.savePage(userId, { pageId, title: 'Keep', body: parsed.body, updatedAt }),
+      )
+    })
+    const token = await saveBad(app, account, reader.token, item.body, item.stored, (userId, pageId, body, updatedAt) =>
+      attempt(() => app.updatePageForToken(userId, writer.id, { pageId, body, updatedAt })),
+    )
+    const http = await pageSaveStatus(app, browser.pageId, item.body, browser.updatedAt)
+    line(`${item.name}_browser_save`, browser.save)
+    line(`${item.name}_browser_stored`, browser.stored)
+    line(`${item.name}_browser_get_page`, browser.read)
+    line(`${item.name}_browser_http`, http)
+    line(`${item.name}_token_save`, token.save)
+    line(`${item.name}_token_stored`, token.stored)
+    line(`${item.name}_token_get_page`, token.read)
+    const fixed =
+      browser.save === 400 &&
+      browser.stored === false &&
+      browser.read === 200 &&
+      http === 400 &&
+      token.save === 400 &&
+      token.stored === false &&
+      token.read === 200
+    ok = ok && fixed
+  }
+  const goodBody = {
+    type: 'doc',
+    content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'ok', marks: [{ type: 'bold' }] }] },
+      { type: 'orderedList', attrs: { start: 2 }, content: [] },
+    ],
+  }
+  const goodPage = await app.createPage(account.user.id, { spaceId: account.space.id, title: 'Keep' })
+  const seeded = await app.savePage(account.user.id, {
+    pageId: goodPage.id,
+    title: 'Keep',
+    body: doc('original'),
+    updatedAt: goodPage.updatedAt,
+  })
+  const goodBrowser = await attempt(() =>
+    app.savePage(account.user.id, {
+      pageId: goodPage.id,
+      title: 'Keep',
+      body: goodBody,
+      updatedAt: seeded.updatedAt,
+    }),
+  )
+  const afterGood = await app.getPageView(account.user.id, goodPage.id)
+  const goodToken = await attempt(() =>
+    app.updatePageForToken(account.user.id, writer.id, {
+      pageId: goodPage.id,
+      body: goodBody,
+      updatedAt: afterGood.updatedAt,
+    }),
+  )
+  line('good_browser', goodBrowser)
+  line('good_token', goodToken)
+  return ok && goodBrowser === 200 && goodToken === 200
+}
+
+async function saveBad(
+  app: App,
+  account: Account,
+  readToken: string,
+  body: unknown,
+  storedAs: (json: string) => boolean,
+  write: (userId: string, pageId: string, body: unknown, updatedAt: string) => Promise<number>,
+) {
+  const made = await app.createPage(account.user.id, { spaceId: account.space.id, title: 'Keep' })
+  const seeded = await app.savePage(account.user.id, {
+    pageId: made.id,
+    title: 'Keep',
+    body: doc('original'),
+    updatedAt: made.updatedAt,
+  })
+  const save = await write(account.user.id, made.id, body, seeded.updatedAt)
+  const after = await app.getPageView(account.user.id, made.id)
+  const read = await mcpStatus(app, readToken, 'get_page', { page_id: made.id })
+  return { pageId: made.id, updatedAt: after.updatedAt, save, stored: storedAs(JSON.stringify(after.body)), read }
+}
+
+async function pageSaveStatus(app: App, pageId: string, body: unknown, updatedAt: string) {
+  try {
+    const response = await app.handlePageSave(
+      new Request(process.env.BETTER_AUTH_URL ?? 'http://127.0.0.1:9', {
+        method: 'POST',
+        headers: {
+          origin: process.env.BETTER_AUTH_URL ?? 'http://127.0.0.1:9',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ pageId, title: 'Keep', body, updatedAt }),
+      }),
+    )
+    return response.status
+  } catch {
+    return 500
+  }
 }
 
 async function bootDev(root: string) {
@@ -1106,21 +1249,22 @@ const checks: Record<string, (app: App, root: string) => Promise<boolean>> = {
   fc14,
   fc15,
   fc16,
-  fc17,
+  fc18,
 }
 
 async function main() {
   const check = checks[id]
   if (!check) throw new Error('unknown step')
-  const sha = planted ? PIN : execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  const pin = id === 'fc18' ? FC18_PIN : PIN
+  const sha = planted ? pin : execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   line('sha', sha)
-  const needsDb = !['fc5', 'fc9', 'fc10', 'fc17'].includes(id)
+  const needsDb = !['fc5', 'fc9', 'fc10'].includes(id)
   if (needsDb) {
     await ensureDatabase()
     ensureAuth()
     await migrate()
   }
-  const root = planted && (needsDb || id === 'fc5') ? await materialize() : repoRoot
+  const root = planted && (needsDb || id === 'fc5') ? await materialize(pin) : repoRoot
   const app: App | null = needsDb ? await loadApp(root) : null
   try {
     const fixed = await check(app ?? (null as unknown as App), root)

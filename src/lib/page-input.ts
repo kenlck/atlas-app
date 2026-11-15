@@ -8,17 +8,32 @@ export function pageBodyBytes(body: unknown) {
   return Buffer.byteLength(JSON.stringify(body), 'utf8')
 }
 
-function isDoc(value: unknown): value is Json {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  const record = value as Record<string, unknown>
-  if (typeof record.type !== 'string' || record.type.length === 0) return false
-  if ('text' in record && record.text !== undefined && typeof record.text !== 'string') {
+  const proto = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
+function isMark(value: unknown) {
+  if (!isPlainObject(value)) return false
+  if (typeof value.type !== 'string' || value.type.length === 0) return false
+  return !('attrs' in value) || value.attrs === undefined || isPlainObject(value.attrs)
+}
+
+function isDoc(value: unknown): value is Json {
+  if (!isPlainObject(value)) return false
+  if (typeof value.type !== 'string' || value.type.length === 0) return false
+  if ('text' in value && value.text !== undefined && typeof value.text !== 'string') {
     return false
   }
-  if (record.type === 'text' && typeof record.text !== 'string') return false
-  if (!('content' in record) || record.content === undefined) return true
-  if (!Array.isArray(record.content)) return false
-  return record.content.every(isDoc)
+  if (value.type === 'text' && typeof value.text !== 'string') return false
+  if ('attrs' in value && value.attrs !== undefined && !isPlainObject(value.attrs)) return false
+  if ('marks' in value && value.marks !== undefined) {
+    if (!Array.isArray(value.marks) || !value.marks.every(isMark)) return false
+  }
+  if (!('content' in value) || value.content === undefined) return true
+  if (!Array.isArray(value.content)) return false
+  return value.content.every(isDoc)
 }
 
 export function parseSavePayload(
