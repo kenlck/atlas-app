@@ -159,38 +159,29 @@ export const fetchPage = createServerFn({ method: 'GET' })
 
 export const createPageFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
-  .validator(
-    (data: {
-      spaceId: string
-      parentId?: string | null
-      title?: string
-      kind?: 'doc' | 'whiteboard'
-    }) => {
-      if (data === null || typeof data !== 'object' || Array.isArray(data)) {
-        throw new HttpError(400, 'Bad request')
-      }
-      const record = data as Record<string, unknown>
-      if (typeof record.spaceId !== 'string' || record.spaceId.length === 0) {
-        throw new HttpError(400, 'Bad request')
-      }
-      if (
-        record.parentId !== undefined &&
-        record.parentId !== null &&
-        typeof record.parentId !== 'string'
-      ) {
-        throw new HttpError(400, 'Bad request')
-      }
-      if (record.title !== undefined) assertPageTitle(record.title)
-      if (
-        record.kind !== undefined &&
-        record.kind !== 'doc' &&
-        record.kind !== 'whiteboard'
-      ) {
-        throw new HttpError(400, 'Bad request')
-      }
-      return data
-    },
-  )
+  .validator((data: unknown) => {
+    if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+      throw new HttpError(400, 'Bad request')
+    }
+    const record = data as Record<string, unknown>
+    const spaceId = record.spaceId
+    if (typeof spaceId !== 'string' || spaceId.length === 0) {
+      throw new HttpError(400, 'Bad request')
+    }
+    const parentRaw = record.parentId
+    let parentId: string | null | undefined
+    if (parentRaw === undefined || parentRaw === null || typeof parentRaw === 'string') {
+      parentId = parentRaw
+    } else {
+      throw new HttpError(400, 'Bad request')
+    }
+    const title = record.title === undefined ? undefined : assertPageTitle(record.title)
+    let kind: 'doc' | 'whiteboard' | undefined
+    if (record.kind === undefined) kind = undefined
+    else if (record.kind === 'doc' || record.kind === 'whiteboard') kind = record.kind
+    else throw new HttpError(400, 'Bad request')
+    return { spaceId, parentId, title, kind }
+  })
   .handler(async ({ data, context }) => {
     try {
       const view = await createPage(context.userId, data)
@@ -203,16 +194,16 @@ export const createPageFn = createServerFn({ method: 'POST' })
 
 export const renamePageFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
-  .validator((data: { pageId: string; title: string }) => {
+  .validator((data: unknown) => {
     if (data === null || typeof data !== 'object' || Array.isArray(data)) {
       throw new HttpError(400, 'Bad request')
     }
     const record = data as Record<string, unknown>
-    if (typeof record.pageId !== 'string' || record.pageId.length === 0) {
+    const pageId = record.pageId
+    if (typeof pageId !== 'string' || pageId.length === 0) {
       throw new HttpError(400, 'Bad request')
     }
-    assertPageTitle(record.title)
-    return { pageId: record.pageId, title: record.title as string }
+    return { pageId, title: assertPageTitle(record.title) }
   })
   .handler(async ({ data, context }) => {
     try {
@@ -283,18 +274,20 @@ export const cloneDiagramFn = createServerFn({ method: 'POST' })
 
 export const movePageFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
-  .validator((data: { pageId: string; parentId: string | null }) => {
+  .validator((data: unknown) => {
     if (data === null || typeof data !== 'object' || Array.isArray(data)) {
       throw new HttpError(400, 'Bad request')
     }
     const record = data as Record<string, unknown>
-    if (typeof record.pageId !== 'string' || record.pageId.length === 0) {
+    const pageId = record.pageId
+    const parentId = record.parentId
+    if (typeof pageId !== 'string' || pageId.length === 0) {
       throw new HttpError(400, 'Bad request')
     }
-    if (typeof record.parentId !== 'string' && record.parentId !== null) {
+    if (typeof parentId !== 'string' && parentId !== null) {
       throw new HttpError(400, 'Bad request')
     }
-    return { pageId: record.pageId, parentId: record.parentId }
+    return { pageId, parentId }
   })
   .handler(async ({ data, context }) => {
     try {

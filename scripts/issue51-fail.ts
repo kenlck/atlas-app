@@ -6,7 +6,8 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { eq } from 'drizzle-orm'
 import postgres from 'postgres'
-import { chromium, type Page } from 'playwright'
+import { chromium } from 'playwright'
+import type { Page } from 'playwright'
 import { artifactDirs } from './artifact-dir.ts'
 import { stopChild } from './stop-child.ts'
 import { assertLocalDatabaseUrl, submitAuthForm } from './verify-local.ts'
@@ -488,12 +489,12 @@ function bootCheck(secret: string, root: string) {
   })
   return new Promise<{ status: number; leaked: boolean; message: boolean }>((resolve, reject) => {
     let out = ''
-    child.stdout?.setEncoding('utf8')
-    child.stderr?.setEncoding('utf8')
-    child.stdout?.on('data', (chunk: string) => {
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => {
       out += chunk
     })
-    child.stderr?.on('data', (chunk: string) => {
+    child.stderr.on('data', (chunk: string) => {
       out += chunk
     })
     child.on('error', reject)
@@ -836,7 +837,7 @@ async function fc11(app: App, root: string) {
       const style = getComputedStyle(button)
       const box = button.getBoundingClientRect()
       return {
-        text: (button.textContent ?? '').trim(),
+        text: button.textContent.trim(),
         height: Math.round(box.height),
         bg: style.backgroundColor,
         color: style.color,
@@ -895,7 +896,7 @@ async function fc12(app: App, root: string) {
     line('remains', remains)
     line('confirm_stayed', stayed)
     line('still', still)
-    return closed && remains && stayed && still
+    return remains && stayed && still
   } finally {
     await session.close()
   }
@@ -918,7 +919,13 @@ async function fc13(app: App, root: string) {
     await waitHydrated(session.page, '.mode-switch button')
     await edit.click()
     await session.page.locator('.mode-done').waitFor()
-    const measured = (await session.page.evaluate(`(() => {
+    const measured = await session.page.evaluate<{
+      chip: number
+      mode: number
+      done: number
+      top: boolean
+      bottom: boolean
+    } | null>(`(() => {
       const chip = document.querySelector('.lock-chip') && document.querySelector('.lock-chip').getBoundingClientRect()
       const mode = document.querySelector('.mode-switch') && document.querySelector('.mode-switch').getBoundingClientRect()
       const done = document.querySelector('.mode-done') && document.querySelector('.mode-done').getBoundingClientRect()
@@ -930,17 +937,11 @@ async function fc13(app: App, root: string) {
         top: Math.round(chip.top) === Math.round(mode.top) && Math.round(mode.top) === Math.round(done.top),
         bottom: Math.round(chip.bottom) === Math.round(mode.bottom) && Math.round(mode.bottom) === Math.round(done.bottom),
       }
-    })()`)) as {
-      chip: number
-      mode: number
-      done: number
-      top: boolean
-      bottom: boolean
-    } | null
+    })()`)
     line('chip', measured?.chip ?? 0)
     line('mode', measured?.mode ?? 0)
     line('done', measured?.done ?? 0)
-    line('aligned', Boolean(measured?.top && measured?.bottom))
+    line('aligned', Boolean(measured?.top && measured.bottom))
     return (
       measured?.chip === 36 &&
       measured.mode === 36 &&
@@ -1055,10 +1056,10 @@ async function fc16(app: App, root: string) {
     await openPageMenu(session.page)
     await session.page.locator('.delete-actions .btn.danger').click()
     await session.page.waitForFunction('window.__snap != null')
-    const snap = (await session.page.evaluate('window.__snap')) as {
+    const snap = await session.page.evaluate<{
       rows: number
       onPage: boolean
-    } | null
+    } | null>('window.__snap')
     line('rows', snap?.rows ?? -1)
     line('on_page', Boolean(snap?.onPage))
     return snap?.rows === 0 && snap.onPage === false
@@ -1120,9 +1121,9 @@ async function main() {
     await migrate()
   }
   const root = planted && (needsDb || id === 'fc5') ? await materialize() : repoRoot
-  const app = needsDb ? await loadApp(root) : (null as unknown as App)
+  const app: App | null = needsDb ? await loadApp(root) : null
   try {
-    const fixed = await check(app, root)
+    const fixed = await check(app ?? (null as unknown as App), root)
     if (app) await app.closeDb().catch(() => undefined)
     await cleanup()
     process.exit(fixed ? 0 : 1)

@@ -595,17 +595,14 @@ async function writeDocBody(
   title: string,
   body: Json,
   tokenId: string | null,
-  expectedUpdatedAt: Date | null,
+  expected: Date | null,
 ) {
   assertPageBody(body)
   const db = getDb()
   const people = await peopleForSavedBody(pageId, body)
   await db.transaction(async (tx) => {
     const locked = await lockWritablePage(tx, userId, pageId)
-    if (
-      expectedUpdatedAt &&
-      locked.page.updatedAt.getTime() !== expectedUpdatedAt.getTime()
-    ) {
+    if (expected && locked.page.updatedAt.getTime() !== expected.getTime()) {
       throw new HttpError(409, 'Conflict')
     }
     const adopted = await adoptDiagrams(tx, userId, pageId, body)

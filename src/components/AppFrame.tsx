@@ -298,9 +298,9 @@ export function AppFrame({
     try {
       await movePageFn({ data: { pageId, parentId } })
       refresh()
-    } catch (error) {
+    } catch (failure) {
       setPlaced(null)
-      showToast(moveFailureToast(error))
+      showToast(moveFailureToast(failure))
     }
   }
 
