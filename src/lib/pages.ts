@@ -13,6 +13,7 @@ import {
 } from './drawing'
 import type { DrawingScene } from './drawing'
 import { HttpError, notFound } from './http'
+import { assertPageBody, assertPageTitle } from './page-input'
 import { newId } from './ids'
 import { mentionChipText, peopleForBody } from './mentions'
 import type { MentionPerson } from './mentions'
@@ -269,7 +270,7 @@ export async function createPage(
   const db = getDb()
   const id = newId()
   const now = new Date()
-  const title = (input.title ?? 'Untitled').trim() || 'Untitled'
+  const title = assertPageTitle(input.title ?? 'Untitled')
   const kind: PageKind = input.kind === 'whiteboard' ? 'whiteboard' : 'doc'
   const position = await nextPosition(input.spaceId, input.parentId ?? null)
   await db.transaction(async (tx) => {
@@ -303,7 +304,7 @@ export async function renamePage(
   userId: string,
   input: { pageId: string; title: string },
 ) {
-  const title = input.title.trim() || 'Untitled'
+  const title = assertPageTitle(input.title)
   const db = getDb()
   await db.transaction(async (tx) => {
     await lockWritablePage(tx, userId, input.pageId)
@@ -581,6 +582,13 @@ async function adoptDiagrams(
   return walk(body)
 }
 
+function expectedUpdatedAt(stamp: string | null | undefined) {
+  if (stamp === undefined || stamp === null) return null
+  const parsed = Date.parse(stamp)
+  if (!Number.isFinite(parsed)) throw new HttpError(400, 'Bad request')
+  return new Date(parsed)
+}
+
 async function writeDocBody(
   userId: string,
   pageId: string,
@@ -589,6 +597,7 @@ async function writeDocBody(
   tokenId: string | null,
   expectedUpdatedAt: Date | null,
 ) {
+  assertPageBody(body)
   const db = getDb()
   const people = await peopleForSavedBody(pageId, body)
   await db.transaction(async (tx) => {
@@ -601,7 +610,7 @@ async function writeDocBody(
     }
     const adopted = await adoptDiagrams(tx, userId, pageId, body)
     const bodyText = await indexedBodyText(tx, adopted, people)
-    const rows = await tx
+    await tx
       .update(page)
       .set({
         title,
@@ -612,8 +621,6 @@ async function writeDocBody(
         ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
       })
       .where(eq(page.id, pageId))
-      .returning({ id: page.id })
-    if (rows.length === 0) throw new HttpError(409, 'Conflict')
   })
 }
 
@@ -622,11 +629,19 @@ export async function savePage(
   input: { pageId: string; title: string; body: Json; updatedAt?: string | null },
 ) {
   const access = await assertAccess(userId, { pageId: input.pageId })
-  const title = input.title.trim() || 'Untitled'
+  const title = assertPageTitle(input.title)
+  assertPageBody(input.body)
   const db = getDb()
   if (access.page?.kind === 'whiteboard') {
+    const expected = expectedUpdatedAt(input.updatedAt)
     await db.transaction(async (tx) => {
-      await lockWritablePage(tx, userId, input.pageId)
+      const locked = await lockWritablePage(tx, userId, input.pageId)
+      if (
+        expected &&
+        locked.page.updatedAt.getTime() !== expected.getTime()
+      ) {
+        throw new HttpError(409, 'Conflict')
+      }
       await tx
         .update(page)
         .set({ title, updatedBy: userId, updatedAt: new Date() })
@@ -634,13 +649,7 @@ export async function savePage(
     })
     return getPageView(userId, input.pageId)
   }
-  const stamp = input.updatedAt
-  let expected: Date | null = null
-  if (stamp !== undefined && stamp !== null) {
-    const parsed = Date.parse(stamp)
-    if (!Number.isFinite(parsed)) throw new HttpError(400, 'Bad request')
-    expected = new Date(parsed)
-  }
+  const expected = expectedUpdatedAt(input.updatedAt)
   await writeDocBody(userId, input.pageId, title, input.body, null, expected)
   return getPageView(userId, input.pageId)
 }
@@ -649,6 +658,9 @@ export async function movePage(
   userId: string,
   input: { pageId: string; parentId: string | null },
 ) {
+  if (input.parentId != null && typeof input.parentId !== 'string') {
+    throw new HttpError(400, 'Bad request')
+  }
   const { page: row } = await assertAccess(userId, { pageId: input.pageId })
   if (!row) notFound()
   let parentSpaceId = row.spaceId
@@ -776,7 +788,7 @@ export async function updatePageForToken(
   const db = getDb()
   if (row.kind === 'whiteboard') {
     if (input.title === undefined) return getPageView(userId, row.id)
-    const title = input.title.trim() || 'Untitled'
+    const title = assertPageTitle(input.title)
     await db.transaction(async (tx) => {
       await lockWritablePage(tx, userId, row.id)
       const written = await tx
@@ -794,7 +806,7 @@ export async function updatePageForToken(
     return getPageView(userId, row.id)
   }
   const title =
-    input.title === undefined ? row.title : input.title.trim() || 'Untitled'
+    input.title === undefined ? row.title : assertPageTitle(input.title)
   const body = input.body === undefined ? (row.body as Json) : input.body
   await writeDocBody(userId, row.id, title, body, tokenId, row.updatedAt)
   return getPageView(userId, row.id)
@@ -805,17 +817,19 @@ export async function refreshDocText(
   pageId: string,
   tokenId: string | null,
 ) {
-  const access = await assertAccess(userId, { pageId })
-  if (!access.page || access.page.kind !== 'doc') return
-  const body = access.page.body as Json
-  const people = await peopleForBody(access.space, body)
-  await getDb()
-    .update(page)
-    .set({
-      bodyText: await indexedBodyText(getDb(), body, people),
-      ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
-    })
-    .where(eq(page.id, pageId))
+  await getDb().transaction(async (tx) => {
+    const held = await holdWritablePage(tx, userId, pageId)
+    if (held.page.kind !== 'doc') return
+    const body = held.page.body as Json
+    const people = await peopleForBody(held.space, body)
+    await tx
+      .update(page)
+      .set({
+        bodyText: await indexedBodyText(tx, body, people),
+        ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
+      })
+      .where(eq(page.id, pageId))
+  })
 }
 
 export async function createDiagram(userId: string, pageId: string) {

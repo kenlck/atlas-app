@@ -1,5 +1,5 @@
-import type { Json } from './body-text'
 import { HttpError } from './http'
+import { PAGE_BODY_MAX_BYTES, parseSavePayload } from './page-input'
 import { savePage } from './pages'
 import { requireUnlockedSession } from './session'
 import { touchLastSpace } from './spaces'
@@ -26,28 +26,42 @@ export function saveOriginAllowed(request: Request) {
   }
 }
 
-function isDoc(value: unknown): value is Json {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  const record = value as Record<string, unknown>
-  if (typeof record.type !== 'string' || record.type.length === 0) return false
-  if (!('content' in record) || record.content === undefined) return true
-  if (!Array.isArray(record.content)) return false
-  return record.content.every(isDoc)
+export { parseSavePayload } from './page-input'
+
+async function readCappedJson(request: Request): Promise<string | 'too-large'> {
+  const declared = request.headers.get('content-length')
+  if (declared !== null) {
+    const size = Number(declared)
+    if (!Number.isFinite(size) || size < 0 || size > PAGE_BODY_MAX_BYTES) {
+      await request.body?.cancel().catch(() => undefined)
+      return 'too-large'
+    }
+  }
+  if (request.body === null) return ''
+  const reader = request.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  let next = await reader.read()
+  while (!next.done) {
+    total += next.value.byteLength
+    if (total > PAGE_BODY_MAX_BYTES) {
+      await reader.cancel().catch(() => undefined)
+      return 'too-large'
+    }
+    chunks.push(next.value)
+    next = await reader.read()
+  }
+  return new TextDecoder().decode(chunks.length === 1 ? chunks[0] : concatBytes(chunks, total))
 }
 
-export function parseSavePayload(
-  value: unknown,
-): { pageId: string; title: string; body: Json } | null {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
-  const record = value as Record<string, unknown>
-  if (typeof record.pageId !== 'string' || record.pageId.length === 0) return null
-  if (typeof record.title !== 'string') return null
-  if (!isDoc(record.body)) return null
-  return {
-    pageId: record.pageId,
-    title: record.title,
-    body: record.body,
+function concatBytes(chunks: Uint8Array[], total: number) {
+  const body = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    body.set(chunk, offset)
+    offset += chunk.byteLength
   }
+  return body
 }
 
 function json(body: unknown, status: number) {
@@ -61,9 +75,11 @@ export async function handlePageSave(request: Request) {
   if (!saveOriginAllowed(request)) {
     return json({ error: 'Forbidden' }, 403)
   }
+  const raw = await readCappedJson(request)
+  if (raw === 'too-large') return json({ error: 'Payload too large' }, 413)
   let payload: unknown
   try {
-    payload = await request.json()
+    payload = JSON.parse(raw)
   } catch {
     return json({ error: 'Bad request' }, 400)
   }

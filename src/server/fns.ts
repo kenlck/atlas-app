@@ -3,6 +3,7 @@ import { setResponseStatus } from '@tanstack/react-start/server'
 import type { Json } from '#/lib/body-text'
 import { getDb } from '#/lib/db'
 import { HttpError } from '#/lib/http'
+import { assertPageTitle, parseSavePayload } from '#/lib/page-input'
 import { user } from '#/lib/schema'
 import { eq } from 'drizzle-orm'
 import { openCalendar } from '#/lib/calendar'
@@ -164,7 +165,31 @@ export const createPageFn = createServerFn({ method: 'POST' })
       parentId?: string | null
       title?: string
       kind?: 'doc' | 'whiteboard'
-    }) => data,
+    }) => {
+      if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+        throw new HttpError(400, 'Bad request')
+      }
+      const record = data as Record<string, unknown>
+      if (typeof record.spaceId !== 'string' || record.spaceId.length === 0) {
+        throw new HttpError(400, 'Bad request')
+      }
+      if (
+        record.parentId !== undefined &&
+        record.parentId !== null &&
+        typeof record.parentId !== 'string'
+      ) {
+        throw new HttpError(400, 'Bad request')
+      }
+      if (record.title !== undefined) assertPageTitle(record.title)
+      if (
+        record.kind !== undefined &&
+        record.kind !== 'doc' &&
+        record.kind !== 'whiteboard'
+      ) {
+        throw new HttpError(400, 'Bad request')
+      }
+      return data
+    },
   )
   .handler(async ({ data, context }) => {
     try {
@@ -178,7 +203,17 @@ export const createPageFn = createServerFn({ method: 'POST' })
 
 export const renamePageFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
-  .validator((data: { pageId: string; title: string }) => data)
+  .validator((data: { pageId: string; title: string }) => {
+    if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+      throw new HttpError(400, 'Bad request')
+    }
+    const record = data as Record<string, unknown>
+    if (typeof record.pageId !== 'string' || record.pageId.length === 0) {
+      throw new HttpError(400, 'Bad request')
+    }
+    assertPageTitle(record.title)
+    return { pageId: record.pageId, title: record.title as string }
+  })
   .handler(async ({ data, context }) => {
     try {
       const view = await renamePage(context.userId, data)
@@ -192,8 +227,16 @@ export const renamePageFn = createServerFn({ method: 'POST' })
 export const savePageFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
   .validator(
-    (data: { pageId: string; title: string; body: Json; updatedAt?: string }) =>
-      data,
+    (data: { pageId: string; title: string; body: Json; updatedAt?: string }) => {
+      const parsed = parseSavePayload(data)
+      if (!parsed) throw new HttpError(400, 'Bad request')
+      const stamp = (data as { updatedAt?: unknown }).updatedAt
+      if (typeof stamp !== 'string' || !Number.isFinite(Date.parse(stamp))) {
+        throw new HttpError(400, 'Bad request')
+      }
+      assertPageTitle(parsed.title)
+      return { ...parsed, updatedAt: stamp }
+    },
   )
   .handler(async ({ data, context }) => {
     try {
@@ -240,7 +283,19 @@ export const cloneDiagramFn = createServerFn({ method: 'POST' })
 
 export const movePageFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
-  .validator((data: { pageId: string; parentId: string | null }) => data)
+  .validator((data: { pageId: string; parentId: string | null }) => {
+    if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+      throw new HttpError(400, 'Bad request')
+    }
+    const record = data as Record<string, unknown>
+    if (typeof record.pageId !== 'string' || record.pageId.length === 0) {
+      throw new HttpError(400, 'Bad request')
+    }
+    if (typeof record.parentId !== 'string' && record.parentId !== null) {
+      throw new HttpError(400, 'Bad request')
+    }
+    return { pageId: record.pageId, parentId: record.parentId }
+  })
   .handler(async ({ data, context }) => {
     try {
       const view = await movePage(context.userId, data)
