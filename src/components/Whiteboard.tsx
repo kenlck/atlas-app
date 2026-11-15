@@ -197,6 +197,8 @@ export function Whiteboard({ page }: { page: PageView }) {
           setEditing(true)
         }}
         onLeave={leaveEdit}
+        canUnlock={page.canLock}
+        onUnlock={() => requestLock(page.id, false)}
         menu={
           <>
             <NewPageMenu
@@ -208,6 +210,8 @@ export function Whiteboard({ page }: { page: PageView }) {
               canDelete={page.canDelete}
               canLock={page.canLock}
               locked={Boolean(page.lockedByName)}
+              saveLabel={saveStatusLabel(saveState)}
+              onCreate={(kind) => createChild(page.id, kind)}
               onDelete={() => requestDelete(page.id)}
               onLock={() => requestLock(page.id, !page.lockedByName)}
             />

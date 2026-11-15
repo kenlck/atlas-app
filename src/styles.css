@@ -2207,3 +2207,120 @@ body {
     max-height: calc(100dvh - 32px);
   }
 }
+
+.phone-menu-only {
+  display: none;
+}
+
+.menu-status {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.lock-hit {
+  display: none;
+}
+
+@media (width < 640px) {
+  .auth .card {
+    width: min(380px, calc(100vw - 40px));
+    max-width: calc(100vw - 40px);
+    min-width: 0;
+  }
+
+  .top {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .top .r {
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+
+  .top .r > .new-page:not(.page-menu),
+  .top .r > .save,
+  .top .mode-done,
+  .editing-chip .save {
+    display: none;
+  }
+
+  .top .page-menu .menu {
+    left: auto;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    max-width: calc(100vw - 16px);
+  }
+
+  .phone-menu-only {
+    display: block;
+  }
+
+  .lock-chip {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    max-width: 36px;
+    flex: 0 0 36px;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+  }
+
+  .lock-chip .lock-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .lock-hit {
+    display: block;
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    bottom: -1px;
+    left: -1px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .tool {
+    min-width: 0;
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+  }
+
+  .retry {
+    margin-left: 12px;
+    margin-right: 12px;
+    max-width: calc(100% - 24px);
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .retry-copy {
+    flex: 1 1 160px;
+    min-width: 0;
+  }
+
+  .retry button {
+    flex-shrink: 0;
+  }
+}
