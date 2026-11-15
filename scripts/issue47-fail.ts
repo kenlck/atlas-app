@@ -127,6 +127,14 @@ function doc(text: string): Json {
   }
 }
 
+function closeQuiet(fd: number) {
+  try {
+    closeSync(fd)
+  } catch {
+    // The child can close a shared descriptor during its own shutdown.
+  }
+}
+
 function runFile(cmd: string, args: string[], env = process.env) {
   return new Promise<string>((resolve, reject) => {
     execFile(cmd, args, { env }, (error, stdout, stderr) => {
@@ -334,7 +342,9 @@ async function boot(root: string) {
   const port = await freePort()
   const base = assertLocalBaseUrl(`http://127.0.0.1:${port}`)
   mkdirSync(artifacts, { recursive: true })
-  const logFd = openSync(join(artifacts, `47-server-${port}.log`), 'a')
+  const logPath = join(artifacts, `47-server-${port}.log`)
+  const logFd = openSync(logPath, 'a')
+  const errFd = openSync(logPath, 'a')
   const child = spawn('node', ['.output/server/index.mjs'], {
     cwd: root,
     detached: true,
@@ -345,7 +355,7 @@ async function boot(root: string) {
       PORT: String(port),
       BETTER_AUTH_URL: base,
     },
-    stdio: ['ignore', logFd, logFd],
+    stdio: ['ignore', logFd, errFd],
   })
   children.push(child)
   child.unref()
@@ -356,7 +366,8 @@ async function boot(root: string) {
       const response = await fetch(`${base}/sign-in`)
       if (response.status === 200) {
         await response.text().catch(() => '')
-        closeSync(logFd)
+        closeQuiet(logFd)
+        closeQuiet(errFd)
         line('47_port', port)
         return {
           base,
@@ -369,7 +380,8 @@ async function boot(root: string) {
     }
     await new Promise((resolve) => setTimeout(resolve, 300))
   }
-  closeSync(logFd)
+  closeQuiet(logFd)
+  closeQuiet(errFd)
   await stopChild(child)
   throw new Error('local server did not start')
 }
