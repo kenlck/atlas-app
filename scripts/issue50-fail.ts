@@ -14,6 +14,8 @@ import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
 import type { Page } from 'playwright'
 import type { Json } from '../src/lib/body-text.ts'
+import { artifactDirs } from './artifact-dir.ts'
+import { stopChild } from './stop-child.ts'
 import { rejectEverySave } from './fixtures/issue50-save.ts'
 import {
   assertLocalBaseUrl,
@@ -955,10 +957,7 @@ async function shot(page: Page, name: string) {
   const sha = execFileSync('git', ['rev-parse', 'HEAD'], {
     encoding: 'utf8',
   }).trim()
-  for (const dir of [
-    join(repoRoot, 'artifacts', sha),
-    process.env.ATLAS_ARTIFACTS_DIR || '/opt/cursor/artifacts',
-  ]) {
+  for (const dir of artifactDirs(repoRoot, sha)) {
     await mkdir(dir, { recursive: true })
     await writeFile(join(dir, name), buf)
   }
@@ -1616,15 +1615,7 @@ async function bootPinServer(root: string) {
     stdio: 'ignore',
   })
   child.unref()
-  const stop = () => {
-    if (child.pid) {
-      try {
-        process.kill(-child.pid, 'SIGTERM')
-      } catch {
-        child.kill('SIGTERM')
-      }
-    }
-  }
+  const stop = () => stopChild(child)
   const deadline = Date.now() + 30000
   while (Date.now() < deadline) {
     try {
@@ -1639,7 +1630,7 @@ async function bootPinServer(root: string) {
     }
     await new Promise((resolve) => setTimeout(resolve, 300))
   }
-  stop()
+  await stop()
   throw new Error('pin server did not start')
 }
 
@@ -1787,7 +1778,7 @@ async function fc8Planted() {
     line('50_fc8_planted_persisted', result.persisted)
     return result.again !== 200 || result.banner || !result.persisted
   } finally {
-    server.stop()
+    await server.stop()
     rmSync(root, { recursive: true, force: true })
   }
 }
@@ -1939,7 +1930,7 @@ async function fc9Planted() {
     line('50_fc9_planted_persisted', result.persisted)
     return result.again !== 200 || result.banner || !result.persisted
   } finally {
-    server.stop()
+    await server.stop()
     rmSync(root, { recursive: true, force: true })
   }
 }

@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
 import type { Page } from 'playwright'
+import { artifactDirs } from './artifact-dir.ts'
 import { refuseEveryMove } from './fixtures/issue49-move.ts'
 import {
   assertLocalBaseUrl,
@@ -731,10 +732,7 @@ async function shot(page: Page, name: string) {
   const sha = execFileSync('git', ['rev-parse', 'HEAD'], {
     encoding: 'utf8',
   }).trim()
-  for (const dir of [
-    join(repoRoot, 'artifacts', sha),
-    '/opt/cursor/artifacts',
-  ]) {
+  for (const dir of artifactDirs(repoRoot, sha)) {
     await mkdir(dir, { recursive: true })
     await writeFile(join(dir, name), buf)
   }

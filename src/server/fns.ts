@@ -1,8 +1,8 @@
 import { createMiddleware, createServerFn } from '@tanstack/react-start'
 import { setResponseStatus } from '@tanstack/react-start/server'
-import type { Json } from '#/lib/body-text'
 import { getDb } from '#/lib/db'
 import { HttpError } from '#/lib/http'
+import { assertPageTitle, parseSavePayload } from '#/lib/page-input'
 import { user } from '#/lib/schema'
 import { eq } from 'drizzle-orm'
 import { openCalendar } from '#/lib/calendar'
@@ -158,17 +158,30 @@ export const fetchPage = createServerFn({ method: 'GET' })
 
 export const createPageFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
-  .validator(
-    (data: {
-      spaceId: string
-      parentId?: string | null
-      title?: string
-      kind?: 'doc' | 'whiteboard'
-    }) => data,
-  )
+  .validator((data: unknown) => data)
   .handler(async ({ data, context }) => {
     try {
-      const view = await createPage(context.userId, data)
+      if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+        throw new HttpError(400, 'Bad request')
+      }
+      const record = data as Record<string, unknown>
+      const spaceId = record.spaceId
+      if (typeof spaceId !== 'string' || spaceId.length === 0) {
+        throw new HttpError(400, 'Bad request')
+      }
+      const parentRaw = record.parentId
+      let parentId: string | null | undefined
+      if (parentRaw === undefined || parentRaw === null || typeof parentRaw === 'string') {
+        parentId = parentRaw
+      } else {
+        throw new HttpError(400, 'Bad request')
+      }
+      const title = record.title === undefined ? undefined : assertPageTitle(record.title)
+      let kind: 'doc' | 'whiteboard' | undefined
+      if (record.kind === undefined) kind = undefined
+      else if (record.kind === 'doc' || record.kind === 'whiteboard') kind = record.kind
+      else throw new HttpError(400, 'Bad request')
+      const view = await createPage(context.userId, { spaceId, parentId, title, kind })
       await touchLastSpace(context.userId, view.spaceId)
       return view
     } catch (error) {
@@ -178,10 +191,21 @@ export const createPageFn = createServerFn({ method: 'POST' })
 
 export const renamePageFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
-  .validator((data: { pageId: string; title: string }) => data)
+  .validator((data: unknown) => data)
   .handler(async ({ data, context }) => {
     try {
-      const view = await renamePage(context.userId, data)
+      if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+        throw new HttpError(400, 'Bad request')
+      }
+      const record = data as Record<string, unknown>
+      const pageId = record.pageId
+      if (typeof pageId !== 'string' || pageId.length === 0) {
+        throw new HttpError(400, 'Bad request')
+      }
+      const view = await renamePage(context.userId, {
+        pageId,
+        title: assertPageTitle(record.title),
+      })
       await touchLastSpace(context.userId, view.spaceId)
       return view
     } catch (error) {
@@ -191,23 +215,23 @@ export const renamePageFn = createServerFn({ method: 'POST' })
 
 export const savePageFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
-  .validator(
-    (data: { pageId: string; title: string; body: Json; updatedAt?: string }) =>
-      data,
-  )
+  .validator((data: unknown) => data)
   .handler(async ({ data, context }) => {
     try {
-      if (
-        typeof data.updatedAt !== 'string' ||
-        !Number.isFinite(Date.parse(data.updatedAt))
-      ) {
+      const parsed = parseSavePayload(data)
+      if (!parsed) throw new HttpError(400, 'Bad request')
+      const stamp =
+        data !== null && typeof data === 'object' && !Array.isArray(data)
+          ? (data as { updatedAt?: unknown }).updatedAt
+          : undefined
+      if (typeof stamp !== 'string' || !Number.isFinite(Date.parse(stamp))) {
         throw new HttpError(400, 'Bad request')
       }
       const view = await savePage(context.userId, {
-        pageId: data.pageId,
-        title: data.title,
-        body: data.body,
-        updatedAt: data.updatedAt,
+        pageId: parsed.pageId,
+        title: assertPageTitle(parsed.title),
+        body: parsed.body,
+        updatedAt: stamp,
       })
       await touchLastSpace(context.userId, view.spaceId)
       return view
@@ -240,9 +264,22 @@ export const cloneDiagramFn = createServerFn({ method: 'POST' })
 
 export const movePageFn = createServerFn({ method: 'POST' })
   .middleware([unlocked])
-  .validator((data: { pageId: string; parentId: string | null }) => data)
-  .handler(async ({ data, context }) => {
+  .validator((data: unknown) => data)
+  .handler(async ({ data: raw, context }) => {
     try {
+      if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+        throw new HttpError(400, 'Bad request')
+      }
+      const record = raw as Record<string, unknown>
+      const pageId = record.pageId
+      const parentId = record.parentId
+      if (typeof pageId !== 'string' || pageId.length === 0) {
+        throw new HttpError(400, 'Bad request')
+      }
+      if (typeof parentId !== 'string' && parentId !== null) {
+        throw new HttpError(400, 'Bad request')
+      }
+      const data = { pageId, parentId }
       const view = await movePage(context.userId, data)
       await touchLastSpace(context.userId, view.spaceId)
       return view

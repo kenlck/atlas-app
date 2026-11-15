@@ -42,6 +42,7 @@ export function DeletePageDialog({
       if (event.key === 'Enter') {
         event.preventDefault()
         event.stopPropagation()
+        if (event.target === cancelRef.current) onCancel()
       }
     }
     node.addEventListener('keydown', onKey)
@@ -103,7 +104,7 @@ export function DeletePageDialog({
               }
             }}
           >
-            Delete
+            Delete page
           </button>
         </div>
       </div>

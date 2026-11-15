@@ -10,6 +10,7 @@ import type { SpaceRole } from '#/lib/access'
 import type { TreeNode } from '#/lib/pages'
 import type { SpaceSummary } from '#/lib/teams'
 import { flushEditor } from '#/lib/editor-flush'
+import { moveFailureToast } from '#/lib/page-lock-message'
 import type { SearchHit } from '#/lib/search'
 import {
   archivePageFn,
@@ -254,8 +255,11 @@ export function AppFrame({
       viewing === deleting ||
       (node != null && viewing != null && containsId(node.children, viewing))
     await archivePageFn({ data: { pageId: deleting } })
-    setDeleting(null)
-    showToast('Page deleted.')
+    const { tree: without } = detach(shown, deleting)
+    flushSync(() => {
+      setDeleting(null)
+      setPlaced(without)
+    })
     if (affected) {
       if (parentId) {
         await navigate({
@@ -266,6 +270,7 @@ export function AppFrame({
         await navigate({ to: '/s/$spaceId', params: { spaceId } })
       }
     }
+    showToast('Page deleted.')
     refresh()
   }
 
@@ -293,9 +298,9 @@ export function AppFrame({
     try {
       await movePageFn({ data: { pageId, parentId } })
       refresh()
-    } catch {
+    } catch (failure) {
       setPlaced(null)
-      showToast("You can't move this page.")
+      showToast(moveFailureToast(failure))
     }
   }
 

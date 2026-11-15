@@ -25,3 +25,24 @@ export function lockHolderName(error: unknown) {
 export function lockBannerText(name: string) {
   return `${name} locked this page. Your last changes weren't saved.`
 }
+
+function statusOf(error: unknown, depth = 0): number | null {
+  if (depth > 5 || error == null || typeof error !== 'object') return null
+  const record = error as Record<string, unknown>
+  if (record.status === 423 || record.statusCode === 423) return 423
+  for (const key of ['cause', 'data', 'body', 'error']) {
+    if (key in record && record[key] !== error) {
+      const nested = statusOf(record[key], depth + 1)
+      if (nested === 423) return 423
+    }
+  }
+  return null
+}
+
+export function moveFailureToast(error: unknown) {
+  const name = lockHolderName(error)
+  if (name || statusOf(error) === 423) {
+    return name ? `${PREFIX}${name}` : 'Page is locked.'
+  }
+  return "You can't move this page."
+}

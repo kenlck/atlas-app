@@ -170,8 +170,11 @@ export function PageEditor({ page }: { page: PageView }) {
       clearDraft(snapshot.pageId)
       if (savedTitle.current !== snapshot.title) {
         savedTitle.current = snapshot.title
-        void routerRef.current.invalidate({
-          filter: (match) => match.routeId === '/_app/s/$spaceId',
+        await routerRef.current.invalidate({
+          filter: (match) =>
+            match.routeId === '/_app/s/$spaceId' ||
+            match.routeId === '/_app/s/$spaceId/p/$pageId',
+          sync: true,
         })
       }
     }),
@@ -306,6 +309,9 @@ export function PageEditor({ page }: { page: PageView }) {
     if (storage) storage.editing = editing
     editor.setEditable(editing)
     if (editor.isDestroyed) return
+    const dom = editor.view.dom
+    dom.setAttribute('contenteditable', editing ? 'true' : 'false')
+    dom.setAttribute('aria-readonly', editing ? 'false' : 'true')
     editor.view.dispatch(editor.state.tr.setMeta('pageEditing', editing))
   }, [editor, editing])
 

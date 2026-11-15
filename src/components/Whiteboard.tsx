@@ -109,8 +109,11 @@ export function Whiteboard({ page }: { page: PageView }) {
     savedTitle.current = titleRef.current
     dirtyRef.current = false
     setSaveState('saved')
-    void routerRef.current.invalidate({
-      filter: (match) => match.routeId === '/_app/s/$spaceId',
+    await routerRef.current.invalidate({
+      filter: (match) =>
+        match.routeId === '/_app/s/$spaceId' ||
+        match.routeId === '/_app/s/$spaceId/p/$pageId',
+      sync: true,
     })
     return true
   }
