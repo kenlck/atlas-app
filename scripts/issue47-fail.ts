@@ -857,12 +857,19 @@ async function fc5(ctx: Ctx, pinRoot: string | null) {
       const headLock = await metric(head.page, LOCK_BAR)
       const pinLock = await metric(other.page, LOCK_BAR)
       await shot(head.page, '47-head-fc5-locked-1280.png')
+      // Issue #48 FC3 makes these three controls 36px. The rest of the bar
+      // still has to match the pin.
+      const sizedByIssue48 = new Set([
+        '.mode-switch',
+        '.mode-done',
+        '.lock-chip',
+      ])
       const changed = [
         ...differ(headSign, pinSign).map((key) => `sign:${key}`),
         ...differ(headView, pinView).map((key) => `view:${key}`),
         ...differ(headEdit, pinEdit).map((key) => `edit:${key}`),
         ...differ(headLock, pinLock).map((key) => `lock:${key}`),
-      ]
+      ].filter((item) => !sizedByIssue48.has(item.slice(item.indexOf(':') + 1)))
       line('47_fc5_changed', changed.join(',') || 'none')
       return changed.length > 0
     } finally {
@@ -1123,7 +1130,7 @@ async function fc7(ctx: Ctx) {
           label instanceof HTMLElement &&
           getComputedStyle(label).position !== 'absolute'
         return (
-          rect.height < 30 &&
+          Math.abs(rect.height - 36) <= 2 &&
           shown &&
           el.textContent.includes('Locked by Ada Owner')
         )
