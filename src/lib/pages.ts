@@ -842,6 +842,7 @@ export async function refreshDocText(
   userId: string,
   pageId: string,
   tokenId: string | null,
+  edited = true,
 ) {
   await getDb().transaction(async (tx) => {
     const held = await holdWritablePage(tx, userId, pageId)
@@ -852,8 +853,7 @@ export async function refreshDocText(
       .update(page)
       .set({
         bodyText: await indexedBodyText(tx, body, people),
-        lastEditedBy: userId,
-        lastEditedAt: new Date(),
+        ...(edited ? { lastEditedBy: userId, lastEditedAt: new Date() } : {}),
         ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
       })
       .where(eq(page.id, pageId))

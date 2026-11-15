@@ -13,13 +13,14 @@ import { handleDrawingRequest } from '../src/lib/drawing-request'
 import { handleMcp } from '../src/lib/mcp'
 import {
   archivePage,
+  createDiagram,
   createPage,
   getPageView,
   listPageTree,
   savePage,
 } from '../src/lib/pages'
 import { searchVisiblePages } from '../src/lib/search'
-import { drawing } from '../src/lib/schema'
+import { drawing, page } from '../src/lib/schema'
 import { createUser } from './helpers'
 
 const SECRET = 'secretneedle'
@@ -271,5 +272,52 @@ describe('drawings', () => {
       .from(drawing)
       .where(eq(drawing.pageId, board.id))
     expect(row.length).toBe(1)
+  })
+
+  it('leaves Edited by unchanged when a diagram save repeats the scene', async () => {
+    const ada = await createUser('Diagram Ada')
+    const bea = await createUser('Diagram Bea')
+    const doc = await createPage(ada.user.id, {
+      spaceId: ada.space.id,
+      title: 'Diagram note',
+    })
+    const diagram = await createDiagram(ada.user.id, doc.id)
+    const token = await createApiToken(ada.user.id, {
+      name: 'diagram',
+      scope: 'read_write',
+      expiry: '30d',
+    })
+    const rect = [{ id: 'rect-1', type: 'rectangle', x: 1, y: 2 }]
+    const first = await post(token.token, {
+      drawingId: diagram.id,
+      version: diagram.version,
+      elements: rect,
+      appState: {},
+      files: {},
+    })
+    expect(first.status).toBe(200)
+    const changed = await getDb().select().from(page).where(eq(page.id, doc.id)).limit(1)
+    expect(changed[0]?.lastEditedBy).toBe(ada.user.id)
+    await getDb()
+      .update(page)
+      .set({
+        lastEditedAt: new Date('2024-01-01T00:00:00Z'),
+        lastEditedBy: bea.user.id,
+      })
+      .where(eq(page.id, doc.id))
+    const saved = (await first.json()) as { version: number }
+    const again = await post(token.token, {
+      drawingId: diagram.id,
+      version: saved.version,
+      elements: rect,
+      appState: {},
+      files: {},
+    })
+    expect(again.status).toBe(200)
+    const kept = await getDb().select().from(page).where(eq(page.id, doc.id)).limit(1)
+    expect(kept[0]?.lastEditedBy).toBe(bea.user.id)
+    expect(kept[0]?.lastEditedAt?.toISOString()).toBe('2024-01-01T00:00:00.000Z')
+    expect(kept[0]?.updatedBy).toBe(changed[0]?.updatedBy)
+    expect(kept[0]?.updatedAt).toEqual(changed[0]?.updatedAt)
   })
 })

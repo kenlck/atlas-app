@@ -6,6 +6,7 @@ import { getDb } from './db'
 import {
   BOARD_CONFLICT,
   DRAWING_MAX_BYTES,
+  canonicalElements,
   cleanPreviewSvg,
   drawingLabelText,
   plainAppState,
@@ -230,7 +231,9 @@ export async function handleDrawingRequest(request: Request) {
     })
     if (!written) return json({ error: BOARD_CONFLICT }, 409)
     if (board.page.kind !== 'whiteboard') {
-      await refreshDocText(caller.userId, board.page.id, caller.tokenId)
+      const previous = sceneFromStored(board.drawing.scene).elements
+      const edited = canonicalElements(previous) !== canonicalElements(elements)
+      await refreshDocText(caller.userId, board.page.id, caller.tokenId, edited)
     }
     await touchLastSpace(caller.userId, board.spaceId)
     return json({ id: written.id, pageId: written.pageId, version: written.version })
