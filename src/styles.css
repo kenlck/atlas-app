@@ -29,6 +29,7 @@
   --avatar-initials-size: 12px;
   --avatar-initials-weight: 600;
   --sidebar-width: 260px;
+  --sidebar-rail: 52px;
   --page-column-max: 720px;
   --drawer-breakpoint: 900px;
 }
@@ -114,6 +115,43 @@ body {
   color: var(--muted);
 }
 
+.side-top {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.side-top .switcher-wrap {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.side-toggle {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.side-toggle:hover {
+  background: var(--sidebar-active);
+  color: var(--ink);
+}
+
+.side-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .switcher-wrap {
   position: relative;
   margin-bottom: 8px;
@@ -124,6 +162,10 @@ body {
   left: 0;
   right: 0;
   min-width: 0;
+}
+
+.side-top .switcher-wrap .menu {
+  right: -30px;
 }
 
 .av {
@@ -161,6 +203,15 @@ body {
   font-weight: 600;
 }
 
+.sign-out {
+  margin-left: auto;
+  width: auto;
+}
+
+.rail-icon {
+  display: none;
+}
+
 .it .k {
   margin-left: auto;
   font-size: 11px;
@@ -174,6 +225,13 @@ body {
   text-transform: uppercase;
   color: var(--muted);
   padding: 14px 8px 4px;
+}
+
+.tree-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .tree {
@@ -2167,7 +2225,114 @@ body {
   flex-shrink: 0;
 }
 
+.side.collapsed {
+  position: relative;
+  z-index: 4;
+  width: var(--sidebar-rail);
+  padding-left: 8px;
+  padding-right: 8px;
+  align-items: center;
+}
+
+.side.collapsed .side-top {
+  flex-direction: column-reverse;
+  align-items: center;
+  width: 100%;
+}
+
+.side.collapsed .switcher-wrap,
+.side.collapsed .tree,
+.side.collapsed .new-page,
+.side.collapsed .foot {
+  width: 100%;
+}
+
+.side.collapsed .sw,
+.side.collapsed .it {
+  width: 36px;
+  margin-left: auto;
+  margin-right: auto;
+  justify-content: center;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.side.collapsed .tree .it > span {
+  pointer-events: none;
+}
+
+.side.collapsed .sign-out {
+  margin-left: auto;
+}
+
+.side.collapsed .sw-name,
+.side.collapsed .sw .k,
+.side.collapsed .it .k,
+.side.collapsed .it-label,
+.side.collapsed .lab,
+.side.collapsed .foot-copy,
+.side.collapsed .row-more,
+.side.collapsed .empty-pages,
+.side.collapsed .banner {
+  display: none;
+}
+
+.side.collapsed .rail-icon {
+  display: block;
+}
+
+.side.collapsed .tree {
+  flex: 0 1 auto;
+  min-height: 0;
+  padding-bottom: 4px;
+}
+
+.side.collapsed .it:hover,
+.side.collapsed .sw:hover {
+  background: var(--sidebar-active);
+}
+
+.side.collapsed .tree-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.side.collapsed .dot {
+  display: none;
+}
+
+.side.collapsed .foot {
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.side.collapsed .switcher-wrap .menu,
+.side.collapsed .new-page .menu {
+  left: calc(100% + 6px);
+  right: auto;
+  top: 0;
+  bottom: auto;
+  width: 200px;
+  min-width: 160px;
+  margin-top: 0;
+}
+
 @media (width < 900px) {
+  .side-toggle {
+    display: none;
+  }
+
   .menu-btn {
     display: grid;
     position: absolute;
