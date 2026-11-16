@@ -413,4 +413,37 @@ describe('scene edits a person made', () => {
     expect(userSceneChanged([text], [{ ...text, text: 'Hello!' }])).toBe(true)
     expect(userSceneChanged([text], [...[text], { id: 'extra', type: 'rectangle' }])).toBe(true)
   })
+
+  it('counts an indexed reorder and a fixed-width text resize', () => {
+    const front = { id: 'a', type: 'rectangle', x: 1, y: 2, index: 'a0' }
+    const back = { id: 'b', type: 'rectangle', x: 5, y: 6, index: 'a1' }
+    expect(
+      userSceneChanged(
+        [front, back],
+        [
+          { ...front, index: 'a1' },
+          { ...back, index: 'a0' },
+        ],
+      ),
+    ).toBe(true)
+    const fixed = {
+      id: 'label',
+      type: 'text',
+      text: 'Hello',
+      x: 1,
+      y: 2,
+      width: 80,
+      height: 24,
+      baseline: 18,
+      lineHeight: 1.25,
+      autoResize: false,
+    }
+    expect(userSceneChanged([fixed], [{ ...fixed, width: 140 }])).toBe(true)
+    expect(
+      userSceneChanged(
+        [{ ...fixed, autoResize: true, width: 80 }],
+        [{ ...fixed, autoResize: true, width: 140 }],
+      ),
+    ).toBe(false)
+  })
 })

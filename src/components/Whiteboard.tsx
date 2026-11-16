@@ -1,5 +1,5 @@
 import { useRouter } from '@tanstack/react-router'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ComponentType } from 'react'
 import { canonicalElements, sceneFollowup, userSceneChanged } from '#/lib/drawing'
 import {
@@ -13,7 +13,6 @@ import { NewPageMenu } from './NewPageMenu'
 import { PageMenu } from './PageMenu'
 import { lockBannerText, lockHolderName } from '#/lib/page-lock-message'
 import { PageModeBar, saveStatusLabel } from './PageModeBar'
-import { listenForEngage } from './editor-engage'
 
 type SaveState = 'saved' | 'saving' | 'error' | 'conflict'
 
@@ -22,7 +21,6 @@ type CanvasProps = {
   appState: Record<string, unknown>
   viewMode: boolean
   onScene: (elements: unknown[], appState: Record<string, unknown>) => void
-  onEngage?: () => void
 }
 
 const SAVE_URL = '/api/drawings'
@@ -51,8 +49,6 @@ export function Whiteboard({ page }: { page: PageView }) {
   const savedCanon = useRef('')
   const baselineElements = useRef<unknown[]>(board?.elements ?? [])
   const baselineReady = useRef(false)
-  const engaged = useRef(false)
-  const unlisten = useRef<(() => void) | null>(null)
   const dirtyRef = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const followSave = useRef<() => void>(() => {})
@@ -187,17 +183,6 @@ export function Whiteboard({ page }: { page: PageView }) {
     })()
   }
 
-  const bindCanvas = useCallback((node: HTMLDivElement | null) => {
-    unlisten.current?.()
-    unlisten.current = null
-    if (!node) return
-    unlisten.current = listenForEngage(node, () => {
-      engaged.current = true
-    })
-  }, [])
-
-  useEffect(() => () => unlisten.current?.(), [])
-
   useEffect(() => {
     return () => {
       if (!dirtyRef.current || frozenRef.current || saveStateRef.current === 'conflict') return
@@ -213,7 +198,6 @@ export function Whiteboard({ page }: { page: PageView }) {
     baselineReady.current = false
     savedCanon.current = ''
     baselineElements.current = board?.elements ?? []
-    engaged.current = false
     elementsRef.current = board?.elements ?? []
     appStateRef.current = board?.appState ?? {}
     versionRef.current = board?.version ?? 1
@@ -333,16 +317,13 @@ export function Whiteboard({ page }: { page: PageView }) {
           {editedByLine(page.lastEditedByName, page.lastEditedAt ?? page.updatedAt)}
         </div>
       </div>
-      <div className="board-canvas" ref={bindCanvas}>
+      <div className="board-canvas">
         {Canvas ? (
           <Canvas
             key={board.id}
             elements={board.elements}
             appState={board.appState}
             viewMode={!editing || Boolean(held) || !page.canEdit}
-            onEngage={() => {
-              engaged.current = true
-            }}
             onScene={(elements, appState) => {
               if (frozenRef.current) return
               elementsRef.current = elements
@@ -357,7 +338,6 @@ export function Whiteboard({ page }: { page: PageView }) {
               }
               if (!editingRef.current) return
               if (canonicalElements(elements) === savedCanon.current) return
-              engaged.current = true
               schedule()
             }}
           />

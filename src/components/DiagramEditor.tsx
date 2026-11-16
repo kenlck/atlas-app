@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ComponentType } from 'react'
 import { exportToSvg } from '@excalidraw/excalidraw'
-import { listenForEngage } from './editor-engage'
 import {
   canonicalElements,
   cleanPreviewSvg,
@@ -22,7 +21,6 @@ type CanvasProps = {
   appState: Record<string, unknown>
   viewMode: boolean
   onScene: (elements: unknown[], appState: Record<string, unknown>) => void
-  onEngage?: () => void
 }
 
 export type DiagramEditorProps = {
@@ -71,8 +69,6 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
   const savedCanon = useRef('')
   const baselineElements = useRef<unknown[]>([])
   const baselineReady = useRef(false)
-  const engaged = useRef(false)
-  const unlisten = useRef<(() => void) | null>(null)
   const saveStateRef = useRef(saveState)
   saveStateRef.current = saveState
   const previewRef = useRef<string | null>(null)
@@ -220,7 +216,6 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
       savedCanon.current = ''
       baselineElements.current = []
       baselineReady.current = false
-      engaged.current = false
       previewRef.current = typeof data.previewSvg === 'string' ? data.previewSvg : null
       setInitial({ elements, appState })
       setReady(true)
@@ -240,17 +235,6 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
       cancelled = true
     }
   }, [ready])
-
-  const bindCanvas = useCallback((node: HTMLDivElement | null) => {
-    unlisten.current?.()
-    unlisten.current = null
-    if (!node) return
-    unlisten.current = listenForEngage(node, () => {
-      engaged.current = true
-    })
-  }, [])
-
-  useEffect(() => () => unlisten.current?.(), [])
 
   useEffect(() => {
     return () => {
@@ -325,16 +309,13 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
           </button>
         </div>
       ) : null}
-      <div className="board-canvas" ref={bindCanvas}>
+      <div className="board-canvas">
         {Canvas && initial ? (
           <Canvas
             key={drawingId}
             elements={initial.elements}
             appState={initial.appState}
             viewMode={narrow}
-            onEngage={() => {
-              engaged.current = true
-            }}
             onScene={(elements, appState) => {
               elementsRef.current = elements
               appStateRef.current = plainAppState(appState)
@@ -343,7 +324,7 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
                 adopt(elements)
                 return
               }
-              // Fonts, a filled-in index, and an image status are not edits.
+              // Auto-sized font measurement, a filled-in index, and an image status are not edits.
               // A status that belongs to an edit already in flight stays dirty.
               if (!userSceneChanged(baselineElements.current, elements)) {
                 if (!dirtyRef.current) adopt(elements)
@@ -351,7 +332,6 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
               }
               const next = canonicalElements(elements)
               if (next === savedCanon.current) return
-              engaged.current = true
               queuePreview()
               schedule()
             }}

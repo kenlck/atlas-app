@@ -102,22 +102,38 @@ function elementRecord(value: unknown) {
   return value as Record<string, unknown>
 }
 
-// Font measurement, a filled-in index, and an image file finishing its load
-// are Excalidraw's own work. A person did not edit the scene.
-function comparableElement(value: unknown, dropIndex: boolean) {
+// Font measurement on auto-sized text, a filled-in index, and an image file
+// finishing its load are Excalidraw's own work. A person did not edit the scene.
+// Fixed-width text keeps its box, so a side-handle drag still counts.
+function comparableElement(
+  value: unknown,
+  dropIndex: boolean,
+  dropTextMetrics: boolean,
+) {
   const record = elementRecord(value)
   if (!record) return value
   const copy: Record<string, unknown> = { ...record }
   if (dropIndex) delete copy.index
   if (copy.type === 'text') {
-    delete copy.width
-    delete copy.height
-    delete copy.baseline
     delete copy.originalText
-    delete copy.lineHeight
+    if (dropTextMetrics) {
+      delete copy.width
+      delete copy.height
+      delete copy.baseline
+      delete copy.lineHeight
+    }
   }
   if (copy.type === 'image') delete copy.status
   return stableValue(copy)
+}
+
+function fontMeasuredText(
+  before: Record<string, unknown> | null,
+  after: Record<string, unknown> | null,
+) {
+  if (!before || !after) return false
+  if (before.type !== 'text' || after.type !== 'text') return false
+  return before.autoResize !== false && after.autoResize !== false
 }
 
 export function userSceneChanged(previous: unknown[], next: unknown[]) {
@@ -131,10 +147,10 @@ export function userSceneChanged(previous: unknown[], next: unknown[]) {
       (before.index === undefined || before.index === null) &&
       after.index !== undefined &&
       after.index !== null
-    if (
-      JSON.stringify(comparableElement(previous[i], indexFilled)) !==
-      JSON.stringify(comparableElement(next[i], indexFilled))
-    ) {
+    const dropTextMetrics = fontMeasuredText(before, after)
+    const beforeComparable = comparableElement(previous[i], indexFilled, dropTextMetrics)
+    const afterComparable = comparableElement(next[i], indexFilled, dropTextMetrics)
+    if (JSON.stringify(beforeComparable) !== JSON.stringify(afterComparable)) {
       return true
     }
   }
