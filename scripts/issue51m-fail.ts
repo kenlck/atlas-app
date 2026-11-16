@@ -1813,9 +1813,11 @@ async function fc10(app: App, root: string) {
     let edge = origin.left + textX + textWidth
     const midY = origin.top + textY + textHeight / 2
     for (let drag = 0; drag < 2; drag += 1) {
-      await view.mouse.move(edge, midY)
+      const handleX = edge + 3
+      await view.mouse.move(handleX, midY)
+      await view.waitForTimeout(100)
       await view.mouse.down()
-      await view.mouse.move(edge + 150, midY, { steps: 12 })
+      await view.mouse.move(handleX + 150, midY, { steps: 12 })
       await view.mouse.up()
       await view.waitForTimeout(150)
       edge += 150
@@ -1970,34 +1972,36 @@ async function fc11(app: App, root: string) {
     }
   }
 
-  async function unchanged(pageId: string, mark: number) {
+  async function unchanged(pageId: string, mark: number, before: Stamp) {
     await view.waitForTimeout(400)
     const after = await readStamp(pageId)
     return (
       saves === mark &&
-      after.last_edited_by === ada.user.id &&
-      after.last_edited_at?.getTime() === frozen.getTime()
+      after.last_edited_by === before.last_edited_by &&
+      (after.last_edited_at?.getTime() ?? null) === (before.last_edited_at?.getTime() ?? null)
     )
   }
 
   async function fonts(kind: 'diagram' | 'board', pageId: string) {
     const mark = saves
+    const before = await readStamp(pageId)
     await openSurface(kind, pageId)
     await view.evaluate(() => document.fonts.ready)
     await view.waitForTimeout(1200)
     await finish(kind)
     await view.waitForTimeout(900)
-    return unchanged(pageId, mark)
+    return unchanged(pageId, mark, before)
   }
 
   async function pointer(kind: 'diagram' | 'board', pageId: string) {
     const mark = saves
+    const before = await readStamp(pageId)
     await openSurface(kind, pageId)
     await view.locator('.excalidraw').click({ position: { x: 220, y: 360 } })
     await view.waitForTimeout(800)
     await finish(kind)
     await view.waitForTimeout(900)
-    return unchanged(pageId, mark)
+    return unchanged(pageId, mark, before)
   }
 
   try {
