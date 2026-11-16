@@ -28,7 +28,7 @@ const PINS: Record<string, string> = {
   fc8: 'df8b3b1bae80c41cfceb8867a11915b1a526fd64',
   fc9: '0674ccf99d4b3fbdce4f41a9eb46bd6d2cef9596',
   fc10: '24b97e489c613b3ce520d2d7bf5a576222459ff9',
-  fc11: '0000000000000000000000000000000000000000',
+  fc11: '6eb1d8347f48f6cb723f4a7a2c237c4a09c705d3',
 }
 const repoRoot = join(import.meta.dirname, '..')
 const arg = process.argv[2] ?? ''
@@ -1677,7 +1677,7 @@ const fixedText = [
     x: 200,
     y: 220,
     width: 120,
-    height: 25,
+    height: 56,
     text: 'Hello',
     originalText: 'Hello',
     fontSize: 20,
@@ -1805,7 +1805,7 @@ async function fc10(app: App, root: string) {
     const textX = 200
     const textY = 220
     const textWidth = 120
-    const textHeight = 25
+    const textHeight = 56
     const centerX = origin.left + textX + textWidth / 2
     const centerY = origin.top + textY + textHeight / 2
     await view.mouse.click(centerX, centerY)
@@ -1848,7 +1848,11 @@ async function fc10(app: App, root: string) {
     const stamped =
       after.last_edited_by === bea.user.id &&
       (after.last_edited_at?.getTime() ?? 0) > frozen.getTime()
-    return posted && stamped && width >= 200 && (text?.originalText ?? text?.text) === 'Hello'
+    const words = (text?.originalText ?? text?.text) === 'Hello'
+    line(`${kind}_width`, Math.round(width))
+    line(`${kind}_posted`, posted)
+    line(`${kind}_stamped`, stamped)
+    return posted && stamped && width >= 200 && words
   }
 
   try {
@@ -1989,7 +1993,7 @@ async function fc11(app: App, root: string) {
   async function pointer(kind: 'diagram' | 'board', pageId: string) {
     const mark = saves
     await openSurface(kind, pageId)
-    await view.locator('.excalidraw').click({ position: { x: 640, y: 420 } })
+    await view.locator('.excalidraw').click({ position: { x: 220, y: 360 } })
     await view.waitForTimeout(800)
     await finish(kind)
     await view.waitForTimeout(900)
