@@ -635,6 +635,34 @@ body {
   outline: none;
 }
 
+.title-line {
+  position: relative;
+}
+
+.title-count {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: calc(var(--title-size) * var(--title-line));
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  font-family: 'Geist Variable', Geist, sans-serif;
+}
+
+.title-count.over {
+  color: var(--error);
+}
+
+.title-line:has(.title-count) .title-input {
+  padding-right: 64px;
+}
+
 .meta {
   font-family: 'Geist Variable', Geist, sans-serif;
   font-size: 12.5px;

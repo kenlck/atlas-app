@@ -12,6 +12,7 @@ import { getRouteApi, useRouter } from '@tanstack/react-router'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { tiptapToText } from '#/lib/body-text'
+import { nextTitle, TITLE_MAX } from '#/lib/title-cap'
 import type { Json } from '#/lib/body-text'
 import type { PageView } from '#/lib/pages'
 import {
@@ -37,7 +38,11 @@ import { createMentionExtension } from './MentionExtension'
 import { lockBannerText, lockHolderName } from '#/lib/page-lock-message'
 import { PageModeBar, saveStatusLabel } from './PageModeBar'
 
-type SaveState = 'saved' | 'saving' | 'error'
+type SaveState = 'saved' | 'saving' | 'error' | 'too-big'
+
+const TITLE_COUNT_AT = 180
+const TOO_BIG_COPY =
+  'This page is too big to save (over 1 MB). Move some content to a sub-page.'
 
 function isMissing(error: unknown): boolean {
   if (!error) return false
@@ -54,6 +59,30 @@ function isMissing(error: unknown): boolean {
   if (typeof record.message === 'string' && record.message.includes('Not found')) return true
   if (record.cause && record.cause !== error && isMissing(record.cause)) return true
   if (record.data && record.data !== error && isMissing(record.data)) return true
+  return false
+}
+
+function isTooBig(error: unknown, depth = 0): boolean {
+  if (depth > 5 || error == null) return false
+  if (typeof error === 'string') return error.includes('Payload too large')
+  if (typeof error !== 'object') return false
+  const record = error as Record<string, unknown>
+  if (record.status === 413 || record.statusCode === 413) return true
+  if (
+    typeof record.message === 'string' &&
+    record.message.includes('Payload too large')
+  ) {
+    return true
+  }
+  for (const key of ['cause', 'data', 'body', 'error']) {
+    if (
+      key in record &&
+      record[key] !== error &&
+      isTooBig(record[key], depth + 1)
+    ) {
+      return true
+    }
+  }
   return false
 }
 
@@ -225,7 +254,9 @@ export function PageEditor({ page }: { page: PageView }) {
     }
     try {
       await withTimeout(queueRef.current.flush())
-      setSaveState((state) => (state === 'error' ? state : 'saved'))
+      setSaveState((state) =>
+        state === 'error' || state === 'too-big' ? state : 'saved',
+      )
     } catch (error) {
       const holder = lockHolderName(error)
       if (holder) {
@@ -243,7 +274,8 @@ export function PageEditor({ page }: { page: PageView }) {
         return
       }
       dirtyRef.current = true
-      setSaveState('error')
+      writeDraft(pageIdRef.current, titleRef.current, bodyRef.current)
+      setSaveState(isTooBig(error) ? 'too-big' : 'error')
       throw error
     }
   }
@@ -502,15 +534,22 @@ export function PageEditor({ page }: { page: PageView }) {
           {lockBannerText(held)}
         </div>
       )}
-      {deleted || held || conflict || saveState !== 'error' ? null : (
+      {deleted ||
+      held ||
+      conflict ||
+      (saveState !== 'error' && saveState !== 'too-big') ? null : (
         <div className="retry">
-          <span className="retry-copy">Couldn't save.</span>
-          <button
-            type="button"
-            onClick={() => void flushSave().catch(() => undefined)}
-          >
-            Retry
-          </button>
+          <span className="retry-copy">
+            {saveState === 'too-big' ? TOO_BIG_COPY : "Couldn't save."}
+          </span>
+          {saveState === 'too-big' ? null : (
+            <button
+              type="button"
+              onClick={() => void flushSave().catch(() => undefined)}
+            >
+              Retry
+            </button>
+          )}
         </div>
       )}
       {deleted || held || !conflict ? null : (
@@ -530,29 +569,68 @@ export function PageEditor({ page }: { page: PageView }) {
       {deleted ? null : (
         <div className="doc">
           <div className="col">
-            <input
-              ref={titleField}
-              id="page-title"
-              className="title-input"
-              aria-label="Title"
-              placeholder="Untitled"
-              value={title}
-              readOnly={!editing || Boolean(held) || conflict}
-              onChange={(event) => {
-                if (frozenRef.current || !editingRef.current) return
-                setTitle(event.target.value)
-                titleRef.current = event.target.value
-                schedule()
-              }}
-              onBlur={(event) => {
-                if (frozenRef.current || !editingRef.current) return
-                const next = event.currentTarget.value
-                titleRef.current = next
-                setTitle(next)
-                if (next !== savedTitle.current) dirtyRef.current = true
-                void flushSaveRef.current().catch(() => undefined)
-              }}
-            />
+            <div className="title-line">
+              <input
+                ref={titleField}
+                id="page-title"
+                className="title-input"
+                aria-label="Title"
+                placeholder="Untitled"
+                value={title}
+                readOnly={!editing || Boolean(held) || conflict}
+                onPaste={(event) => {
+                  if (frozenRef.current || !editingRef.current) return
+                  const pasted = event.clipboardData.getData('text')
+                  if (!pasted) return
+                  event.preventDefault()
+                  const field = event.currentTarget
+                  const start = field.selectionStart ?? titleRef.current.length
+                  const end = field.selectionEnd ?? start
+                  const merged =
+                    titleRef.current.slice(0, start) +
+                    pasted +
+                    titleRef.current.slice(end)
+                  const next = nextTitle(titleRef.current, merged, 'input')
+                  if (next === titleRef.current) {
+                    field.value = next
+                    return
+                  }
+                  titleRef.current = next
+                  setTitle(next)
+                  schedule()
+                }}
+                onChange={(event) => {
+                  if (frozenRef.current || !editingRef.current) return
+                  const next = nextTitle(titleRef.current, event.target.value, 'input')
+                  if (event.target.value !== next) event.target.value = next
+                  if (next === titleRef.current) return
+                  titleRef.current = next
+                  setTitle(next)
+                  schedule()
+                }}
+                onBlur={(event) => {
+                  if (frozenRef.current || !editingRef.current) return
+                  const next = nextTitle(
+                    titleRef.current,
+                    event.currentTarget.value,
+                    'blur',
+                  )
+                  titleRef.current = next
+                  setTitle(next)
+                  if (next !== savedTitle.current) dirtyRef.current = true
+                  void flushSaveRef.current().catch(() => undefined)
+                }}
+              />
+              {title.length < TITLE_COUNT_AT ? null : (
+                <span
+                  className={
+                    title.length > TITLE_MAX ? 'title-count over' : 'title-count'
+                  }
+                >
+                  {title.length}/{TITLE_MAX}
+                </span>
+              )}
+            </div>
             <div className="meta">
               {editedByLine(page.lastEditedByName, page.lastEditedAt ?? page.updatedAt)}
             </div>
