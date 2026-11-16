@@ -10,7 +10,6 @@ import {
   drawingLabelText,
   plainAppState,
   plainElements,
-  restoreSceneElements,
   sceneChanged,
   sceneFromStored,
   sceneRejection,
@@ -27,18 +26,6 @@ type Caller = {
   userId: string
   scope: 'session' | TokenScope
   tokenId: string | null
-}
-
-function hasDuplicateElementId(elements: unknown[]) {
-  const seen = new Set<string>()
-  for (const element of elements) {
-    if (!element || typeof element !== 'object') continue
-    const id = (element as { id?: unknown }).id
-    if (typeof id !== 'string' || !id) continue
-    if (seen.has(id)) return true
-    seen.add(id)
-  }
-  return false
 }
 
 function json(body: unknown, status = 200) {
@@ -217,15 +204,8 @@ export async function handleDrawingRequest(request: Request) {
     ) {
       return json({ error: 'Bad request' }, 400)
     }
-    const restoredElements = restoreSceneElements(elements)
-    // A duplicate id is rewritten to a new one. That id has to be stored once;
-    // comparing two restores would mint a different id each time. Every other
-    // scene is stored as sent, and the compare fills both sides.
-    const savedElements = (
-      hasDuplicateElementId(elements) ? restoredElements : elements
-    ) as DrawingScene['elements']
     const scene: DrawingScene = {
-      elements: savedElements,
+      elements,
       appState: plainAppState(record.appState),
     }
     const preview =
@@ -277,7 +257,7 @@ export async function handleDrawingRequest(request: Request) {
           .update(page)
           .set({
             ...(title === null ? {} : { title }),
-            bodyText: drawingLabelText(savedElements),
+            bodyText: drawingLabelText(elements),
             updatedBy: caller.userId,
             updatedAt: new Date(),
             ...(edited

@@ -60,6 +60,8 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
   const appStateRef = useRef<Record<string, unknown>>({})
   const versionRef = useRef(1)
   const savedCanon = useRef('')
+  const baselineReady = useRef(false)
+  const engaged = useRef(false)
   const previewRef = useRef<string | null>(null)
   const dirtyRef = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -182,7 +184,9 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
       elementsRef.current = elements
       appStateRef.current = appState
       versionRef.current = typeof data.version === 'number' ? data.version : 1
-      savedCanon.current = canonicalElements(elements)
+      savedCanon.current = ''
+      baselineReady.current = false
+      engaged.current = false
       previewRef.current = typeof data.previewSvg === 'string' ? data.previewSvg : null
       setInitial({ elements, appState })
       setReady(true)
@@ -232,8 +236,9 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
     if (svg && token === previewToken.current) {
       previewRef.current = svg
       onPreview(svg)
-      dirtyRef.current = true
     }
+    const next = canonicalElements(elementsRef.current)
+    if (baselineReady.current && next !== savedCanon.current) dirtyRef.current = true
     const ok = await flushSaveRef.current()
     if (ok) onClose()
   }
@@ -264,14 +269,29 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
           </button>
         </div>
       ) : null}
-      <div className="board-canvas">
+      <div
+        className="board-canvas"
+        onPointerDown={() => {
+          engaged.current = true
+        }}
+      >
         {Canvas && initial ? (
           <Canvas
+            key={drawingId}
             elements={initial.elements}
             appState={initial.appState}
             viewMode={narrow}
             onScene={(elements, appState) => {
               const next = canonicalElements(elements)
+              // Font measurement and the initial restore both emit a scene
+              // before the user draws. Those stay part of the baseline.
+              if (!baselineReady.current || !engaged.current) {
+                elementsRef.current = elements
+                appStateRef.current = plainAppState(appState)
+                savedCanon.current = next
+                baselineReady.current = true
+                return
+              }
               if (next === canonicalElements(elementsRef.current)) return
               elementsRef.current = elements
               appStateRef.current = plainAppState(appState)

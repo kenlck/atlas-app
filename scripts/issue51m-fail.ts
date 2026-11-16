@@ -962,199 +962,239 @@ async function fc6(app: App) {
   )
 }
 
-const editorShapes: Record<string, unknown[]> = {
-  a: [
-    {
-      id: 'a',
-      type: 'arrow',
-      x: 10,
-      y: 10,
-      points: [
-        [0, 0],
-        [100, 40],
-      ],
-    },
-  ],
-  b: [
-    {
-      id: 'a',
-      type: 'arrow',
-      x: 10,
-      y: 10,
-      points: [
-        [20, 20],
-        [120, 60],
-      ],
-    },
-  ],
-  c: [
-    {
-      id: 'a',
-      type: 'arrow',
-      x: 0,
-      y: 0,
-      points: [
-        [0, 0],
-        [40, 10],
-      ],
-      startBinding: { elementId: 'box', gap: 4 },
-    },
-    { id: 'box', type: 'rectangle', x: 0, y: 0, width: 20, height: 20 },
-  ],
-  d: [
-    { id: 't', type: 'text', x: 0, y: 0, text: 'hi', containerId: 'missing' },
-  ],
-  e: [
-    {
-      id: 'r',
-      type: 'rectangle',
-      x: 1,
-      y: 2,
-      width: 8,
-      height: 4,
-      link: '  https://example.com/a b ',
-    },
-  ],
-  f: [
-    { id: 'same', type: 'rectangle', x: 0, y: 0, width: 10, height: 10 },
-    { id: 'same', type: 'rectangle', x: 20, y: 0, width: 10, height: 10 },
-  ],
-  g: [{ id: 's', type: 'sticky', x: 0, y: 0, width: 10, height: 10 }],
-  z: [{ id: 'z', type: 'rectangle', x: 0, y: 0, width: 0, height: 0 }],
-}
+const gapShapes = [
+  { id: 'arrow-a', type: 'arrow', x: 40, y: 40, points: [[0, 0], [100, 40]] },
+  { id: 'arrow-b', type: 'arrow', x: 40, y: 140, points: [[20, 20], [120, 60]] },
+  { id: 'box', type: 'rectangle', x: 280, y: 40, width: 90, height: 60 },
+  {
+    id: 'arrow-c',
+    type: 'arrow',
+    x: 280,
+    y: 140,
+    points: [[0, 0], [60, 20]],
+    startBinding: { elementId: 'box', gap: 4 },
+  },
+  { id: 'orphan', type: 'text', x: 40, y: 260, text: 'hi', containerId: 'missing' },
+  {
+    id: 'linked',
+    type: 'rectangle',
+    x: 280,
+    y: 260,
+    width: 90,
+    height: 50,
+    link: '  https://example.com/a b ',
+  },
+  { id: 'same', type: 'rectangle', x: 40, y: 360, width: 50, height: 50 },
+  { id: 'same', type: 'rectangle', x: 110, y: 360, width: 50, height: 50 },
+  { id: 'sticky', type: 'sticky', x: 280, y: 360, width: 50, height: 50 },
+  { id: 'zero', type: 'rectangle', x: 360, y: 360, width: 0, height: 0 },
+  { id: 'plain', type: 'rectangle', x: 420, y: 40, width: 140, height: 90 },
+]
 
-async function editorScene(dir: string, elements: unknown[]) {
-  const browser = await chromium.launch()
-  const page = await browser.newPage({ viewport: { width: 800, height: 600 } })
-  try {
-    writeFileSync(
-      join(dir, 'editor.html'),
-      `<!doctype html><div id="root" style="height:100vh"></div><script id="initial" type="application/json">${JSON.stringify({ elements, appState: {} })}</script><script src="./editor.js"></script>`,
-    )
-    await page.goto(pathToFileURL(join(dir, 'editor.html')).href)
-    await page.waitForFunction('Array.isArray(window.__changed)', null, {
-      timeout: 15000,
-    })
-    const opened = await page.evaluate('window.__changed')
-    return Array.isArray(opened) ? opened : []
-  } finally {
-    await page.close().catch(() => undefined)
-    await browser.close().catch(() => undefined)
-  }
-}
-
-async function fc8(app: App) {
+async function fc8(app: App, root: string) {
   const ada = await app.createUser('Ada Open')
   const bea = await app.createUser('Bea Open')
   remember(ada.password)
   remember(bea.password)
   const team = await teamWith(app, ada, bea)
-  const beaToken = await app.createApiToken(bea.user.id, {
+  const writer = await app.createApiToken(bea.user.id, {
     name: 'open',
     scope: 'read_write',
   })
   const frozen = new Date('2024-01-01T00:00:00Z')
-  const newer = new Date('2025-06-01T00:00:00Z')
-  const editorDir = mkdtempSync(join(tmpdir(), 'atlas-fc8-'))
-  temps.push(editorDir)
-  execFileSync(
-    'pnpm',
-    [
-      'exec',
-      'esbuild',
-      join(repoRoot, 'scripts/excalidraw-onchange-entry.mjs'),
-      '--bundle',
-      '--format=iife',
-      '--platform=browser',
-      '--main-fields=browser,module,main',
-      `--outfile=${join(editorDir, 'editor.js')}`,
-      '--log-level=error',
-    ],
-    { cwd: repoRoot },
-  )
 
-  const park = async (pageId: string, otherId: string) => {
-    await withSql(async (sql) => {
-      await sql`
+  async function plant(kind: 'diagram' | 'board') {
+    const page = await app.createPage(ada.user.id, {
+      spaceId: team.spaceId,
+      title: `Open ${kind} ${crypto.randomUUID().slice(0, 8)}`,
+      ...(kind === 'board' ? { kind: 'whiteboard' as const } : {}),
+    })
+    let drawingId = ''
+    let version = 1
+    if (kind === 'board') {
+      const view = await app.getPageView(bea.user.id, page.id)
+      drawingId = view.drawing?.id ?? ''
+      version = view.drawing?.version ?? 1
+    } else {
+      const diagram = await app.createDiagram(ada.user.id, page.id)
+      drawingId = diagram.id
+      version = diagram.version
+      await withSql(
+        (sql) => sql`
+          update page
+          set body = ${sql.json({
+            type: 'doc',
+            content: [{ type: 'diagram', attrs: { drawingId } }],
+          })}
+          where id = ${page.id}
+        `,
+      )
+    }
+    const written = drawingId
+      ? await postDrawing(app, writer.token, {
+          drawingId,
+          version,
+          elements: gapShapes,
+        })
+      : 0
+    await withSql(
+      (sql) => sql`
         update page
         set last_edited_at = ${frozen}, last_edited_by = ${ada.user.id}
-        where id = ${pageId}
-      `
-      await sql`
-        update page
-        set last_edited_at = ${newer}, last_edited_by = ${ada.user.id}
-        where id = ${otherId}
-      `
-    })
+        where id = ${page.id}
+      `,
+    )
+    return { page, written }
   }
 
-  let diagramVersion = true
-  let passed = true
-  for (const [name, raw] of Object.entries(editorShapes)) {
-    for (const kind of ['diagram', 'board'] as const) {
-      const mark = `open-${name}-${kind}-${crypto.randomUUID().slice(0, 8)}`
-      const target = await app.createPage(ada.user.id, {
-        spaceId: team.spaceId,
-        title: `${mark} target`,
-        ...(kind === 'board' ? { kind: 'whiteboard' as const } : {}),
-      })
-      const other = await app.createPage(ada.user.id, {
-        spaceId: team.spaceId,
-        title: `${mark} other`,
-        ...(kind === 'board' ? { kind: 'whiteboard' as const } : {}),
-      })
-      const drawing =
-        kind === 'board'
-          ? (await app.getPageView(bea.user.id, target.id)).drawing
-          : await app.createDiagram(ada.user.id, target.id)
-      const drawingId = drawing?.id ?? ''
-      const written = await postDrawing(app, beaToken.token, {
-        drawingId,
-        version: drawing?.version ?? 0,
-        elements: raw,
-      })
-      await park(target.id, other.id)
-      const before = await readStamp(target.id)
-      const stored = await withSql(async (sql) => {
-        const rows = await sql<Array<{ scene: { elements?: unknown[] } }>>`
-          select scene from drawing where id = ${drawingId}
-        `
-        const scene = rows[0]?.scene
-        return Array.isArray(scene?.elements) ? scene.elements : []
-      })
-      const opened = await editorScene(editorDir, stored)
-      const version = await withSql(async (sql) => {
-        const rows = await sql<Array<{ version: number }>>`
-          select version from drawing where id = ${drawingId}
-        `
-        return rows[0]?.version ?? 0
-      })
-      const status = await postDrawing(app, beaToken.token, {
-        drawingId,
-        version,
-        elements: opened,
-      })
-      const after = await readStamp(target.id)
-      const hits = await app.searchVisiblePages(ada.user.id, mark)
-      const still =
-        written === 200 &&
-        status === 200 &&
-        after.last_edited_by === ada.user.id &&
-        after.last_edited_at?.getTime() === before.last_edited_at?.getTime() &&
-        hits[0]?.id === other.id
-      if (kind === 'diagram') {
-        diagramVersion =
-          diagramVersion &&
-          written === 200 &&
-          status === 200 &&
-          after.updated_at.getTime() === before.updated_at.getTime()
-      }
-      line(`${name}_${kind}`, still)
-      passed = passed && still
-    }
+  const diagram = await plant('diagram')
+  const board = await plant('board')
+  line('diagram_written', diagram.written)
+  line('board_written', board.written)
+  if (diagram.written !== 200 || board.written !== 200) {
+    line('diagram_nosave', false)
+    line('board_nosave', false)
+    line('diagram_edit', false)
+    line('board_edit', false)
+    return false
   }
-  line('diagram_version', diagramVersion)
-  return passed && diagramVersion
+
+  const base = await bootDev(root)
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
+  const view = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+  view.setDefaultTimeout(25000)
+  let saves = 0
+  view.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().includes('/api/drawings'))
+      saves += 1
+  })
+
+  async function quiet(kind: 'diagram' | 'board', pageId: string) {
+    const before = await readStamp(pageId)
+    const mark = saves
+    await view.goto(`${base}/s/${team.spaceId}/p/${pageId}`, {
+      waitUntil: 'domcontentloaded',
+    })
+    if (kind === 'diagram') {
+      await view
+        .locator('.diagram-block')
+        .getByText('Empty drawing', { exact: true })
+        .waitFor()
+      await view.locator('.diagram-edit').click()
+      await view.locator('.diagram-screen').waitFor()
+      await view.locator('.excalidraw').waitFor()
+    } else {
+      await view.locator('.excalidraw').waitFor()
+      await view
+        .locator('.mode-switch')
+        .getByRole('radio', { name: 'Edit' })
+        .click()
+    }
+    const canvas = view.locator('.excalidraw canvas').first()
+    await canvas.waitFor()
+    const box = await canvas.boundingBox()
+    if (box) {
+      await view.mouse.move(box.x + 24, box.y + 24)
+      await view.mouse.move(box.x + box.width * 0.45, box.y + box.height * 0.45, {
+        steps: 6,
+      })
+    }
+    await view.waitForTimeout(1600)
+    if (kind === 'diagram') {
+      await view.locator('.diagram-bar').getByRole('button', { name: 'Done' }).click()
+    } else {
+      await view.locator('.mode-done').click()
+    }
+    await view.waitForTimeout(1000)
+    const after = await readStamp(pageId)
+    return (
+      saves === mark &&
+      after.last_edited_by === ada.user.id &&
+      after.last_edited_at?.getTime() === before.last_edited_at?.getTime()
+    )
+  }
+
+  async function edit(kind: 'diagram' | 'board', pageId: string) {
+    const before = await readStamp(pageId)
+    const mark = saves
+    const saved = view
+      .waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          response.url().includes('/api/drawings'),
+        { timeout: 8000 },
+      )
+      .catch(() => null)
+    if (kind === 'diagram') {
+      if ((await view.locator('.diagram-screen').count()) === 0) {
+        await view.locator('.diagram-edit').click()
+        await view.locator('.diagram-screen').waitFor()
+      }
+      await view.locator('.excalidraw').waitFor()
+    } else {
+      await view
+        .locator('.mode-switch')
+        .getByRole('radio', { name: 'Edit' })
+        .click()
+      await view.locator('.excalidraw').waitFor()
+    }
+    await view.locator('.excalidraw .App-toolbar').waitFor()
+    await view.waitForTimeout(1200)
+    const canvas = view.locator('.excalidraw canvas').first()
+    const box = await canvas.boundingBox()
+    if (!box) return false
+    const x = box.x + box.width * 0.45
+    const y = box.y + box.height * 0.45
+    await view.mouse.click(x, y)
+    await view.keyboard.press('r')
+    await view.mouse.move(x, y)
+    await view.mouse.down()
+    await view.mouse.move(x + 160, y + 100, { steps: 10 })
+    await view.mouse.up()
+    if (kind === 'diagram') {
+      await view.locator('.diagram-bar').getByRole('button', { name: 'Done' }).click()
+    } else {
+      await view.locator('.mode-done').click()
+    }
+    const response = await saved
+    if (response) await response.finished().catch(() => undefined)
+    const after = await readStamp(pageId)
+    return (
+      saves > mark &&
+      after.last_edited_by === bea.user.id &&
+      (after.last_edited_at?.getTime() ?? 0) > frozen.getTime() &&
+      (after.last_edited_at?.getTime() ?? 0) !== before.last_edited_at?.getTime()
+    )
+  }
+
+  try {
+    await signIn(view, base, bea)
+    const note = (label: string, error: unknown) => {
+      line(label, error instanceof Error ? error.name : 'error')
+      return false
+    }
+    const diagramQuiet = await quiet('diagram', diagram.page.id).catch((error: unknown) =>
+      note('diagram_quiet_error', error),
+    )
+    const diagramEdit = await edit('diagram', diagram.page.id).catch((error: unknown) =>
+      note('diagram_edit_error', error),
+    )
+    const boardQuiet = await quiet('board', board.page.id).catch((error: unknown) =>
+      note('board_quiet_error', error),
+    )
+    const boardEdit = await edit('board', board.page.id).catch((error: unknown) =>
+      note('board_edit_error', error),
+    )
+    line('diagram_nosave', diagramQuiet)
+    line('board_nosave', boardQuiet)
+    line('diagram_edit', diagramEdit)
+    line('board_edit', boardEdit)
+    return diagramQuiet && boardQuiet && diagramEdit && boardEdit
+  } finally {
+    await browser.close()
+  }
 }
 
 async function fc7(app: App) {

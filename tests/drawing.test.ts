@@ -7,7 +7,6 @@ import {
   WHITEBOARD_PLACEHOLDER,
   canonicalElements,
   drawingLabelText,
-  restoreSceneElements,
   sceneChanged,
   sceneRejection,
 } from '../src/lib/drawing'
@@ -357,13 +356,13 @@ describe('drawings', () => {
     )
   })
 
-  it('treats restore defaults as the same scene and a reorder as a change', async () => {
+  it('treats a repeated scene as unchanged and a reorder as a change', () => {
     const sparse = [{ id: 'rect-1', type: 'rectangle', x: 1, y: 2 }]
     const sized = [
       { id: 'rect-1', type: 'rectangle', x: 1, y: 2, width: 8, height: 4 },
     ]
-    expect(sceneChanged(sparse, restoreSceneElements(sparse))).toBe(false)
-    expect(sceneChanged(sized, restoreSceneElements(sized))).toBe(false)
+    expect(sceneChanged(sparse, sparse)).toBe(false)
+    expect(sceneChanged(sparse, sized)).toBe(true)
     const first = {
       id: 'a',
       type: 'rectangle',
@@ -383,230 +382,6 @@ describe('drawings', () => {
       index: 'a1',
     }
     expect(sceneChanged([first, second], [second, first])).toBe(true)
-
-    const ada = await createUser('Restore Ada')
-    const doc = await createPage(ada.user.id, {
-      spaceId: ada.space.id,
-      title: 'Restore note',
-    })
-    const diagram = await createDiagram(ada.user.id, doc.id)
-    const writer = await createApiToken(ada.user.id, {
-      name: 'restore',
-      scope: 'read_write',
-      expiry: '30d',
-    })
-    const saved = await post(writer.token, {
-      drawingId: diagram.id,
-      version: diagram.version,
-      elements: sparse,
-      appState: {},
-      files: {},
-    })
-    expect(saved.status).toBe(200)
-    await getDb()
-      .update(page)
-      .set({
-        lastEditedAt: new Date('2024-01-01T00:00:00Z'),
-        lastEditedBy: ada.user.id,
-      })
-      .where(eq(page.id, doc.id))
-    const opened = await post(writer.token, {
-      drawingId: diagram.id,
-      version: ((await saved.json()) as { version: number }).version,
-      elements: restoreSceneElements(sparse),
-      appState: {},
-      files: {},
-    })
-    expect(opened.status).toBe(200)
-    const kept = await getDb()
-      .select()
-      .from(page)
-      .where(eq(page.id, doc.id))
-      .limit(1)
-    expect(kept[0]?.lastEditedBy).toBe(ada.user.id)
-    expect(kept[0]?.lastEditedAt?.toISOString()).toBe(
-      '2024-01-01T00:00:00.000Z',
-    )
-  })
-
-  it('fills the shape fields Excalidraw restores before Done', () => {
-    const arrow = restoreSceneElements([
-      {
-        id: 'a',
-        type: 'arrow',
-        x: 10,
-        y: 10,
-        points: [
-          [0, 0],
-          [100, 40],
-        ],
-      },
-    ])
-    expect(arrow[0]?.width).toBe(100)
-    expect(arrow[0]?.height).toBe(40)
-    const line = restoreSceneElements([
-      {
-        id: 'l',
-        type: 'line',
-        x: 10,
-        y: 10,
-        points: [
-          [0, 0],
-          [100, 40],
-        ],
-      },
-    ])
-    expect(line[0]?.width).toBe(100)
-    expect(line[0]?.height).toBe(40)
-    const shifted = restoreSceneElements([
-      {
-        id: 'a',
-        type: 'arrow',
-        x: 10,
-        y: 10,
-        points: [
-          [20, 20],
-          [120, 60],
-        ],
-      },
-    ])
-    expect(shifted[0]?.x).toBe(30)
-    expect(shifted[0]?.y).toBe(30)
-    expect(shifted[0]?.points).toEqual([
-      [0, 0],
-      [100, 40],
-    ])
-    const bound = restoreSceneElements([
-      {
-        id: 'a',
-        type: 'arrow',
-        x: 0,
-        y: 0,
-        points: [
-          [0, 0],
-          [40, 10],
-        ],
-        startBinding: { elementId: 'box', gap: 4 },
-      },
-      { id: 'box', type: 'rectangle', x: 0, y: 0, width: 20, height: 20 },
-    ])
-    expect(bound[0]?.startBinding).toEqual({
-      elementId: 'box',
-      gap: 4,
-      focus: 0,
-    })
-    const dangling = restoreSceneElements([
-      {
-        id: 'a',
-        type: 'arrow',
-        x: 0,
-        y: 0,
-        points: [
-          [0, 0],
-          [40, 10],
-        ],
-        startBinding: { elementId: 'missing', gap: 4 },
-      },
-    ])
-    expect(dangling[0]?.startBinding).toBeNull()
-    const text = restoreSceneElements([
-      { id: 't', type: 'text', x: 0, y: 0, text: 'hi', containerId: 'missing' },
-    ])
-    expect(text[0]?.containerId).toBeNull()
-    const linked = restoreSceneElements([
-      {
-        id: 'r',
-        type: 'rectangle',
-        x: 1,
-        y: 2,
-        width: 8,
-        height: 4,
-        link: '  https://example.com/a b ',
-      },
-    ])
-    expect(linked[0]?.link).toBe('https://example.com/a b')
-    const copies = restoreSceneElements([
-      { id: 'same', type: 'rectangle', x: 0, y: 0, width: 10, height: 10 },
-      { id: 'same', type: 'rectangle', x: 20, y: 0, width: 10, height: 10 },
-    ])
-    expect(copies[0]?.id).toBe('same')
-    expect(copies[1]?.id).not.toBe('same')
-    expect(
-      restoreSceneElements([
-        { id: 's', type: 'sticky', x: 0, y: 0, width: 10, height: 10 },
-      ]),
-    ).toEqual([])
-    expect(
-      restoreSceneElements([
-        { id: 'z', type: 'rectangle', x: 0, y: 0, width: 0, height: 0 },
-      ]),
-    ).toEqual([])
-    const sparse = [{ id: 'rect-1', type: 'rectangle', x: 1, y: 2 }]
-    expect(sceneChanged(sparse, [])).toBe(true)
-    expect(
-      sceneChanged(
-        [{ id: 'z', type: 'rectangle', x: 0, y: 0, width: 0, height: 0 }],
-        [],
-      ),
-    ).toBe(false)
-  })
-
-  it('stores a token scene as sent unless two elements share an id', async () => {
-    const ada = await createUser('Store Ada')
-    const doc = await createPage(ada.user.id, {
-      spaceId: ada.space.id,
-      title: 'Stored scene',
-    })
-    const diagram = await createDiagram(ada.user.id, doc.id)
-    const token = await createApiToken(ada.user.id, {
-      name: 'store',
-      scope: 'read_write',
-      expiry: '30d',
-    })
-    const arrow = [
-      {
-        id: 'a',
-        type: 'arrow',
-        x: 10,
-        y: 10,
-        points: [
-          [0, 0],
-          [100, 40],
-        ],
-      },
-    ]
-    const first = await post(token.token, {
-      drawingId: diagram.id,
-      version: diagram.version,
-      elements: arrow,
-      appState: {},
-      files: {},
-    })
-    expect(first.status).toBe(200)
-    const readScene = async () => {
-      const rows = await getDb()
-        .select({ scene: drawing.scene })
-        .from(drawing)
-        .where(eq(drawing.id, diagram.id))
-        .limit(1)
-      return (rows[0]?.scene as { elements?: unknown[] }).elements ?? []
-    }
-    expect(canonicalElements(await readScene())).toBe(canonicalElements(arrow))
-    const copies = [
-      { id: 'same', type: 'rectangle', x: 0, y: 0, width: 10, height: 10 },
-      { id: 'same', type: 'rectangle', x: 20, y: 0, width: 10, height: 10 },
-    ]
-    const second = await post(token.token, {
-      drawingId: diagram.id,
-      version: ((await first.json()) as { version: number }).version,
-      elements: copies,
-      appState: {},
-      files: {},
-    })
-    expect(second.status).toBe(200)
-    const stored = await readScene()
-    expect(stored[0]).toMatchObject({ id: 'same' })
-    expect((stored[1] as { id?: string }).id).not.toBe('same')
-    expect(sceneChanged(stored, restoreSceneElements(stored))).toBe(false)
+    expect(sceneChanged([first, second], [first, second])).toBe(false)
   })
 })

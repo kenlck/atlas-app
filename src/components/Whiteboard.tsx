@@ -46,7 +46,9 @@ export function Whiteboard({ page }: { page: PageView }) {
   const elementsRef = useRef<unknown[]>(board?.elements ?? [])
   const appStateRef = useRef<Record<string, unknown>>(board?.appState ?? {})
   const versionRef = useRef(board?.version ?? 1)
-  const savedCanon = useRef(canonicalElements(board?.elements ?? []))
+  const savedCanon = useRef('')
+  const baselineReady = useRef(false)
+  const engaged = useRef(false)
   const dirtyRef = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pageIdRef = useRef(page.id)
@@ -162,6 +164,15 @@ export function Whiteboard({ page }: { page: PageView }) {
   }
 
   useEffect(() => {
+    baselineReady.current = false
+    savedCanon.current = ''
+    engaged.current = false
+    elementsRef.current = board?.elements ?? []
+    appStateRef.current = board?.appState ?? {}
+    versionRef.current = board?.version ?? 1
+  }, [board?.id])
+
+  useEffect(() => {
     let cancelled = false
     void import('./WhiteboardCanvas').then((mod) => {
       if (!cancelled) setCanvas(() => mod.WhiteboardCanvas)
@@ -275,15 +286,31 @@ export function Whiteboard({ page }: { page: PageView }) {
           {editedByLine(page.lastEditedByName, page.lastEditedAt ?? page.updatedAt)}
         </div>
       </div>
-      <div className="board-canvas">
+      <div
+        className="board-canvas"
+        onPointerDown={() => {
+          engaged.current = true
+        }}
+      >
         {Canvas ? (
           <Canvas
+            key={board.id}
             elements={board.elements}
             appState={board.appState}
             viewMode={!editing || Boolean(held) || !page.canEdit}
             onScene={(elements, appState) => {
-              if (frozenRef.current || !editingRef.current) return
+              if (frozenRef.current) return
               const next = canonicalElements(elements)
+              // The scene Excalidraw emits before a pointer press is its
+              // restored load, including a later font measurement.
+              if (!baselineReady.current || !engaged.current) {
+                elementsRef.current = elements
+                appStateRef.current = appState
+                savedCanon.current = next
+                baselineReady.current = true
+                return
+              }
+              if (!editingRef.current) return
               // Excalidraw repeats the same scene while the pointer moves.
               // A failed save must stay on the Retry banner, so ignore repeats.
               if (next === canonicalElements(elementsRef.current)) return

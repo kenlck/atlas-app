@@ -26,7 +26,6 @@
     "verify:baselines": "playwright test -c playwright.visual.config.ts"
   },
   "dependencies": {
-    "@braintree/sanitize-url": "6.0.2",
     "@excalidraw/excalidraw": "^0.18.1",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
@@ -55,7 +54,6 @@
     "@tiptap/suggestion": "3.32.0",
     "better-auth": "^1.7.12",
     "drizzle-orm": "^0.45.4",
-    "fractional-indexing": "3.2.0",
     "nitro": "3.0.260610-beta",
     "postgres": "^3.4.9",
     "react": "^19.2.0",
