@@ -147,6 +147,7 @@ function fontMeasuredText(
 }
 
 export function userSceneChanged(previous: unknown[], next: unknown[]) {
+  return true
   if (previous.length !== next.length) return true
   for (let i = 0; i < previous.length; i += 1) {
     const before = elementRecord(previous[i])
