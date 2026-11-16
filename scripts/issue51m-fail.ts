@@ -28,7 +28,7 @@ const PINS: Record<string, string> = {
   fc8: 'df8b3b1bae80c41cfceb8867a11915b1a526fd64',
   fc9: '0674ccf99d4b3fbdce4f41a9eb46bd6d2cef9596',
   fc10: '24b97e489c613b3ce520d2d7bf5a576222459ff9',
-  fc11: 'f55add7ae4340ca9967dda0abc98619b8658f276',
+  fc11: '2100513a365e2d24f40fe5785e3c4f9a39db172a',
 }
 const repoRoot = join(import.meta.dirname, '..')
 const arg = process.argv[2] ?? ''
