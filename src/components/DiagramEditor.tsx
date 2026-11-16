@@ -1,7 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ComponentType } from 'react'
 import { exportToSvg } from '@excalidraw/excalidraw'
-import { canonicalElements, cleanPreviewSvg, drawingLabelText, plainAppState } from '#/lib/drawing'
+import { listenForEngage } from './editor-engage'
+import {
+  canonicalElements,
+  cleanPreviewSvg,
+  drawingLabelText,
+  plainAppState,
+  sceneFollowup,
+  userSceneChanged,
+} from '#/lib/drawing'
 import {
   browserDrawingSaveTransport,
   deliverDrawingSave,
@@ -14,6 +22,7 @@ type CanvasProps = {
   appState: Record<string, unknown>
   viewMode: boolean
   onScene: (elements: unknown[], appState: Record<string, unknown>) => void
+  onEngage?: () => void
 }
 
 export type DiagramEditorProps = {
@@ -60,11 +69,16 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
   const appStateRef = useRef<Record<string, unknown>>({})
   const versionRef = useRef(1)
   const savedCanon = useRef('')
+  const baselineElements = useRef<unknown[]>([])
   const baselineReady = useRef(false)
   const engaged = useRef(false)
+  const unlisten = useRef<(() => void) | null>(null)
+  const saveStateRef = useRef(saveState)
+  saveStateRef.current = saveState
   const previewRef = useRef<string | null>(null)
   const dirtyRef = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const followSave = useRef<() => void>(() => {})
   const drawingIdRef = useRef(drawingId)
   const previewToken = useRef(0)
 
@@ -108,7 +122,13 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
     })
   }
 
-  const applyResult = async (response: Response) => {
+  const adopt = (elements: unknown[]) => {
+    baselineElements.current = elements
+    savedCanon.current = canonicalElements(elements)
+    baselineReady.current = true
+  }
+
+  const applyResult = async (response: Response, sentElements: unknown[]) => {
     if (response.status === 409) {
       dirtyRef.current = false
       setSaveState('conflict')
@@ -121,9 +141,20 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
     }
     const body = (await response.json()) as { version?: number }
     if (typeof body.version === 'number') versionRef.current = body.version
-    savedCanon.current = canonicalElements(elementsRef.current)
-    dirtyRef.current = false
-    setSaveState('saved')
+    const follow = sceneFollowup(sentElements, elementsRef.current)
+    if (follow === 'save') {
+      baselineElements.current = sentElements
+      savedCanon.current = canonicalElements(sentElements)
+      followSave.current()
+    } else if (follow === 'adopt') {
+      adopt(elementsRef.current)
+      dirtyRef.current = false
+      setSaveState('saved')
+    } else {
+      adopt(sentElements)
+      dirtyRef.current = false
+      setSaveState('saved')
+    }
     if (previewRef.current) onPreview(previewRef.current)
     return true
   }
@@ -132,6 +163,7 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
     clearTimer()
     if (saveState === 'conflict') return false
     if (!dirtyRef.current) return true
+    const sentElements = elementsRef.current
     const body = JSON.stringify(payload('autosave'))
     dirtyRef.current = false
     setSaveState('saving')
@@ -142,7 +174,7 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
         credentials: 'include',
         body,
       })
-      return await applyResult(response)
+      return await applyResult(response, sentElements)
     } catch {
       dirtyRef.current = true
       setSaveState('error')
@@ -153,7 +185,7 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
   flushSaveRef.current = flushSave
 
   const schedule = () => {
-    if (saveState === 'conflict') return
+    if (saveStateRef.current === 'conflict') return
     dirtyRef.current = true
     setSaveState('saving')
     clearTimer()
@@ -161,6 +193,7 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
       void flushSaveRef.current()
     }, 800)
   }
+  followSave.current = schedule
 
   useEffect(() => {
     const cancel = { current: false }
@@ -185,6 +218,7 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
       appStateRef.current = appState
       versionRef.current = typeof data.version === 'number' ? data.version : 1
       savedCanon.current = ''
+      baselineElements.current = []
       baselineReady.current = false
       engaged.current = false
       previewRef.current = typeof data.previewSvg === 'string' ? data.previewSvg : null
@@ -206,6 +240,28 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
       cancelled = true
     }
   }, [ready])
+
+  const bindCanvas = useCallback((node: HTMLDivElement | null) => {
+    unlisten.current?.()
+    unlisten.current = null
+    if (!node) return
+    unlisten.current = listenForEngage(node, () => {
+      engaged.current = true
+    })
+  }, [])
+
+  useEffect(() => () => unlisten.current?.(), [])
+
+  useEffect(() => {
+    return () => {
+      if (!dirtyRef.current || saveStateRef.current === 'conflict') return
+      clearTimer()
+      const snapshot = payload('flush')
+      dirtyRef.current = false
+      versionRef.current += 1
+      deliverDrawingSave(snapshot, browserDrawingSaveTransport())
+    }
+  }, [])
 
   useEffect(() => {
     const query = window.matchMedia('(max-width: 700px)')
@@ -269,34 +325,34 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
           </button>
         </div>
       ) : null}
-      <div
-        className="board-canvas"
-        onPointerDown={() => {
-          engaged.current = true
-        }}
-      >
+      <div className="board-canvas" ref={bindCanvas}>
         {Canvas && initial ? (
           <Canvas
             key={drawingId}
             elements={initial.elements}
             appState={initial.appState}
             viewMode={narrow}
+            onEngage={() => {
+              engaged.current = true
+            }}
             onScene={(elements, appState) => {
-              const next = canonicalElements(elements)
-              // Font measurement and the initial restore both emit a scene
-              // before the user draws. Those stay part of the baseline.
-              if (!baselineReady.current || !engaged.current) {
-                elementsRef.current = elements
-                appStateRef.current = plainAppState(appState)
-                savedCanon.current = next
-                baselineReady.current = true
-                return
-              }
-              if (next === canonicalElements(elementsRef.current)) return
               elementsRef.current = elements
               appStateRef.current = plainAppState(appState)
-              queuePreview()
+              // The first scene is the restore, even if a click landed first.
+              if (!baselineReady.current) {
+                adopt(elements)
+                return
+              }
+              // Fonts, a filled-in index, and an image status are not edits.
+              // A status that belongs to an edit already in flight stays dirty.
+              if (!userSceneChanged(baselineElements.current, elements)) {
+                if (!dirtyRef.current) adopt(elements)
+                return
+              }
+              const next = canonicalElements(elements)
               if (next === savedCanon.current) return
+              engaged.current = true
+              queuePreview()
               schedule()
             }}
           />

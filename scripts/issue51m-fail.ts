@@ -26,6 +26,7 @@ const PINS: Record<string, string> = {
   fc6: 'ef5a8e0d5ca8515d3331ca3b0ee0f85bcd9c8287',
   fc7: '1f8aa77f66f7aeafb915e6aad6931b175ae6187c',
   fc8: 'df8b3b1bae80c41cfceb8867a11915b1a526fd64',
+  fc9: '0674ccf99d4b3fbdce4f41a9eb46bd6d2cef9596',
 }
 const repoRoot = join(import.meta.dirname, '..')
 const arg = process.argv[2] ?? ''
@@ -1197,6 +1198,341 @@ async function fc8(app: App, root: string) {
   }
 }
 
+type SceneElement = { id?: string; isDeleted?: boolean }
+
+const keptShape = [{ id: 'kept', type: 'rectangle', x: 40, y: 40, width: 120, height: 80 }]
+const helloShape = [
+  { id: 'hello', type: 'text', x: 48, y: 48, text: 'Hello', fontSize: 20, fontFamily: 1 },
+]
+const pasteClipboard = JSON.stringify({
+  type: 'excalidraw/clipboard',
+  elements: [{ id: 'pasted-key', type: 'rectangle', x: 220, y: 64, width: 90, height: 50 }],
+})
+const dropLibrary = JSON.stringify({
+  type: 'excalidrawlib',
+  version: 2,
+  libraryItems: [
+    {
+      id: 'lib-drop',
+      status: 'published',
+      elements: [{ id: 'dropped-key', type: 'rectangle', x: 0, y: 0, width: 70, height: 40 }],
+      created: 1,
+    },
+  ],
+})
+
+async function readElements(drawingId: string) {
+  const rows = await withSql(
+    (sql) => sql<Array<{ scene: { elements?: SceneElement[] } | null }>>`
+      select scene from drawing where id = ${drawingId}
+    `,
+  )
+  const scene = rows[0]?.scene
+  return scene && Array.isArray(scene.elements) ? scene.elements : []
+}
+
+function liveElements(elements: SceneElement[]) {
+  return elements.filter((element) => element.isDeleted !== true)
+}
+
+async function fc9(app: App, root: string) {
+  const ada = await app.createUser('Ada Keys')
+  const bea = await app.createUser('Bea Keys')
+  remember(ada.password)
+  remember(bea.password)
+  const team = await teamWith(app, ada, bea)
+  const writer = await app.createApiToken(bea.user.id, {
+    name: 'keys',
+    scope: 'read_write',
+  })
+  const frozen = new Date('2024-01-01T00:00:00Z')
+
+  async function plant(kind: 'diagram' | 'board', elements: unknown[]) {
+    const page = await app.createPage(ada.user.id, {
+      spaceId: team.spaceId,
+      title: `Keys ${kind} ${crypto.randomUUID().slice(0, 8)}`,
+      ...(kind === 'board' ? { kind: 'whiteboard' as const } : {}),
+    })
+    let drawingId = ''
+    let version = 1
+    if (kind === 'board') {
+      const view = await app.getPageView(bea.user.id, page.id)
+      drawingId = view.drawing?.id ?? ''
+      version = view.drawing?.version ?? 1
+    } else {
+      const diagram = await app.createDiagram(ada.user.id, page.id)
+      drawingId = diagram.id
+      version = diagram.version
+      await withSql(
+        (sql) => sql`
+          update page
+          set body = ${sql.json({
+            type: 'doc',
+            content: [{ type: 'diagram', attrs: { drawingId } }],
+          })}
+          where id = ${page.id}
+        `,
+      )
+    }
+    const written = drawingId
+      ? await postDrawing(app, writer.token, { drawingId, version, elements })
+      : 0
+    await withSql(
+      (sql) => sql`
+        update page
+        set last_edited_at = ${frozen}, last_edited_by = ${ada.user.id}
+        where id = ${page.id}
+      `,
+    )
+    return { page, drawingId, written }
+  }
+
+  const diagramEdit = await plant('diagram', keptShape)
+  const boardEdit = await plant('board', keptShape)
+  const diagramQuiet = await plant('diagram', helloShape)
+  const boardQuiet = await plant('board', helloShape)
+  const diagramDrop = await plant('diagram', keptShape)
+  const boardDrop = await plant('board', keptShape)
+  const written = [
+    diagramEdit,
+    boardEdit,
+    diagramQuiet,
+    boardQuiet,
+    diagramDrop,
+    boardDrop,
+  ].every((item) => item.written === 200)
+  line('diagram_written', diagramEdit.written)
+  line('board_written', boardEdit.written)
+  if (!written) {
+    line('diagram_keys', false)
+    line('board_keys', false)
+    line('diagram_paste', false)
+    line('board_paste', false)
+    line('diagram_quiet', false)
+    line('board_quiet', false)
+    line('diagram_drop', false)
+    line('board_drop', false)
+    return false
+  }
+
+  const base = await bootDev(root)
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
+  const view = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+  view.setDefaultTimeout(25000)
+  let saves = 0
+  view.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().includes('/api/drawings')) saves += 1
+  })
+
+  async function openSurface(kind: 'diagram' | 'board', pageId: string) {
+    await view.goto(`${base}/s/${team.spaceId}/p/${pageId}`, {
+      waitUntil: 'domcontentloaded',
+    })
+    if (kind === 'diagram') {
+      await view
+        .locator('.diagram-block')
+        .getByText('Empty drawing', { exact: true })
+        .waitFor()
+      await view.locator('.diagram-edit').click()
+      await view.locator('.diagram-screen').waitFor()
+    } else {
+      await view.locator('.excalidraw').waitFor()
+      await view.locator('.mode-switch').getByRole('radio', { name: 'Edit' }).click()
+    }
+    await view.locator('.excalidraw canvas').first().waitFor()
+  }
+
+  async function finish(kind: 'diagram' | 'board') {
+    if (kind === 'diagram') {
+      await view.locator('.diagram-bar').getByRole('button', { name: 'Done' }).click()
+    } else {
+      await view.locator('.mode-done').click()
+    }
+  }
+
+  async function stamped(pageId: string) {
+    const after = await readStamp(pageId)
+    return (
+      after.last_edited_by === bea.user.id &&
+      (after.last_edited_at?.getTime() ?? 0) > frozen.getTime()
+    )
+  }
+
+  async function keyboard(kind: 'diagram' | 'board', pageId: string, drawingId: string) {
+    await openSurface(kind, pageId)
+    await view.locator('.excalidraw .App-toolbar').waitFor()
+    await view.waitForTimeout(400)
+    const mark = saves
+    const saved = view
+      .waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          response.url().includes('/api/drawings'),
+        { timeout: 8000 },
+      )
+      .catch(() => null)
+    const frame = view.locator('.excalidraw').first()
+    await frame.focus()
+    await view.keyboard.press('Control+a')
+    await view.keyboard.press('Delete')
+    await view.keyboard.press('Backspace')
+    await frame.focus()
+    await view.evaluate((text) => {
+      const target = document.querySelector('.excalidraw')
+      if (!(target instanceof HTMLElement)) return
+      target.focus()
+      const canvas = Array.from(target.querySelectorAll('canvas')).find(
+        (node) => node.getBoundingClientRect().width > 20,
+      )
+      if (!(canvas instanceof HTMLCanvasElement)) return
+      const rect = canvas.getBoundingClientRect()
+      const clientX = rect.left + rect.width / 2
+      const clientY = rect.top + rect.height / 2
+      document.dispatchEvent(
+        new PointerEvent('pointermove', { bubbles: true, clientX, clientY }),
+      )
+      const data = new DataTransfer()
+      data.setData('text/plain', text)
+      const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'clipboardData', { value: data })
+      target.dispatchEvent(event)
+    }, pasteClipboard)
+    await view.waitForTimeout(1000)
+    await finish(kind)
+    const response = await saved
+    if (response) await response.finished().catch(() => undefined)
+    await view.reload({ waitUntil: 'domcontentloaded' })
+    const elements = await readElements(drawingId)
+    const kept = elements.find((element) => element.id === 'kept')
+    const live = liveElements(elements)
+    const pasted =
+      live.some((element) => element.id === 'pasted-key') ||
+      live.some((element) => element.id !== 'kept')
+    const posted = saves > mark && (response?.ok() ?? false)
+    const edited = await stamped(pageId)
+    return {
+      keys: posted && edited && (!kept || kept.isDeleted === true),
+      paste: posted && edited && pasted,
+    }
+  }
+
+  async function quiet(kind: 'diagram' | 'board', pageId: string) {
+    const before = await readStamp(pageId)
+    const mark = saves
+    await openSurface(kind, pageId)
+    await view.locator('.excalidraw').click({ position: { x: 220, y: 220 } })
+    await view.waitForTimeout(1600)
+    await finish(kind)
+    await view.waitForTimeout(800)
+    const after = await readStamp(pageId)
+    return (
+      saves === mark &&
+      after.last_edited_by === before.last_edited_by &&
+      after.last_edited_at?.getTime() === before.last_edited_at?.getTime()
+    )
+  }
+
+  async function drop(kind: 'diagram' | 'board', pageId: string, drawingId: string) {
+    await openSurface(kind, pageId)
+    await view.locator('.excalidraw .App-toolbar').waitFor()
+    await view.waitForTimeout(400)
+    const mark = saves
+    const saved = view
+      .waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          response.url().includes('/api/drawings'),
+        { timeout: 8000 },
+      )
+      .catch(() => null)
+    await view.evaluate((json) => {
+      const target = document.querySelector('.excalidraw')
+      if (!(target instanceof HTMLElement)) return
+      const data = new DataTransfer()
+      data.setData('application/vnd.excalidrawlib+json', json)
+      const rect = target.getBoundingClientRect()
+      const clientX = rect.left + rect.width / 2
+      const clientY = rect.top + Math.min(rect.height / 2, 240)
+      for (const type of ['dragover', 'drop'] as const) {
+        const event = new DragEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          clientX,
+          clientY,
+        })
+        Object.defineProperty(event, 'dataTransfer', { value: data })
+        target.dispatchEvent(event)
+      }
+    }, dropLibrary)
+    await view.waitForTimeout(1000)
+    await finish(kind)
+    const response = await saved
+    if (response) await response.finished().catch(() => undefined)
+    await view.reload({ waitUntil: 'domcontentloaded' })
+    const elements = liveElements(await readElements(drawingId))
+    const posted = saves > mark && (response?.ok() ?? false)
+    const landed =
+      elements.some((element) => element.id === 'dropped-key') || elements.length > 1
+    return posted && (await stamped(pageId)) && landed
+  }
+
+  try {
+    await signIn(view, base, bea)
+    const note = (label: string, error: unknown) => {
+      line(label, error instanceof Error ? error.name : 'error')
+      return false
+    }
+    const diagramKeys = await keyboard('diagram', diagramEdit.page.id, diagramEdit.drawingId).catch(
+      (error: unknown) => {
+        note('diagram_key_error', error)
+        return { keys: false, paste: false }
+      },
+    )
+    const boardKeys = await keyboard('board', boardEdit.page.id, boardEdit.drawingId).catch(
+      (error: unknown) => {
+        note('board_key_error', error)
+        return { keys: false, paste: false }
+      },
+    )
+    const diagramHeld = await quiet('diagram', diagramQuiet.page.id).catch((error: unknown) =>
+      note('diagram_quiet_error', error),
+    )
+    const boardHeld = await quiet('board', boardQuiet.page.id).catch((error: unknown) =>
+      note('board_quiet_error', error),
+    )
+    const diagramLanded = await drop(
+      'diagram',
+      diagramDrop.page.id,
+      diagramDrop.drawingId,
+    ).catch((error: unknown) => note('diagram_drop_error', error))
+    const boardLanded = await drop('board', boardDrop.page.id, boardDrop.drawingId).catch(
+      (error: unknown) => note('board_drop_error', error),
+    )
+    line('diagram_keys', diagramKeys.keys)
+    line('board_keys', boardKeys.keys)
+    line('diagram_paste', diagramKeys.paste)
+    line('board_paste', boardKeys.paste)
+    line('diagram_quiet', diagramHeld)
+    line('board_quiet', boardHeld)
+    line('diagram_drop', diagramLanded)
+    line('board_drop', boardLanded)
+    return (
+      diagramKeys.keys &&
+      boardKeys.keys &&
+      diagramKeys.paste &&
+      boardKeys.paste &&
+      diagramHeld &&
+      boardHeld &&
+      diagramLanded &&
+      boardLanded
+    )
+  } finally {
+    await browser.close()
+  }
+}
+
 async function fc7(app: App) {
   const ada = await app.createUser('Ada Board')
   const bea = await app.createUser('Bea Board')
@@ -1341,6 +1677,7 @@ const checks: Record<string, (app: App, root: string) => Promise<boolean>> = {
   fc6,
   fc7,
   fc8,
+  fc9,
 }
 
 async function main() {

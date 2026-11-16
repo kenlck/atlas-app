@@ -8,7 +8,9 @@ import {
   canonicalElements,
   drawingLabelText,
   sceneChanged,
+  sceneFollowup,
   sceneRejection,
+  userSceneChanged,
 } from '../src/lib/drawing'
 import { handleDrawingRequest } from '../src/lib/drawing-request'
 import { handleMcp } from '../src/lib/mcp'
@@ -383,5 +385,32 @@ describe('drawings', () => {
     }
     expect(sceneChanged([first, second], [second, first])).toBe(true)
     expect(sceneChanged([first, second], [first, second])).toBe(false)
+  })
+})
+
+describe('scene edits a person made', () => {
+  const text = {
+    id: 'hello',
+    type: 'text',
+    x: 10,
+    y: 12,
+    text: 'Hello',
+    fontSize: 20,
+  }
+
+  it('ignores font measurement, a filled index, and an image status', () => {
+    expect(userSceneChanged([text], [{ ...text, width: 40, height: 24, baseline: 18 }])).toBe(
+      false,
+    )
+    expect(
+      userSceneChanged([text], [{ ...text, index: 'a0', originalText: 'Hello', lineHeight: 1.25 }]),
+    ).toBe(false)
+    const pending = { id: 'img', type: 'image', x: 1, y: 2, status: 'pending', fileId: 'f' }
+    const saved = { ...pending, status: 'saved' }
+    expect(userSceneChanged([pending], [saved])).toBe(false)
+    expect(sceneFollowup([pending], [saved])).toBe('save')
+    expect(sceneFollowup([text], [{ ...text, width: 80 }])).toBe('adopt')
+    expect(userSceneChanged([text], [{ ...text, text: 'Hello!' }])).toBe(true)
+    expect(userSceneChanged([text], [...[text], { id: 'extra', type: 'rectangle' }])).toBe(true)
   })
 })

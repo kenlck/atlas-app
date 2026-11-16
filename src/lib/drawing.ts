@@ -97,6 +97,75 @@ export function canonicalElements(elements: unknown[]) {
   return JSON.stringify(stableValue(elements))
 }
 
+function elementRecord(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+// Font measurement, a filled-in index, and an image file finishing its load
+// are Excalidraw's own work. A person did not edit the scene.
+function comparableElement(value: unknown, dropIndex: boolean) {
+  const record = elementRecord(value)
+  if (!record) return value
+  const copy: Record<string, unknown> = { ...record }
+  if (dropIndex) delete copy.index
+  if (copy.type === 'text') {
+    delete copy.width
+    delete copy.height
+    delete copy.baseline
+    delete copy.originalText
+    delete copy.lineHeight
+  }
+  if (copy.type === 'image') delete copy.status
+  return stableValue(copy)
+}
+
+export function userSceneChanged(previous: unknown[], next: unknown[]) {
+  if (previous.length !== next.length) return true
+  for (let i = 0; i < previous.length; i += 1) {
+    const before = elementRecord(previous[i])
+    const after = elementRecord(next[i])
+    const indexFilled =
+      !!before &&
+      !!after &&
+      (before.index === undefined || before.index === null) &&
+      after.index !== undefined &&
+      after.index !== null
+    if (
+      JSON.stringify(comparableElement(previous[i], indexFilled)) !==
+      JSON.stringify(comparableElement(next[i], indexFilled))
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+function imageStatusMoved(previous: unknown[], next: unknown[]) {
+  const statuses = new Map<string, unknown>()
+  for (const element of previous) {
+    const record = elementRecord(element)
+    if (record?.type === 'image' && typeof record.id === 'string')
+      statuses.set(record.id, record.status ?? null)
+  }
+  for (const element of next) {
+    const record = elementRecord(element)
+    if (record?.type !== 'image' || typeof record.id !== 'string') continue
+    if (!statuses.has(record.id)) continue
+    if ((record.status ?? null) !== statuses.get(record.id)) return true
+  }
+  return false
+}
+
+// After a save leaves the browser, a later image status is still that edit.
+// A font measurement that landed in the same gap is not.
+export function sceneFollowup(sent: unknown[], current: unknown[]) {
+  if (canonicalElements(sent) === canonicalElements(current)) return 'same' as const
+  if (userSceneChanged(sent, current) || imageStatusMoved(sent, current))
+    return 'save' as const
+  return 'adopt' as const
+}
+
 export function sceneChanged(stored: unknown[], incoming: unknown[]) {
   return canonicalElements(stored) !== canonicalElements(incoming)
 }

@@ -1,23 +1,34 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { Excalidraw } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
 import { canonicalElements, plainAppState } from '#/lib/drawing'
+import { listenForEngage } from './editor-engage'
 
 export function WhiteboardCanvas({
   elements,
   appState,
   viewMode,
   onScene,
+  onEngage,
 }: {
   elements: unknown[]
   appState: Record<string, unknown>
   viewMode: boolean
   onScene: (elements: unknown[], appState: Record<string, unknown>) => void
+  onEngage?: () => void
 }) {
   const seen = useRef(false)
   const last = useRef('')
+  const frame = useRef<HTMLDivElement>(null)
+  const engageRef = useRef(onEngage)
+  engageRef.current = onEngage
+  useEffect(() => {
+    const node = frame.current
+    if (!node) return
+    return listenForEngage(node, () => engageRef.current?.())
+  }, [])
   return (
-    <div className="board-frame">
+    <div className="board-frame" ref={frame}>
       <Excalidraw
         initialData={{
           elements: elements as never,

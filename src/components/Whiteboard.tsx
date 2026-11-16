@@ -1,7 +1,7 @@
 import { useRouter } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ComponentType } from 'react'
-import { canonicalElements } from '#/lib/drawing'
+import { canonicalElements, sceneFollowup, userSceneChanged } from '#/lib/drawing'
 import {
   browserDrawingSaveTransport,
   deliverDrawingSave,
@@ -13,6 +13,7 @@ import { NewPageMenu } from './NewPageMenu'
 import { PageMenu } from './PageMenu'
 import { lockBannerText, lockHolderName } from '#/lib/page-lock-message'
 import { PageModeBar, saveStatusLabel } from './PageModeBar'
+import { listenForEngage } from './editor-engage'
 
 type SaveState = 'saved' | 'saving' | 'error' | 'conflict'
 
@@ -21,6 +22,7 @@ type CanvasProps = {
   appState: Record<string, unknown>
   viewMode: boolean
   onScene: (elements: unknown[], appState: Record<string, unknown>) => void
+  onEngage?: () => void
 }
 
 const SAVE_URL = '/api/drawings'
@@ -47,10 +49,13 @@ export function Whiteboard({ page }: { page: PageView }) {
   const appStateRef = useRef<Record<string, unknown>>(board?.appState ?? {})
   const versionRef = useRef(board?.version ?? 1)
   const savedCanon = useRef('')
+  const baselineElements = useRef<unknown[]>(board?.elements ?? [])
   const baselineReady = useRef(false)
   const engaged = useRef(false)
+  const unlisten = useRef<(() => void) | null>(null)
   const dirtyRef = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const followSave = useRef<() => void>(() => {})
   const pageIdRef = useRef(page.id)
 
   const routerRef = useRef(router)
@@ -83,7 +88,13 @@ export function Whiteboard({ page }: { page: PageView }) {
     setSaveState('saved')
   }
 
-  const applyResult = async (response: Response) => {
+  const adopt = (elements: unknown[]) => {
+    baselineElements.current = elements
+    savedCanon.current = canonicalElements(elements)
+    baselineReady.current = true
+  }
+
+  const applyResult = async (response: Response, sentElements: unknown[]) => {
     if (response.status === 423) {
       const body = (await response.json().catch(() => null)) as { error?: unknown } | null
       freeze(lockHolderName(body?.error ?? body) ?? 'someone')
@@ -107,10 +118,21 @@ export function Whiteboard({ page }: { page: PageView }) {
     }
     const body = (await response.json()) as { version?: number }
     if (typeof body.version === 'number') versionRef.current = body.version
-    savedCanon.current = canonicalElements(elementsRef.current)
     savedTitle.current = titleRef.current
-    dirtyRef.current = false
-    setSaveState('saved')
+    const follow = sceneFollowup(sentElements, elementsRef.current)
+    if (follow === 'save') {
+      baselineElements.current = sentElements
+      savedCanon.current = canonicalElements(sentElements)
+      followSave.current()
+    } else if (follow === 'adopt') {
+      adopt(elementsRef.current)
+      dirtyRef.current = false
+      setSaveState('saved')
+    } else {
+      adopt(sentElements)
+      dirtyRef.current = false
+      setSaveState('saved')
+    }
     await routerRef.current.invalidate({
       filter: (match) =>
         match.routeId === '/_app/s/$spaceId' ||
@@ -125,6 +147,7 @@ export function Whiteboard({ page }: { page: PageView }) {
     if (deletedRef.current || frozenRef.current) return false
     if (saveStateRef.current === 'conflict') return false
     if (!dirtyRef.current) return saveStateRef.current !== 'error'
+    const sentElements = elementsRef.current
     const body = JSON.stringify(payload('autosave'))
     dirtyRef.current = false
     setSaveState('saving')
@@ -135,7 +158,7 @@ export function Whiteboard({ page }: { page: PageView }) {
         credentials: 'include',
         body,
       })
-      return await applyResult(response)
+      return await applyResult(response, sentElements)
     } catch {
       dirtyRef.current = true
       setSaveState('error')
@@ -155,6 +178,7 @@ export function Whiteboard({ page }: { page: PageView }) {
       void flushSaveRef.current()
     }, 800)
   }
+  followSave.current = schedule
 
   const leaveEdit = () => {
     void (async () => {
@@ -163,9 +187,32 @@ export function Whiteboard({ page }: { page: PageView }) {
     })()
   }
 
+  const bindCanvas = useCallback((node: HTMLDivElement | null) => {
+    unlisten.current?.()
+    unlisten.current = null
+    if (!node) return
+    unlisten.current = listenForEngage(node, () => {
+      engaged.current = true
+    })
+  }, [])
+
+  useEffect(() => () => unlisten.current?.(), [])
+
+  useEffect(() => {
+    return () => {
+      if (!dirtyRef.current || frozenRef.current || saveStateRef.current === 'conflict') return
+      clearTimer()
+      const snapshot = payload('flush')
+      dirtyRef.current = false
+      versionRef.current += 1
+      deliverDrawingSave(snapshot, browserDrawingSaveTransport())
+    }
+  }, [])
+
   useEffect(() => {
     baselineReady.current = false
     savedCanon.current = ''
+    baselineElements.current = board?.elements ?? []
     engaged.current = false
     elementsRef.current = board?.elements ?? []
     appStateRef.current = board?.appState ?? {}
@@ -286,37 +333,31 @@ export function Whiteboard({ page }: { page: PageView }) {
           {editedByLine(page.lastEditedByName, page.lastEditedAt ?? page.updatedAt)}
         </div>
       </div>
-      <div
-        className="board-canvas"
-        onPointerDown={() => {
-          engaged.current = true
-        }}
-      >
+      <div className="board-canvas" ref={bindCanvas}>
         {Canvas ? (
           <Canvas
             key={board.id}
             elements={board.elements}
             appState={board.appState}
             viewMode={!editing || Boolean(held) || !page.canEdit}
+            onEngage={() => {
+              engaged.current = true
+            }}
             onScene={(elements, appState) => {
               if (frozenRef.current) return
-              const next = canonicalElements(elements)
-              // The scene Excalidraw emits before a pointer press is its
-              // restored load, including a later font measurement.
-              if (!baselineReady.current || !engaged.current) {
-                elementsRef.current = elements
-                appStateRef.current = appState
-                savedCanon.current = next
-                baselineReady.current = true
+              elementsRef.current = elements
+              appStateRef.current = appState
+              if (!baselineReady.current) {
+                adopt(elements)
+                return
+              }
+              if (!userSceneChanged(baselineElements.current, elements)) {
+                if (!dirtyRef.current) adopt(elements)
                 return
               }
               if (!editingRef.current) return
-              // Excalidraw repeats the same scene while the pointer moves.
-              // A failed save must stay on the Retry banner, so ignore repeats.
-              if (next === canonicalElements(elementsRef.current)) return
-              elementsRef.current = elements
-              appStateRef.current = appState
-              if (next === savedCanon.current) return
+              if (canonicalElements(elements) === savedCanon.current) return
+              engaged.current = true
               schedule()
             }}
           />
