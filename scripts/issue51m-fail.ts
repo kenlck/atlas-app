@@ -1987,7 +1987,25 @@ async function fc11(app: App, root: string) {
     const before = await readStamp(pageId)
     await openSurface(kind, pageId)
     await view.evaluate(() => document.fonts.ready)
-    await view.waitForTimeout(1200)
+    await view.waitForTimeout(600)
+    const emitted = await view.evaluate(() => {
+      const sink = window as Window & {
+        __atlasScene?: Array<{ type?: string; width?: number; autoResize?: boolean }>
+        __atlasEmitScene?: (elements: unknown[]) => void
+      }
+      const scene = sink.__atlasScene
+      if (!scene || !sink.__atlasEmitScene) return 'missing'
+      const text = scene.find((element) => element.type === 'text')
+      const note = `auto=${String(text?.autoResize)} w=${text?.width ?? 'none'}`
+      sink.__atlasEmitScene(
+        scene.map((element) =>
+          element.type === 'text' ? { ...element, width: (element.width ?? 0) + 30 } : element,
+        ),
+      )
+      return note
+    })
+    line(`${kind}_measure`, emitted)
+    await view.waitForTimeout(400)
     await finish(kind)
     await view.waitForTimeout(900)
     return unchanged(pageId, mark, before)

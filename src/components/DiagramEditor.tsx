@@ -330,6 +330,8 @@ export function DiagramEditor({ drawingId, pageId, onClose, onPreview }: Diagram
                 if (!dirtyRef.current) adopt(elements)
                 return
               }
+              const next = canonicalElements(elements)
+              if (next === savedCanon.current) return
               queuePreview()
               schedule()
             }}
