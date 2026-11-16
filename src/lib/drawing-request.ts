@@ -7,7 +7,6 @@ import {
   BOARD_CONFLICT,
   DRAWING_MAX_BYTES,
   cleanPreviewSvg,
-  canonicalElements,
   drawingLabelText,
   plainAppState,
   plainElements,
@@ -28,6 +27,18 @@ type Caller = {
   userId: string
   scope: 'session' | TokenScope
   tokenId: string | null
+}
+
+function hasDuplicateElementId(elements: unknown[]) {
+  const seen = new Set<string>()
+  for (const element of elements) {
+    if (!element || typeof element !== 'object') continue
+    const id = (element as { id?: unknown }).id
+    if (typeof id !== 'string' || !id) continue
+    if (seen.has(id)) return true
+    seen.add(id)
+  }
+  return false
 }
 
 function json(body: unknown, status = 200) {
@@ -207,14 +218,11 @@ export async function handleDrawingRequest(request: Request) {
       return json({ error: 'Bad request' }, 400)
     }
     const restoredElements = restoreSceneElements(elements)
-    const stable =
-      canonicalElements(restoreSceneElements(restoredElements)) ===
-      canonicalElements(restoredElements)
-    // A second restore drops elements whose missing size was filled as 0×0.
-    // Keep those as written. Stable restores (point size, links, new ids for
-    // duplicates) are stored so the next open matches what Done sends back.
+    // A duplicate id is rewritten to a new one. That id has to be stored once;
+    // comparing two restores would mint a different id each time. Every other
+    // scene is stored as sent, and the compare fills both sides.
     const savedElements = (
-      stable ? restoredElements : elements
+      hasDuplicateElementId(elements) ? restoredElements : elements
     ) as DrawingScene['elements']
     const scene: DrawingScene = {
       elements: savedElements,

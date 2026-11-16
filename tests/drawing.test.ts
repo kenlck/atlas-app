@@ -550,4 +550,63 @@ describe('drawings', () => {
       ),
     ).toBe(false)
   })
+
+  it('stores a token scene as sent unless two elements share an id', async () => {
+    const ada = await createUser('Store Ada')
+    const doc = await createPage(ada.user.id, {
+      spaceId: ada.space.id,
+      title: 'Stored scene',
+    })
+    const diagram = await createDiagram(ada.user.id, doc.id)
+    const token = await createApiToken(ada.user.id, {
+      name: 'store',
+      scope: 'read_write',
+      expiry: '30d',
+    })
+    const arrow = [
+      {
+        id: 'a',
+        type: 'arrow',
+        x: 10,
+        y: 10,
+        points: [
+          [0, 0],
+          [100, 40],
+        ],
+      },
+    ]
+    const first = await post(token.token, {
+      drawingId: diagram.id,
+      version: diagram.version,
+      elements: arrow,
+      appState: {},
+      files: {},
+    })
+    expect(first.status).toBe(200)
+    const readScene = async () => {
+      const rows = await getDb()
+        .select({ scene: drawing.scene })
+        .from(drawing)
+        .where(eq(drawing.id, diagram.id))
+        .limit(1)
+      return (rows[0]?.scene as { elements?: unknown[] }).elements ?? []
+    }
+    expect(canonicalElements(await readScene())).toBe(canonicalElements(arrow))
+    const copies = [
+      { id: 'same', type: 'rectangle', x: 0, y: 0, width: 10, height: 10 },
+      { id: 'same', type: 'rectangle', x: 20, y: 0, width: 10, height: 10 },
+    ]
+    const second = await post(token.token, {
+      drawingId: diagram.id,
+      version: ((await first.json()) as { version: number }).version,
+      elements: copies,
+      appState: {},
+      files: {},
+    })
+    expect(second.status).toBe(200)
+    const stored = await readScene()
+    expect(stored[0]).toMatchObject({ id: 'same' })
+    expect((stored[1] as { id?: string }).id).not.toBe('same')
+    expect(sceneChanged(stored, restoreSceneElements(stored))).toBe(false)
+  })
 })
