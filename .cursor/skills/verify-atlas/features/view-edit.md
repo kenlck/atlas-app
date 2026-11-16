@@ -9,7 +9,7 @@ A page or whiteboard opens in View. Editing starts from the header switch, and a
 - `done` flushes a pending save and returns to View. A failed save stays in Edit with Retry.
 - `reload` returns to View.
 - `new-page` opens in Edit with the title focused.
-- `title-cap` stops the title at 200 characters, including a paste. From 180 characters a muted counter at the right of the title reads `180/200` through `200/200`. A title that is already longer shows that length over 200 in error red, and saving is not blocked for it.
+- `title-cap` stops new title text at 200 characters, including a paste. A title that is already longer stays that length on focus and blur. Typing or pasting can only keep that length or make it shorter. From 180 characters a muted counter at the right of the title reads `180/200` through `200/200`. Past 200 the counter turns red, for example `250/200`. The server still refuses saves until the title is 200 or less.
 - `narrow` collapses the switch to one icon button at 390px without a horizontal scroll.
 - `whiteboard` uses Excalidraw view mode until Edit.
 - `endpoints` keep `update_page` and `POST /api/pages/save` on the same statuses as `3d03b704`.
@@ -36,7 +36,7 @@ Preconditions:
 - **Failed save.** Run `./scripts/verify-fail-conditions.sh 37-fc4`. The log shows `fc4_stayed=true`, `fc4_discard=0`, `fc4_retry_saved=true`, and `37_fc4=pass`.
 - **Reload.** Run `./scripts/verify-fail-conditions.sh 37-fc5`. The log shows `fc5_view=true` and `37_fc5=pass`.
 - **New page.** Run `./scripts/verify-fail-conditions.sh 37-fc7`. The log shows `fc7_edit=true`, `fc7_title_focused=true`, and `37_fc7=pass`.
-- **Title length.** Run `./scripts/verify-fail-conditions.sh 57-fc2`. Typing a 201st character and pasting 250 characters both leave 200. The counter is absent at 179 and reads `180/200`, then `200/200`. No save returns 400. The log shows `57_fc2_head_typed_len=200`, `57_fc2_head_paste_len=200`, `57_fc2_head_saw_400=false`, `57_fc2_planted_exit=1`, and `57_fc2_head_exit=0`.
+- **Title length.** Run `./scripts/verify-fail-conditions.sh 57-fc2`. Typing a 201st character and pasting 250 characters both leave 200. The counter is absent at 179 and reads `180/200`, then `200/200`. No save returns 400 during that part. A seeded 250-character title stays 250 after focus, blur, typing a character, and a paste, and no request shortens it. The log shows `57_fc2_head_typed_len=200`, `57_fc2_head_paste_len=200`, `57_fc2_head_saw_400=false`, `57_fc2_head_legacy_len=250`, `57_fc2_head_legacy_same=true`, `57_fc2_head_legacy_shortened=false`, `57_fc2_planted_exit=1`, and `57_fc2_head_exit=0`.
 - **390 icon.** Run `./scripts/verify-fail-conditions.sh 37-fc8`. The log shows `fc8_icon_to_edit=true`, `fc8_390_scroll=false`, `fc8_1280_scroll=false`, and `37_fc8=pass`.
 - **Whiteboard view.** Run `./scripts/verify-fail-conditions.sh 37-fc9`. The log shows `fc9_save_requests=0`, `fc9_scene_unchanged=true`, and `37_fc9=pass`.
 - **Save endpoints.** Run `./scripts/verify-fail-conditions.sh 37-fc10`. The log shows `fc10_save_status=204`, `fc10_update_status=200`, and `37_fc10=pass`.

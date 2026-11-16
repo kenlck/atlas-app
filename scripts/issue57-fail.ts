@@ -12,12 +12,14 @@ import {
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import postgres from 'postgres'
 import { chromium } from 'playwright'
 import type { Page } from 'playwright'
 import { stopChild } from './stop-child.ts'
 import {
   assertLocalDatabaseUrl,
   clickNewDoc,
+  enterEdit,
   submitAuthForm,
 } from './verify-local.ts'
 
@@ -25,6 +27,7 @@ const PIN = '9b8669b2e0263cdc113aed62683f9308b1e8ff7e'
 const TOO_BIG =
   'This page is too big to save (over 1 MB). Move some content to a sub-page.'
 const MUTED = new Set(['rgb(120, 113, 108)', 'rgba(120, 113, 108, 1)'])
+const ERROR = new Set(['rgb(180, 35, 24)', 'rgba(180, 35, 24, 1)'])
 const repoRoot = join(import.meta.dirname, '..')
 const arg = process.argv[2] ?? ''
 const planted = arg.endsWith('-planted')
@@ -388,8 +391,124 @@ async function pasteTitle(page: Page, text: string) {
   await page.waitForTimeout(250)
 }
 
+async function seedTitle(pageId: string, title: string) {
+  const url = assertLocalDatabaseUrl(process.env.DATABASE_URL || '')
+  const sql = postgres(url, { max: 1, onnotice: () => {} })
+  try {
+    const rows = await sql<{ id: string }[]>`
+      update page set title = ${title} where id = ${pageId} returning id
+    `
+    if (rows.length !== 1) throw new Error('title seed missed')
+  } finally {
+    await sql.end({ timeout: 5 })
+  }
+}
+
+function watchTitlePosts(page: Page) {
+  const bodies: string[] = []
+  page.on('request', (request) => {
+    if (request.method() !== 'POST') return
+    const body = request.postData() ?? ''
+    if (!body.includes('"title"')) return
+    bodies.push(body)
+  })
+  return bodies
+}
+
+async function placeCaret(page: Page) {
+  await page.locator('#page-title').evaluate((el) => {
+    const field = el as HTMLInputElement
+    field.focus()
+    field.setSelectionRange(field.value.length, field.value.length)
+  })
+}
+
+async function legacyTitle(page: Page) {
+  const full = 'L'.repeat(250)
+  const pageId = pageIdOf(page)
+  if (!pageId) throw new Error('missing page')
+  await seedTitle(pageId, full)
+  await page.evaluate((currentId) => {
+    sessionStorage.removeItem(`atlas-draft:${currentId}`)
+  }, pageId)
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.locator('#page-title').waitFor()
+  const loaded = await page
+    .waitForFunction((expected) => {
+      const field = document.getElementById('page-title') as HTMLInputElement | null
+      return field?.value === expected
+    }, full)
+    .then(
+      () => true,
+      () => false,
+    )
+  if (!loaded) {
+    return { length: 0, same: false, shortened: false, over: false }
+  }
+  await enterEdit(page)
+  const bodies = watchTitlePosts(page)
+  const input = page.locator('#page-title')
+  await placeCaret(page)
+  await input.blur()
+  await page.waitForTimeout(300)
+  await placeCaret(page)
+  await input.press('Q')
+  await page.waitForTimeout(200)
+  const beforePaste = await input.inputValue()
+  await placeCaret(page)
+  await page.evaluate(async (value) => {
+    await navigator.clipboard.writeText(value)
+  }, 'ZZ')
+  await input.press('Control+V')
+  await page.waitForTimeout(250)
+  let after = await input.inputValue()
+  if (after === beforePaste) {
+    await placeCaret(page)
+    await input.evaluate((el, value) => {
+      const field = el as HTMLInputElement
+      const end = field.value.length
+      field.focus()
+      field.setSelectionRange(end, end)
+      const data = new DataTransfer()
+      data.setData('text/plain', value)
+      field.dispatchEvent(
+        new ClipboardEvent('paste', {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: data,
+        }),
+      )
+    }, 'ZZ')
+    await page.waitForTimeout(250)
+    after = await input.inputValue()
+  }
+  if (after === beforePaste && beforePaste !== full) {
+    await placeCaret(page)
+    await page.keyboard.insertText('ZZ')
+    await page.waitForTimeout(200)
+  }
+  await page.waitForTimeout(1500)
+  const value = await input.inputValue()
+  const counter = await readCounter(page)
+  const shortened = bodies.some(
+    (body) => body.includes(pageId) && body.includes('"title"') && !body.includes(full),
+  )
+  return {
+    length: value.length,
+    same: value === full,
+    shortened,
+    over: Boolean(counter.present && counter.text === '250/200' && ERROR.has(counter.color)),
+  }
+}
+
 async function fc2(page: Page) {
   const statuses = watchSaves(page)
+  const legacy = await legacyTitle(page)
+  line('legacy_len', legacy.length)
+  line('legacy_same', legacy.same)
+  line('legacy_shortened', legacy.shortened)
+  line('legacy_over', legacy.over)
+  const savesBeforeCap = statuses.length
   const input = page.locator('#page-title')
   await input.fill('a'.repeat(179))
   await page.waitForFunction(
@@ -412,7 +531,7 @@ async function fc2(page: Page) {
   const afterPaste = await input.inputValue()
   const counter = await readCounter(page)
   await page.waitForTimeout(6000)
-  const saw400 = statuses.includes(400)
+  const saw400 = statuses.slice(savesBeforeCap).includes(400)
   line('absent_179', !at179.present)
   line('at_180', at180.present ? at180.text : false)
   line('typed_len', typed.length)
@@ -423,7 +542,7 @@ async function fc2(page: Page) {
   line('size', counter.size || 'none')
   line('right', counter.right)
   line('saw_400', saw400)
-  line('saves', statuses.join(',') || 'none')
+  line('saves', statuses.slice(savesBeforeCap).join(',') || 'none')
   const passed =
     !at179.present &&
     at180.text === '180/200' &&
@@ -438,7 +557,11 @@ async function fc2(page: Page) {
     MUTED.has(counter.color) &&
     counter.size === '12px' &&
     counter.right &&
-    !saw400
+    !saw400 &&
+    legacy.length === 250 &&
+    legacy.same &&
+    !legacy.shortened &&
+    legacy.over
   if (passed) await shot(page, '57-fc2-title-counter.png')
   return passed
 }

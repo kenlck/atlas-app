@@ -12,6 +12,7 @@ import { getRouteApi, useRouter } from '@tanstack/react-router'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { tiptapToText } from '#/lib/body-text'
+import { nextTitle, TITLE_MAX } from '#/lib/title-cap'
 import type { Json } from '#/lib/body-text'
 import type { PageView } from '#/lib/pages'
 import {
@@ -39,16 +40,9 @@ import { PageModeBar, saveStatusLabel } from './PageModeBar'
 
 type SaveState = 'saved' | 'saving' | 'error' | 'too-big'
 
-const TITLE_MAX = 200
 const TITLE_COUNT_AT = 180
 const TOO_BIG_COPY =
   'This page is too big to save (over 1 MB). Move some content to a sub-page.'
-
-function clampTitle(previous: string, incoming: string) {
-  if (incoming.length <= TITLE_MAX) return incoming
-  if (incoming.length < previous.length) return incoming
-  return incoming.slice(0, TITLE_MAX)
-}
 
 function isMissing(error: unknown): boolean {
   if (!error) return false
@@ -596,7 +590,7 @@ export function PageEditor({ page }: { page: PageView }) {
                     titleRef.current.slice(0, start) +
                     pasted +
                     titleRef.current.slice(end)
-                  const next = clampTitle(titleRef.current, merged)
+                  const next = nextTitle(titleRef.current, merged, 'input')
                   if (next === titleRef.current) {
                     field.value = next
                     return
@@ -607,7 +601,7 @@ export function PageEditor({ page }: { page: PageView }) {
                 }}
                 onChange={(event) => {
                   if (frozenRef.current || !editingRef.current) return
-                  const next = clampTitle(titleRef.current, event.target.value)
+                  const next = nextTitle(titleRef.current, event.target.value, 'input')
                   if (event.target.value !== next) event.target.value = next
                   if (next === titleRef.current) return
                   titleRef.current = next
@@ -616,9 +610,10 @@ export function PageEditor({ page }: { page: PageView }) {
                 }}
                 onBlur={(event) => {
                   if (frozenRef.current || !editingRef.current) return
-                  const next = clampTitle(
+                  const next = nextTitle(
                     titleRef.current,
                     event.currentTarget.value,
+                    'blur',
                   )
                   titleRef.current = next
                   setTitle(next)
