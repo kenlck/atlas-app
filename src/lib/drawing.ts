@@ -104,7 +104,14 @@ function elementRecord(value: unknown) {
 
 // Font measurement on auto-sized text, a filled-in index, and an image file
 // finishing its load are Excalidraw's own work. A person did not edit the scene.
+// Wrapped `text` is the lines that fit the box. `originalText` is what was typed.
 // Fixed-width text keeps its box, so a side-handle drag still counts.
+function textWords(record: Record<string, unknown>) {
+  if (typeof record.originalText === 'string') return record.originalText
+  if (typeof record.text === 'string') return record.text
+  return undefined
+}
+
 function comparableElement(
   value: unknown,
   dropIndex: boolean,
@@ -115,7 +122,10 @@ function comparableElement(
   const copy: Record<string, unknown> = { ...record }
   if (dropIndex) delete copy.index
   if (copy.type === 'text') {
-    delete copy.originalText
+    const words = textWords(copy)
+    delete copy.text
+    if (words === undefined) delete copy.originalText
+    else copy.originalText = words
     if (dropTextMetrics) {
       delete copy.width
       delete copy.height

@@ -445,5 +445,8 @@ describe('scene edits a person made', () => {
         [{ ...fixed, autoResize: true, width: 140 }],
       ),
     ).toBe(false)
+    const typed = { ...fixed, text: 'Hello', originalText: 'Hello' }
+    expect(userSceneChanged([typed], [{ ...typed, text: 'Hello\nthere' }])).toBe(false)
+    expect(userSceneChanged([typed], [{ ...typed, originalText: 'Hello!' }])).toBe(true)
   })
 })

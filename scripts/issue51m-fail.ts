@@ -27,6 +27,8 @@ const PINS: Record<string, string> = {
   fc7: '1f8aa77f66f7aeafb915e6aad6931b175ae6187c',
   fc8: 'df8b3b1bae80c41cfceb8867a11915b1a526fd64',
   fc9: '0674ccf99d4b3fbdce4f41a9eb46bd6d2cef9596',
+  fc10: '24b97e489c613b3ce520d2d7bf5a576222459ff9',
+  fc11: '0000000000000000000000000000000000000000',
 }
 const repoRoot = join(import.meta.dirname, '..')
 const arg = process.argv[2] ?? ''
@@ -1668,6 +1670,348 @@ process.on('SIGINT', () => {
   void shutdown(130)
 })
 
+const fixedText = [
+  {
+    id: 'fixed',
+    type: 'text',
+    x: 200,
+    y: 220,
+    width: 120,
+    height: 25,
+    text: 'Hello',
+    originalText: 'Hello',
+    fontSize: 20,
+    fontFamily: 1,
+    autoResize: false,
+    textAlign: 'left',
+    verticalAlign: 'top',
+  },
+]
+
+async function fc10(app: App, root: string) {
+  const ada = await app.createUser('Ada Width')
+  const bea = await app.createUser('Bea Width')
+  remember(ada.password)
+  remember(bea.password)
+  const team = await teamWith(app, ada, bea)
+  const writer = await app.createApiToken(bea.user.id, {
+    name: 'width',
+    scope: 'read_write',
+  })
+  const frozen = new Date('2024-01-01T00:00:00Z')
+
+  async function plant(kind: 'diagram' | 'board') {
+    const page = await app.createPage(ada.user.id, {
+      spaceId: team.spaceId,
+      title: `Width ${kind} ${crypto.randomUUID().slice(0, 8)}`,
+      ...(kind === 'board' ? { kind: 'whiteboard' as const } : {}),
+    })
+    let drawingId = ''
+    let version = 1
+    if (kind === 'board') {
+      const view = await app.getPageView(bea.user.id, page.id)
+      drawingId = view.drawing?.id ?? ''
+      version = view.drawing?.version ?? 1
+    } else {
+      const diagram = await app.createDiagram(ada.user.id, page.id)
+      drawingId = diagram.id
+      version = diagram.version
+      await withSql(
+        (sql) => sql`
+          update page
+          set body = ${sql.json({
+            type: 'doc',
+            content: [{ type: 'diagram', attrs: { drawingId } }],
+          })}
+          where id = ${page.id}
+        `,
+      )
+    }
+    const written = drawingId
+      ? await postDrawing(app, writer.token, {
+          drawingId,
+          version,
+          elements: fixedText,
+        })
+      : 0
+    await withSql(
+      (sql) => sql`
+        update page
+        set last_edited_at = ${frozen}, last_edited_by = ${ada.user.id}
+        where id = ${page.id}
+      `,
+    )
+    return { page, drawingId, written }
+  }
+
+  const diagram = await plant('diagram')
+  const board = await plant('board')
+  line('diagram_written', diagram.written)
+  line('board_written', board.written)
+  if (diagram.written !== 200 || board.written !== 200) {
+    line('diagram_resize', false)
+    line('board_resize', false)
+    return false
+  }
+
+  const base = await bootDev(root)
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
+  const view = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+  view.setDefaultTimeout(25000)
+  let saves = 0
+  view.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().includes('/api/drawings')) saves += 1
+  })
+
+  async function openSurface(kind: 'diagram' | 'board', pageId: string) {
+    await view.goto(`${base}/s/${team.spaceId}/p/${pageId}`, {
+      waitUntil: 'domcontentloaded',
+    })
+    if (kind === 'diagram') {
+      await view
+        .locator('.diagram-block')
+        .getByText('Empty drawing', { exact: true })
+        .waitFor()
+      await view.locator('.diagram-edit').click()
+      await view.locator('.diagram-screen').waitFor()
+    } else {
+      await view.locator('.excalidraw').waitFor()
+      await view.locator('.mode-switch').getByRole('radio', { name: 'Edit' }).click()
+    }
+    await view.locator('.excalidraw canvas').first().waitFor()
+    await view.locator('.excalidraw .App-toolbar').waitFor()
+    await view.waitForTimeout(600)
+  }
+
+  async function finish(kind: 'diagram' | 'board') {
+    if (kind === 'diagram') {
+      await view.locator('.diagram-bar').getByRole('button', { name: 'Done' }).click()
+    } else {
+      await view.locator('.mode-done').click()
+    }
+  }
+
+  async function dragSide() {
+    const origin = await view.evaluate(() => {
+      const nodes = Array.from(document.querySelectorAll('.excalidraw canvas'))
+      const canvas = nodes.find((node) => node.getBoundingClientRect().width > 20)
+      if (!(canvas instanceof HTMLCanvasElement)) return null
+      const rect = canvas.getBoundingClientRect()
+      return { left: rect.left, top: rect.top }
+    })
+    if (!origin) return
+    const textX = 200
+    const textY = 220
+    const textWidth = 120
+    const textHeight = 25
+    const centerX = origin.left + textX + textWidth / 2
+    const centerY = origin.top + textY + textHeight / 2
+    await view.mouse.click(centerX, centerY)
+    await view.waitForTimeout(200)
+    let edge = origin.left + textX + textWidth
+    const midY = origin.top + textY + textHeight / 2
+    for (let drag = 0; drag < 2; drag += 1) {
+      await view.mouse.move(edge, midY)
+      await view.mouse.down()
+      await view.mouse.move(edge + 150, midY, { steps: 12 })
+      await view.mouse.up()
+      await view.waitForTimeout(150)
+      edge += 150
+    }
+  }
+
+  async function resize(kind: 'diagram' | 'board', pageId: string, drawingId: string) {
+    await openSurface(kind, pageId)
+    const mark = saves
+    const saved = view
+      .waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          response.url().includes('/api/drawings'),
+        { timeout: 8000 },
+      )
+      .catch(() => null)
+    await dragSide()
+    await finish(kind)
+    const response = await saved
+    if (response) await response.finished().catch(() => undefined)
+    await view.reload({ waitUntil: 'domcontentloaded' })
+    const elements = liveElements(await readElements(drawingId))
+    const text = elements.find((element) => element.id === 'fixed') as
+      | { width?: number; text?: string; originalText?: string }
+      | undefined
+    const width = typeof text?.width === 'number' ? text.width : 0
+    const after = await readStamp(pageId)
+    const posted = saves > mark && (response?.ok() ?? false)
+    const stamped =
+      after.last_edited_by === bea.user.id &&
+      (after.last_edited_at?.getTime() ?? 0) > frozen.getTime()
+    return posted && stamped && width >= 200 && (text?.originalText ?? text?.text) === 'Hello'
+  }
+
+  try {
+    await signIn(view, base, bea)
+    const diagramResize = await resize('diagram', diagram.page.id, diagram.drawingId).catch(
+      () => false,
+    )
+    const boardResize = await resize('board', board.page.id, board.drawingId).catch(() => false)
+    line('diagram_resize', diagramResize)
+    line('board_resize', boardResize)
+    return diagramResize && boardResize
+  } finally {
+    await browser.close()
+  }
+}
+
+async function fc11(app: App, root: string) {
+  const ada = await app.createUser('Ada Quiet')
+  const bea = await app.createUser('Bea Quiet')
+  remember(ada.password)
+  remember(bea.password)
+  const team = await teamWith(app, ada, bea)
+  const writer = await app.createApiToken(bea.user.id, {
+    name: 'quiet',
+    scope: 'read_write',
+  })
+  const frozen = new Date('2024-01-01T00:00:00Z')
+
+  async function plant(kind: 'diagram' | 'board') {
+    const page = await app.createPage(ada.user.id, {
+      spaceId: team.spaceId,
+      title: `Quiet ${kind} ${crypto.randomUUID().slice(0, 8)}`,
+      ...(kind === 'board' ? { kind: 'whiteboard' as const } : {}),
+    })
+    let drawingId = ''
+    let version = 1
+    if (kind === 'board') {
+      const view = await app.getPageView(bea.user.id, page.id)
+      drawingId = view.drawing?.id ?? ''
+      version = view.drawing?.version ?? 1
+    } else {
+      const diagram = await app.createDiagram(ada.user.id, page.id)
+      drawingId = diagram.id
+      version = diagram.version
+      await withSql(
+        (sql) => sql`
+          update page
+          set body = ${sql.json({
+            type: 'doc',
+            content: [{ type: 'diagram', attrs: { drawingId } }],
+          })}
+          where id = ${page.id}
+        `,
+      )
+    }
+    const written = drawingId
+      ? await postDrawing(app, writer.token, { drawingId, version, elements: helloShape })
+      : 0
+    await withSql(
+      (sql) => sql`
+        update page
+        set last_edited_at = ${frozen}, last_edited_by = ${ada.user.id}
+        where id = ${page.id}
+      `,
+    )
+    return { page, written }
+  }
+
+  const diagram = await plant('diagram')
+  const board = await plant('board')
+  line('diagram_written', diagram.written)
+  line('board_written', board.written)
+  if (diagram.written !== 200 || board.written !== 200) {
+    line('diagram_fonts', false)
+    line('board_fonts', false)
+    line('diagram_pointer', false)
+    line('board_pointer', false)
+    return false
+  }
+
+  const base = await bootDev(root)
+  const browser = await chromium.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  })
+  const view = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+  view.setDefaultTimeout(25000)
+  let saves = 0
+  view.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().includes('/api/drawings')) saves += 1
+  })
+
+  async function openSurface(kind: 'diagram' | 'board', pageId: string) {
+    await view.goto(`${base}/s/${team.spaceId}/p/${pageId}`, {
+      waitUntil: 'domcontentloaded',
+    })
+    if (kind === 'diagram') {
+      await view
+        .locator('.diagram-block')
+        .getByText('Empty drawing', { exact: true })
+        .waitFor()
+      await view.locator('.diagram-edit').click()
+      await view.locator('.diagram-screen').waitFor()
+    } else {
+      await view.locator('.excalidraw').waitFor()
+      await view.locator('.mode-switch').getByRole('radio', { name: 'Edit' }).click()
+    }
+    await view.locator('.excalidraw canvas').first().waitFor()
+  }
+
+  async function finish(kind: 'diagram' | 'board') {
+    if (kind === 'diagram') {
+      await view.locator('.diagram-bar').getByRole('button', { name: 'Done' }).click()
+    } else {
+      await view.locator('.mode-done').click()
+    }
+  }
+
+  async function unchanged(pageId: string, mark: number) {
+    await view.waitForTimeout(400)
+    const after = await readStamp(pageId)
+    return (
+      saves === mark &&
+      after.last_edited_by === ada.user.id &&
+      after.last_edited_at?.getTime() === frozen.getTime()
+    )
+  }
+
+  async function fonts(kind: 'diagram' | 'board', pageId: string) {
+    const mark = saves
+    await openSurface(kind, pageId)
+    await view.evaluate(() => document.fonts.ready)
+    await view.waitForTimeout(1200)
+    await finish(kind)
+    await view.waitForTimeout(900)
+    return unchanged(pageId, mark)
+  }
+
+  async function pointer(kind: 'diagram' | 'board', pageId: string) {
+    const mark = saves
+    await openSurface(kind, pageId)
+    await view.locator('.excalidraw').click({ position: { x: 640, y: 420 } })
+    await view.waitForTimeout(800)
+    await finish(kind)
+    await view.waitForTimeout(900)
+    return unchanged(pageId, mark)
+  }
+
+  try {
+    await signIn(view, base, bea)
+    const diagramFonts = await fonts('diagram', diagram.page.id).catch(() => false)
+    const boardFonts = await fonts('board', board.page.id).catch(() => false)
+    const diagramPointer = await pointer('diagram', diagram.page.id).catch(() => false)
+    const boardPointer = await pointer('board', board.page.id).catch(() => false)
+    line('diagram_fonts', diagramFonts)
+    line('board_fonts', boardFonts)
+    line('diagram_pointer', diagramPointer)
+    line('board_pointer', boardPointer)
+    return diagramFonts && boardFonts && diagramPointer && boardPointer
+  } finally {
+    await browser.close()
+  }
+}
+
 const checks: Record<string, (app: App, root: string) => Promise<boolean>> = {
   fc1,
   fc2,
@@ -1678,6 +2022,8 @@ const checks: Record<string, (app: App, root: string) => Promise<boolean>> = {
   fc7,
   fc8,
   fc9,
+  fc10,
+  fc11,
 }
 
 async function main() {
