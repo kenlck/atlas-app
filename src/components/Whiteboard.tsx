@@ -337,7 +337,6 @@ export function Whiteboard({ page }: { page: PageView }) {
                 return
               }
               if (!editingRef.current) return
-              if (canonicalElements(elements) === savedCanon.current) return
               schedule()
             }}
           />
