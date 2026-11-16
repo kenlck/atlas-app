@@ -1251,7 +1251,30 @@ recipe_57() {
 }
 
 recipe_57_fc1() { recipe_57 fc1; }
-recipe_57_fc2() { recipe_57 fc2; }
+
+recipe_57_fc2() {
+  local work planted planted2 head
+  work=$(mktemp -d)
+  planted=0
+  planted2=0
+  head=0
+  pnpm exec tsx scripts/issue57-fail.ts fc2-planted >"$work/planted.out" 2>&1 || planted=$?
+  pnpm exec tsx scripts/issue57-fail.ts fc2-planted2 >"$work/planted2.out" 2>&1 || planted2=$?
+  pnpm exec tsx scripts/issue57-fail.ts fc2 >"$work/head.out" 2>&1 || head=$?
+  cat "$work/planted.out"
+  cat "$work/planted2.out"
+  cat "$work/head.out"
+  echo "57_fc2_planted_exit=${planted}"
+  echo "57_fc2_planted2_exit=${planted2}"
+  echo "57_fc2_head_exit=${head}"
+  rm -rf "$work"
+  if [[ "$planted" -eq 1 && "$planted2" -eq 1 && "$head" -eq 0 ]]; then
+    echo "57_fc2=pass"
+    return 0
+  fi
+  echo "57_fc2=fail"
+  return 1
+}
 recipe_50_reg_mcp() {
   local work status
   work=$(mktemp -d)

@@ -24,15 +24,22 @@ import {
 } from './verify-local.ts'
 
 const PIN = '9b8669b2e0263cdc113aed62683f9308b1e8ff7e'
+const PIN_CHOP = '6465fa6c786e858d9062fc0eb0348013cfd4664d'
 const TOO_BIG =
   'This page is too big to save (over 1 MB). Move some content to a sub-page.'
 const MUTED = new Set(['rgb(120, 113, 108)', 'rgba(120, 113, 108, 1)'])
 const ERROR = new Set(['rgb(180, 35, 24)', 'rgba(180, 35, 24, 1)'])
 const repoRoot = join(import.meta.dirname, '..')
 const arg = process.argv[2] ?? ''
-const planted = arg.endsWith('-planted')
-const id = planted ? arg.slice(0, -'-planted'.length) : arg
-const side = planted ? 'planted' : 'head'
+const planted2 = arg.endsWith('-planted2')
+const planted = !planted2 && arg.endsWith('-planted')
+const id = planted2
+  ? arg.slice(0, -'-planted2'.length)
+  : planted
+    ? arg.slice(0, -'-planted'.length)
+    : arg
+const side = planted2 ? 'planted2' : planted ? 'planted' : 'head'
+const pin = planted2 ? PIN_CHOP : PIN
 
 const secrets: string[] = []
 const children: Array<ReturnType<typeof spawn>> = []
@@ -581,13 +588,14 @@ const checks: Record<string, (page: Page) => Promise<boolean>> = { fc1, fc2 }
 async function main() {
   const check = checks[id]
   if (!check) throw new Error('unknown step')
-  const sha = planted
-    ? PIN
-    : execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  const sha =
+    planted || planted2
+      ? pin
+      : execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   line('sha', sha)
   await ensureDatabase()
   await runFile('pnpm', ['exec', 'tsx', 'scripts/migrate.ts'])
-  const root = planted ? await materialize(PIN) : repoRoot
+  const root = planted || planted2 ? await materialize(pin) : repoRoot
   const base = await bootDev(root)
   const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
   try {
