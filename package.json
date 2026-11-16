@@ -26,6 +26,7 @@
     "verify:baselines": "playwright test -c playwright.visual.config.ts"
   },
   "dependencies": {
+    "@braintree/sanitize-url": "6.0.2",
     "@excalidraw/excalidraw": "^0.18.1",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",

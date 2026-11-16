@@ -7,9 +7,11 @@ import {
   BOARD_CONFLICT,
   DRAWING_MAX_BYTES,
   cleanPreviewSvg,
+  canonicalElements,
   drawingLabelText,
   plainAppState,
   plainElements,
+  restoreSceneElements,
   sceneChanged,
   sceneFromStored,
   sceneRejection,
@@ -204,8 +206,18 @@ export async function handleDrawingRequest(request: Request) {
     ) {
       return json({ error: 'Bad request' }, 400)
     }
+    const restoredElements = restoreSceneElements(elements)
+    const stable =
+      canonicalElements(restoreSceneElements(restoredElements)) ===
+      canonicalElements(restoredElements)
+    // A second restore drops elements whose missing size was filled as 0×0.
+    // Keep those as written. Stable restores (point size, links, new ids for
+    // duplicates) are stored so the next open matches what Done sends back.
+    const savedElements = (
+      stable ? restoredElements : elements
+    ) as DrawingScene['elements']
     const scene: DrawingScene = {
-      elements,
+      elements: savedElements,
       appState: plainAppState(record.appState),
     }
     const preview =
@@ -257,7 +269,7 @@ export async function handleDrawingRequest(request: Request) {
           .update(page)
           .set({
             ...(title === null ? {} : { title }),
-            bodyText: drawingLabelText(elements),
+            bodyText: drawingLabelText(savedElements),
             updatedBy: caller.userId,
             updatedAt: new Date(),
             ...(edited

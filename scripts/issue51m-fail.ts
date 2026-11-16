@@ -13,7 +13,6 @@ import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
 import type { Page } from 'playwright'
 import postgres from 'postgres'
-import { restoreSceneElements } from '../src/lib/drawing.ts'
 import { editedByLine } from '../src/lib/relative-time.ts'
 import { stopChild } from './stop-child.ts'
 import { assertLocalDatabaseUrl, submitAuthForm } from './verify-local.ts'
@@ -963,6 +962,87 @@ async function fc6(app: App) {
   )
 }
 
+const editorShapes: Record<string, unknown[]> = {
+  a: [
+    {
+      id: 'a',
+      type: 'arrow',
+      x: 10,
+      y: 10,
+      points: [
+        [0, 0],
+        [100, 40],
+      ],
+    },
+  ],
+  b: [
+    {
+      id: 'a',
+      type: 'arrow',
+      x: 10,
+      y: 10,
+      points: [
+        [20, 20],
+        [120, 60],
+      ],
+    },
+  ],
+  c: [
+    {
+      id: 'a',
+      type: 'arrow',
+      x: 0,
+      y: 0,
+      points: [
+        [0, 0],
+        [40, 10],
+      ],
+      startBinding: { elementId: 'box', gap: 4 },
+    },
+    { id: 'box', type: 'rectangle', x: 0, y: 0, width: 20, height: 20 },
+  ],
+  d: [
+    { id: 't', type: 'text', x: 0, y: 0, text: 'hi', containerId: 'missing' },
+  ],
+  e: [
+    {
+      id: 'r',
+      type: 'rectangle',
+      x: 1,
+      y: 2,
+      width: 8,
+      height: 4,
+      link: '  https://example.com/a b ',
+    },
+  ],
+  f: [
+    { id: 'same', type: 'rectangle', x: 0, y: 0, width: 10, height: 10 },
+    { id: 'same', type: 'rectangle', x: 20, y: 0, width: 10, height: 10 },
+  ],
+  g: [{ id: 's', type: 'sticky', x: 0, y: 0, width: 10, height: 10 }],
+  z: [{ id: 'z', type: 'rectangle', x: 0, y: 0, width: 0, height: 0 }],
+}
+
+async function editorScene(dir: string, elements: unknown[]) {
+  const browser = await chromium.launch()
+  const page = await browser.newPage({ viewport: { width: 800, height: 600 } })
+  try {
+    writeFileSync(
+      join(dir, 'editor.html'),
+      `<!doctype html><div id="root" style="height:100vh"></div><script id="initial" type="application/json">${JSON.stringify({ elements, appState: {} })}</script><script src="./editor.js"></script>`,
+    )
+    await page.goto(pathToFileURL(join(dir, 'editor.html')).href)
+    await page.waitForFunction('Array.isArray(window.__changed)', null, {
+      timeout: 15000,
+    })
+    const opened = await page.evaluate('window.__changed')
+    return Array.isArray(opened) ? opened : []
+  } finally {
+    await page.close().catch(() => undefined)
+    await browser.close().catch(() => undefined)
+  }
+}
+
 async function fc8(app: App) {
   const ada = await app.createUser('Ada Open')
   const bea = await app.createUser('Bea Open')
@@ -975,33 +1055,23 @@ async function fc8(app: App) {
   })
   const frozen = new Date('2024-01-01T00:00:00Z')
   const newer = new Date('2025-06-01T00:00:00Z')
-  const sparse = [{ id: 'rect-1', type: 'rectangle', x: 4, y: 8 }]
-  const restoredStroke = '#' + '1e1e1e'
-  const sized = [
-    {
-      id: 'rect-2',
-      type: 'rectangle',
-      x: 4,
-      y: 8,
-      width: 30,
-      height: 20,
-      angle: 0,
-      strokeColor: restoredStroke,
-      backgroundColor: 'transparent',
-      fillStyle: 'solid',
-      strokeWidth: 2,
-      strokeStyle: 'solid',
-      roughness: 1,
-      opacity: 100,
-      groupIds: [],
-      frameId: null,
-      roundness: null,
-      boundElements: [],
-      isDeleted: false,
-      link: null,
-      locked: false,
-    },
-  ]
+  const editorDir = mkdtempSync(join(tmpdir(), 'atlas-fc8-'))
+  temps.push(editorDir)
+  execFileSync(
+    'pnpm',
+    [
+      'exec',
+      'esbuild',
+      join(repoRoot, 'scripts/excalidraw-onchange-entry.mjs'),
+      '--bundle',
+      '--format=iife',
+      '--platform=browser',
+      '--main-fields=browser,module,main',
+      `--outfile=${join(editorDir, 'editor.js')}`,
+      '--log-level=error',
+    ],
+    { cwd: repoRoot },
+  )
 
   const park = async (pageId: string, otherId: string) => {
     await withSql(async (sql) => {
@@ -1018,118 +1088,73 @@ async function fc8(app: App) {
     })
   }
 
-  const mark = `open-${crypto.randomUUID().slice(0, 8)}`
-  const diagramPage = await app.createPage(ada.user.id, {
-    spaceId: team.spaceId,
-    title: `${mark} diagram`,
-  })
-  const diagramOther = await app.createPage(ada.user.id, {
-    spaceId: team.spaceId,
-    title: `${mark} diagram other`,
-  })
-  const diagram = await app.createDiagram(ada.user.id, diagramPage.id)
-  const written = await postDrawing(app, beaToken.token, {
-    drawingId: diagram.id,
-    version: diagram.version,
-    elements: sparse,
-  })
-  if (written !== 200) {
-    line('diagram_status', written)
-    line('diagram_still_editor', false)
-    line('diagram_still_time', false)
-    line('diagram_recency', false)
-    line('diagram_version_stamp', false)
-    line('board_status', 0)
-    line('board_still_editor', false)
-    line('board_still_time', false)
-    line('board_recency', false)
-    return false
+  let diagramVersion = true
+  let passed = true
+  for (const [name, raw] of Object.entries(editorShapes)) {
+    for (const kind of ['diagram', 'board'] as const) {
+      const mark = `open-${name}-${kind}-${crypto.randomUUID().slice(0, 8)}`
+      const target = await app.createPage(ada.user.id, {
+        spaceId: team.spaceId,
+        title: `${mark} target`,
+        ...(kind === 'board' ? { kind: 'whiteboard' as const } : {}),
+      })
+      const other = await app.createPage(ada.user.id, {
+        spaceId: team.spaceId,
+        title: `${mark} other`,
+        ...(kind === 'board' ? { kind: 'whiteboard' as const } : {}),
+      })
+      const drawing =
+        kind === 'board'
+          ? (await app.getPageView(bea.user.id, target.id)).drawing
+          : await app.createDiagram(ada.user.id, target.id)
+      const drawingId = drawing?.id ?? ''
+      const written = await postDrawing(app, beaToken.token, {
+        drawingId,
+        version: drawing?.version ?? 0,
+        elements: raw,
+      })
+      await park(target.id, other.id)
+      const before = await readStamp(target.id)
+      const stored = await withSql(async (sql) => {
+        const rows = await sql<Array<{ scene: { elements?: unknown[] } }>>`
+          select scene from drawing where id = ${drawingId}
+        `
+        const scene = rows[0]?.scene
+        return Array.isArray(scene?.elements) ? scene.elements : []
+      })
+      const opened = await editorScene(editorDir, stored)
+      const version = await withSql(async (sql) => {
+        const rows = await sql<Array<{ version: number }>>`
+          select version from drawing where id = ${drawingId}
+        `
+        return rows[0]?.version ?? 0
+      })
+      const status = await postDrawing(app, beaToken.token, {
+        drawingId,
+        version,
+        elements: opened,
+      })
+      const after = await readStamp(target.id)
+      const hits = await app.searchVisiblePages(ada.user.id, mark)
+      const still =
+        written === 200 &&
+        status === 200 &&
+        after.last_edited_by === ada.user.id &&
+        after.last_edited_at?.getTime() === before.last_edited_at?.getTime() &&
+        hits[0]?.id === other.id
+      if (kind === 'diagram') {
+        diagramVersion =
+          diagramVersion &&
+          written === 200 &&
+          status === 200 &&
+          after.updated_at.getTime() === before.updated_at.getTime()
+      }
+      line(`${name}_${kind}`, still)
+      passed = passed && still
+    }
   }
-  await park(diagramPage.id, diagramOther.id)
-  const diagramBefore = await readStamp(diagramPage.id)
-  const diagramVersion = await withSql(async (sql) => {
-    const rows = await sql<Array<{ version: number }>>`
-      select version from drawing where id = ${diagram.id}
-    `
-    return rows[0]?.version ?? 0
-  })
-  const diagramStatus = await postDrawing(app, beaToken.token, {
-    drawingId: diagram.id,
-    version: diagramVersion,
-    elements: restoreSceneElements(sparse),
-  })
-  const diagramAfter = await readStamp(diagramPage.id)
-  const diagramHits = await app.searchVisiblePages(
-    ada.user.id,
-    `${mark} diagram`,
-  )
-  const diagramStillEditor = diagramAfter.last_edited_by === ada.user.id
-  const diagramStillTime =
-    diagramAfter.last_edited_at?.getTime() ===
-    diagramBefore.last_edited_at?.getTime()
-  const diagramRecency = diagramHits[0]?.id === diagramOther.id
-  const diagramVersionStamp =
-    diagramAfter.updated_at.getTime() === diagramBefore.updated_at.getTime()
-
-  const boardPage = await app.createPage(ada.user.id, {
-    spaceId: team.spaceId,
-    title: `${mark} board`,
-    kind: 'whiteboard',
-  })
-  const boardOther = await app.createPage(ada.user.id, {
-    spaceId: team.spaceId,
-    title: `${mark} board other`,
-    kind: 'whiteboard',
-  })
-  const boardView = await app.getPageView(bea.user.id, boardPage.id)
-  const boardWritten = await postDrawing(app, beaToken.token, {
-    drawingId: boardView.drawing?.id ?? '',
-    version: boardView.drawing?.version ?? 0,
-    elements: sized,
-  })
-  await park(boardPage.id, boardOther.id)
-  const boardBefore = await readStamp(boardPage.id)
-  const boardVersion = await withSql(async (sql) => {
-    const rows = await sql<Array<{ version: number }>>`
-      select version from drawing where id = ${boardView.drawing?.id ?? ''}
-    `
-    return rows[0]?.version ?? 0
-  })
-  const boardStatus = await postDrawing(app, beaToken.token, {
-    drawingId: boardView.drawing?.id ?? '',
-    version: boardVersion,
-    elements: restoreSceneElements(sized),
-  })
-  const boardAfter = await readStamp(boardPage.id)
-  const boardHits = await app.searchVisiblePages(ada.user.id, `${mark} board`)
-  const boardStillEditor = boardAfter.last_edited_by === ada.user.id
-  const boardStillTime =
-    boardAfter.last_edited_at?.getTime() ===
-    boardBefore.last_edited_at?.getTime()
-  const boardRecency = boardHits[0]?.id === boardOther.id
-
-  line('diagram_status', diagramStatus)
-  line('diagram_still_editor', diagramStillEditor)
-  line('diagram_still_time', diagramStillTime)
-  line('diagram_recency', diagramRecency)
-  line('diagram_version_stamp', diagramVersionStamp)
-  line('board_write', boardWritten)
-  line('board_status', boardStatus)
-  line('board_still_editor', boardStillEditor)
-  line('board_still_time', boardStillTime)
-  line('board_recency', boardRecency)
-  return (
-    diagramStatus === 200 &&
-    diagramStillEditor &&
-    diagramStillTime &&
-    diagramRecency &&
-    diagramVersionStamp &&
-    boardWritten === 200 &&
-    boardStatus === 200 &&
-    boardStillEditor &&
-    boardStillTime &&
-    boardRecency
-  )
+  line('diagram_version', diagramVersion)
+  return passed && diagramVersion
 }
 
 async function fc7(app: App) {

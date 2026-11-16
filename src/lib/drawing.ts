@@ -1,3 +1,4 @@
+import { sanitizeUrl } from '@braintree/sanitize-url'
 import { generateNKeysBetween } from 'fractional-indexing'
 import type { Json } from './body-text'
 
@@ -113,8 +114,9 @@ const LINE_HEIGHT: Record<number, number> = {
   9: 1.15,
 }
 
-// @excalidraw/excalidraw does not load in Node (roughjs), so both sides of a
-// scene compare are filled with the defaults restoreElements adds.
+// @excalidraw/excalidraw does not load in Node (roughjs). This fill matches
+// restoreElements(..., { repairBindings: true }) from Excalidraw 0.18.1, which
+// is what the editor runs before it sends a scene back.
 function finiteNumber(value: unknown, fallback: number) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
@@ -191,21 +193,57 @@ function textFields(element: SceneElement) {
   return fields
 }
 
-function linearFields(element: SceneElement, arrow: boolean) {
+function asPoint(value: unknown): [number, number] | null {
+  if (!Array.isArray(value) || value.length < 2) return null
+  if (typeof value[0] !== 'number' || typeof value[1] !== 'number') return null
+  return [value[0], value[1]]
+}
+
+function linearGeometry(element: SceneElement) {
+  const parsed = Array.isArray(element.points)
+    ? element.points.flatMap((point) => {
+        const next = asPoint(point)
+        return next ? [next] : []
+      })
+    : []
   const width = element.width ? finiteNumber(element.width, 0) : 0
   const height = element.height ? finiteNumber(element.height, 0) : 0
-  const points =
-    Array.isArray(element.points) && element.points.length >= 2
-      ? element.points
-      : [
-          [0, 0],
-          [width, height],
-        ]
+  let points =
+    parsed.length >= 2
+      ? parsed
+      : [[0, 0] as [number, number], [width, height] as [number, number]]
+  let x = finiteNumber(element.x, 0)
+  let y = finiteNumber(element.y, 0)
+  if (points[0][0] !== 0 || points[0][1] !== 0) {
+    const offsetX = points[0][0]
+    const offsetY = points[0][1]
+    points = points.map(([px, py]) => [px - offsetX, py - offsetY])
+    x += offsetX
+    y += offsetY
+  }
+  const xs = points.map((point) => point[0])
+  const ys = points.map((point) => point[1])
   return {
     points,
+    x,
+    y,
+    width: Math.max(...xs) - Math.min(...xs),
+    height: Math.max(...ys) - Math.min(...ys),
+  }
+}
+
+function bindingWithFocus(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const binding = value as SceneElement
+  return { ...binding, focus: binding.focus || 0 }
+}
+
+function linearFields(element: SceneElement, arrow: boolean) {
+  return {
+    ...linearGeometry(element),
     lastCommittedPoint: null,
-    startBinding: element.startBinding ?? null,
-    endBinding: element.endBinding ?? null,
+    startBinding: bindingWithFocus(element.startBinding),
+    endBinding: bindingWithFocus(element.endBinding),
     startArrowhead:
       element.startArrowhead === undefined ? null : element.startArrowhead,
     endArrowhead: arrow
@@ -218,6 +256,41 @@ function linearFields(element: SceneElement, arrow: boolean) {
   }
 }
 
+const RESTORED_TYPES = new Set([
+  'text',
+  'freedraw',
+  'image',
+  'line',
+  'draw',
+  'arrow',
+  'ellipse',
+  'rectangle',
+  'diamond',
+  'iframe',
+  'embeddable',
+  'magicframe',
+  'frame',
+])
+
+function invisiblySmall(element: SceneElement) {
+  if (
+    element.type === 'line' ||
+    element.type === 'arrow' ||
+    element.type === 'freedraw' ||
+    element.type === 'draw'
+  ) {
+    return Array.isArray(element.points) && element.points.length < 2
+  }
+  return element.width === 0 && element.height === 0
+}
+
+function restoredLink(value: unknown) {
+  if (typeof value !== 'string' || !value) return null
+  const trimmed = value.trim().replace(/"/g, '&quot;')
+  if (!trimmed) return ''
+  return sanitizeUrl(trimmed)
+}
+
 function fillElement(value: unknown): SceneElement | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const element = { ...(value as SceneElement) }
@@ -227,8 +300,10 @@ function fillElement(value: unknown): SceneElement | null {
   }
   if (
     typeof element.type !== 'string' ||
+    !RESTORED_TYPES.has(element.type) ||
     typeof element.id !== 'string' ||
-    !element.id
+    !element.id ||
+    invisiblySmall(element)
   )
     return null
   const shaped = box(element)
@@ -250,7 +325,7 @@ function fillElement(value: unknown): SceneElement | null {
     frameId: element.frameId ?? null,
     roundness: roundness(element),
     boundElements: boundElements(element),
-    link: element.link || null,
+    link: restoredLink(element.link),
     locked: element.locked ?? false,
   }
   if (element.type === 'text') Object.assign(filled, textFields(element))
@@ -354,19 +429,70 @@ function fillIndexes(elements: SceneElement[]) {
   return elements
 }
 
+function randomElementId() {
+  const alphabet =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-'
+  const bytes = crypto.getRandomValues(new Uint8Array(21))
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('')
+}
+
+function repairRestoredScene(elements: SceneElement[]) {
+  const byId = new Map(elements.map((element) => [element.id, element]))
+  for (const element of elements) {
+    if (typeof element.frameId === 'string' && !byId.has(element.frameId)) {
+      element.frameId = null
+    }
+    if (element.type === 'text' && element.containerId) {
+      const container = byId.get(element.containerId)
+      if (!container) element.containerId = null
+    } else if (Array.isArray(element.boundElements)) {
+      const seen = new Set<string>()
+      element.boundElements = element.boundElements.filter((binding) => {
+        if (!binding || typeof binding !== 'object') return false
+        const id = (binding as SceneElement).id
+        if (typeof id !== 'string' || seen.has(id)) return false
+        const bound = byId.get(id)
+        if (!bound || bound.isDeleted === true) return false
+        seen.add(id)
+        return true
+      })
+    }
+    if (element.type === 'line') {
+      element.startBinding = null
+      element.endBinding = null
+    } else if (element.type === 'arrow') {
+      for (const key of ['startBinding', 'endBinding'] as const) {
+        const binding = element[key]
+        if (!binding || typeof binding !== 'object') continue
+        const target = (binding as SceneElement).elementId
+        if (typeof target !== 'string' || !byId.has(target)) element[key] = null
+      }
+    }
+  }
+  return elements
+}
+
 export function restoreSceneElements(elements: unknown[]) {
   const filled = elements.flatMap((element) => {
     const next = fillElement(element)
     return next ? [next] : []
   })
-  return fillIndexes(filled)
+  const seen = new Set<string>()
+  for (const element of filled) {
+    const id = element.id
+    if (typeof id === 'string' && seen.has(id)) element.id = randomElementId()
+    if (typeof element.id === 'string') seen.add(element.id)
+  }
+  return repairRestoredScene(fillIndexes(filled))
 }
 
 export function sceneChanged(stored: unknown[], incoming: unknown[]) {
-  return (
-    canonicalElements(restoreSceneElements(stored)) !==
-    canonicalElements(restoreSceneElements(incoming))
-  )
+  const loaded = canonicalElements(restoreSceneElements(stored))
+  if (loaded === canonicalElements(restoreSceneElements(incoming))) return false
+  // Done sends the elements the editor already restored. Restoring that
+  // payload again drops a shape whose missing size was filled in as 0×0,
+  // so compare the stored restore with the payload itself too.
+  return loaded !== canonicalElements(incoming)
 }
 
 // Stored previews are SVG text on the drawing row. Scripts and handlers are removed.
