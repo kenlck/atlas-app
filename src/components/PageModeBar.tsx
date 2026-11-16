@@ -147,5 +147,6 @@ export function PageModeBar({
 export function saveStatusLabel(state: string) {
   if (state === 'saving') return 'Saving'
   if (state === 'saved') return 'Saved'
+  if (state === 'too-big') return 'Not saved'
   return ''
 }
