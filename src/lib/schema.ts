@@ -199,6 +199,12 @@ export const page = pgTable('page', {
     .references(() => user.id),
   createdAt: timestamp('created_at').notNull(),
   updatedAt: timestamp('updated_at').notNull(),
+  // Optional attribution. updated_by stays the required version-stamp author
+  // (ON DELETE NO ACTION). A deleted editor clears this column.
+  lastEditedBy: text('last_edited_by').references(() => user.id, {
+    onDelete: 'set null',
+  }),
+  lastEditedAt: timestamp('last_edited_at'),
   archivedAt: timestamp('archived_at'),
   lockedBy: text('locked_by').references(() => user.id, { onDelete: 'set null' }),
   lockedAt: timestamp('locked_at'),

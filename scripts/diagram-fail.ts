@@ -500,20 +500,29 @@ async function recipeEdit(base: string) {
   await page.getByText('Empty drawing').waitFor({ timeout: 15_000 })
   await page.getByRole('button', { name: 'Edit', exact: true }).click()
   await page.locator('.diagram-screen .excalidraw').waitFor({ timeout: 30_000 })
-  await drawStroke(page)
-  await page.locator('.diagram-bar').getByText('Saving', { exact: true }).waitFor({ timeout: 10_000 })
-  await page.locator('.diagram-bar').getByText('Saved', { exact: true }).waitFor({ timeout: 15_000 })
-  const done = page.waitForResponse(
+  const storedSave = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
       response.url().includes('/api/drawings') &&
       (response.request().postData() ?? '').includes('"via":"autosave"'),
     { timeout: 15_000 },
   )
+  await drawStroke(page)
+  await page.locator('.diagram-bar').getByText('Saving', { exact: true }).waitFor({ timeout: 10_000 })
+  const storedResponse = await storedSave
+  await page.locator('.diagram-bar').getByText('Saved', { exact: true }).waitFor({ timeout: 15_000 })
+  let resave = 0
+  const countResave = (request: { method: () => string; url: () => string }) => {
+    if (request.method() === 'POST' && request.url().includes('/api/drawings')) resave += 1
+  }
+  page.on('request', countResave)
   await page.locator('.diagram-bar').getByRole('button', { name: 'Done' }).click()
-  const doneResponse = await done
   await page.locator('.diagram-screen').waitFor({ state: 'hidden', timeout: 15_000 })
-  const first = JSON.parse(doneResponse.request().postData() ?? '{}') as { elements?: unknown[] }
+  page.off('request', countResave)
+  expectLine('done_without_resave', resave, 0)
+  const first = JSON.parse(storedResponse.request().postData() ?? '{}') as {
+    elements?: unknown[]
+  }
   const drawingId = await page.locator('.diagram-block').getAttribute('data-drawing-id')
   if (!drawingId) fail('drawing_id=missing')
   await page.reload({ waitUntil: 'domcontentloaded' })

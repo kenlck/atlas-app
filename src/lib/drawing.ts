@@ -33,7 +33,8 @@ export function plainAppState(value: unknown): { [key: string]: Json } {
   }
   try {
     const parsed = JSON.parse(JSON.stringify(copy)) as unknown
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+      return {}
     return parsed as { [key: string]: Json }
   } catch {
     return {}
@@ -51,7 +52,8 @@ export function plainElements(value: unknown): Json[] | null {
 }
 
 export function sceneFromStored(value: unknown): DrawingScene {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return emptyScene
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return emptyScene
   const record = value as Record<string, unknown>
   return {
     elements: Array.isArray(record.elements) ? (record.elements as Json[]) : [],
@@ -65,11 +67,13 @@ export function sceneRejection(input: {
   elements: unknown[]
 }): 'files' | 'image' | null {
   if (input.files != null) {
-    if (typeof input.files !== 'object' || Array.isArray(input.files)) return 'files'
+    if (typeof input.files !== 'object' || Array.isArray(input.files))
+      return 'files'
     if (Object.keys(input.files).length > 0) return 'files'
   }
   for (const element of input.elements) {
-    if (!element || typeof element !== 'object' || Array.isArray(element)) continue
+    if (!element || typeof element !== 'object' || Array.isArray(element))
+      continue
     if ((element as { type?: unknown }).type === 'image') return 'image'
   }
   return null
@@ -84,12 +88,112 @@ function stableValue(value: unknown): unknown {
   delete copy.updated
   delete copy.seed
   const sorted: Record<string, unknown> = {}
-  for (const key of Object.keys(copy).sort()) sorted[key] = stableValue(copy[key])
+  for (const key of Object.keys(copy).sort())
+    sorted[key] = stableValue(copy[key])
   return sorted
 }
 
 export function canonicalElements(elements: unknown[]) {
   return JSON.stringify(stableValue(elements))
+}
+
+function elementRecord(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+// Font measurement on auto-sized text, a filled-in index, and an image file
+// finishing its load are Excalidraw's own work. A person did not edit the scene.
+// Wrapped `text` is the lines that fit the box. `originalText` is what was typed.
+// Fixed-width text keeps its box, so a side-handle drag still counts.
+function textWords(record: Record<string, unknown>) {
+  if (typeof record.originalText === 'string') return record.originalText
+  if (typeof record.text === 'string') return record.text
+  return undefined
+}
+
+function comparableElement(
+  value: unknown,
+  dropIndex: boolean,
+  dropTextMetrics: boolean,
+) {
+  const record = elementRecord(value)
+  if (!record) return value
+  const copy: Record<string, unknown> = { ...record }
+  if (dropIndex) delete copy.index
+  if (copy.type === 'text') {
+    const words = textWords(copy)
+    delete copy.text
+    if (words === undefined) delete copy.originalText
+    else copy.originalText = words
+    if (dropTextMetrics) {
+      delete copy.width
+      delete copy.height
+      delete copy.baseline
+      delete copy.lineHeight
+    }
+  }
+  if (copy.type === 'image') delete copy.status
+  return stableValue(copy)
+}
+
+function fontMeasuredText(
+  before: Record<string, unknown> | null,
+  after: Record<string, unknown> | null,
+) {
+  if (!before || !after) return false
+  if (before.type !== 'text' || after.type !== 'text') return false
+  return before.autoResize !== false && after.autoResize !== false
+}
+
+export function userSceneChanged(previous: unknown[], next: unknown[]) {
+  if (previous.length !== next.length) return true
+  for (let i = 0; i < previous.length; i += 1) {
+    const before = elementRecord(previous[i])
+    const after = elementRecord(next[i])
+    const indexFilled =
+      !!before &&
+      !!after &&
+      (before.index === undefined || before.index === null) &&
+      after.index !== undefined &&
+      after.index !== null
+    const dropTextMetrics = fontMeasuredText(before, after)
+    const beforeComparable = comparableElement(previous[i], indexFilled, dropTextMetrics)
+    const afterComparable = comparableElement(next[i], indexFilled, dropTextMetrics)
+    if (JSON.stringify(beforeComparable) !== JSON.stringify(afterComparable)) {
+      return true
+    }
+  }
+  return false
+}
+
+function imageStatusMoved(previous: unknown[], next: unknown[]) {
+  const statuses = new Map<string, unknown>()
+  for (const element of previous) {
+    const record = elementRecord(element)
+    if (record?.type === 'image' && typeof record.id === 'string')
+      statuses.set(record.id, record.status ?? null)
+  }
+  for (const element of next) {
+    const record = elementRecord(element)
+    if (record?.type !== 'image' || typeof record.id !== 'string') continue
+    if (!statuses.has(record.id)) continue
+    if ((record.status ?? null) !== statuses.get(record.id)) return true
+  }
+  return false
+}
+
+// After a save leaves the browser, a later image status is still that edit.
+// A font measurement that landed in the same gap is not.
+export function sceneFollowup(sent: unknown[], current: unknown[]) {
+  if (canonicalElements(sent) === canonicalElements(current)) return 'same' as const
+  if (userSceneChanged(sent, current) || imageStatusMoved(sent, current))
+    return 'save' as const
+  return 'adopt' as const
+}
+
+export function sceneChanged(stored: unknown[], incoming: unknown[]) {
+  return canonicalElements(stored) !== canonicalElements(incoming)
 }
 
 // Stored previews are SVG text on the drawing row. Scripts and handlers are removed.
@@ -107,7 +211,10 @@ export function cleanPreviewSvg(value: unknown): string | null {
     .replace(/[\s/]on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, (match) =>
       match.startsWith('/') ? '/' : '',
     )
-    .replace(/\s(?:href|xlink:href)\s*=\s*("\s*javascript:[^"]*"|'\s*javascript:[^']*'|javascript:[^\s>]+)/gi, '')
+    .replace(
+      /\s(?:href|xlink:href)\s*=\s*("\s*javascript:[^"]*"|'\s*javascript:[^']*'|javascript:[^\s>]+)/gi,
+      '',
+    )
     .replace(/javascript:/gi, '')
   if (/<script\b|[\s/]on[a-z]+\s*=|javascript:/i.test(svg)) return null
   if (!/^<svg\b/i.test(svg) || !/<\/svg>\s*$/i.test(svg)) return null

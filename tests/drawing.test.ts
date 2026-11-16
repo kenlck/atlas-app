@@ -7,19 +7,23 @@ import {
   WHITEBOARD_PLACEHOLDER,
   canonicalElements,
   drawingLabelText,
+  sceneChanged,
+  sceneFollowup,
   sceneRejection,
+  userSceneChanged,
 } from '../src/lib/drawing'
 import { handleDrawingRequest } from '../src/lib/drawing-request'
 import { handleMcp } from '../src/lib/mcp'
 import {
   archivePage,
+  createDiagram,
   createPage,
   getPageView,
   listPageTree,
   savePage,
 } from '../src/lib/pages'
 import { searchVisiblePages } from '../src/lib/search'
-import { drawing } from '../src/lib/schema'
+import { drawing, page } from '../src/lib/schema'
 import { createUser } from './helpers'
 
 const SECRET = 'secretneedle'
@@ -29,7 +33,14 @@ function scene() {
   return [
     { id: SECRET, type: 'rectangle', text: SECRET, x: 1, y: 2 },
     { id: 'label-1', type: 'text', text: LABEL, x: 3, y: 4 },
-    { id: 'arrow-1', type: 'arrow', points: [[0, 0], [8, 8]] },
+    {
+      id: 'arrow-1',
+      type: 'arrow',
+      points: [
+        [0, 0],
+        [8, 8],
+      ],
+    },
   ]
 }
 
@@ -271,5 +282,171 @@ describe('drawings', () => {
       .from(drawing)
       .where(eq(drawing.pageId, board.id))
     expect(row.length).toBe(1)
+  })
+
+  it('leaves Edited by unchanged when a diagram save repeats the scene', async () => {
+    const ada = await createUser('Diagram Ada')
+    const bea = await createUser('Diagram Bea')
+    const doc = await createPage(ada.user.id, {
+      spaceId: ada.space.id,
+      title: 'Diagram note',
+    })
+    const diagram = await createDiagram(ada.user.id, doc.id)
+    const token = await createApiToken(ada.user.id, {
+      name: 'diagram',
+      scope: 'read_write',
+      expiry: '30d',
+    })
+    const rect = [{ id: 'rect-1', type: 'rectangle', x: 1, y: 2 }]
+    const first = await post(token.token, {
+      drawingId: diagram.id,
+      version: diagram.version,
+      elements: rect,
+      appState: {},
+      files: {},
+    })
+    expect(first.status).toBe(200)
+    const changed = await getDb()
+      .select()
+      .from(page)
+      .where(eq(page.id, doc.id))
+      .limit(1)
+    expect(changed[0]?.lastEditedBy).toBe(ada.user.id)
+    await getDb()
+      .update(page)
+      .set({
+        lastEditedAt: new Date('2024-01-01T00:00:00Z'),
+        lastEditedBy: bea.user.id,
+      })
+      .where(eq(page.id, doc.id))
+    const saved = (await first.json()) as { version: number }
+    const again = await post(token.token, {
+      drawingId: diagram.id,
+      version: saved.version,
+      elements: rect,
+      appState: {},
+      files: {},
+    })
+    expect(again.status).toBe(200)
+    const kept = await getDb()
+      .select()
+      .from(page)
+      .where(eq(page.id, doc.id))
+      .limit(1)
+    expect(kept[0]?.lastEditedBy).toBe(bea.user.id)
+    expect(kept[0]?.lastEditedAt?.toISOString()).toBe(
+      '2024-01-01T00:00:00.000Z',
+    )
+    expect(kept[0]?.updatedBy).toBe(changed[0]?.updatedBy)
+    expect(kept[0]?.updatedAt).toEqual(changed[0]?.updatedAt)
+    const moved = await post(token.token, {
+      drawingId: diagram.id,
+      version: (await again.json()).version as number,
+      elements: [{ id: 'rect-1', type: 'rectangle', x: 9, y: 2 }],
+      appState: {},
+      files: {},
+    })
+    expect(moved.status).toBe(200)
+    const stamped = await getDb()
+      .select()
+      .from(page)
+      .where(eq(page.id, doc.id))
+      .limit(1)
+    expect(stamped[0]?.lastEditedBy).toBe(ada.user.id)
+    expect(stamped[0]?.lastEditedAt?.toISOString()).not.toBe(
+      '2024-01-01T00:00:00.000Z',
+    )
+  })
+
+  it('treats a repeated scene as unchanged and a reorder as a change', () => {
+    const sparse = [{ id: 'rect-1', type: 'rectangle', x: 1, y: 2 }]
+    const sized = [
+      { id: 'rect-1', type: 'rectangle', x: 1, y: 2, width: 8, height: 4 },
+    ]
+    expect(sceneChanged(sparse, sparse)).toBe(false)
+    expect(sceneChanged(sparse, sized)).toBe(true)
+    const first = {
+      id: 'a',
+      type: 'rectangle',
+      x: 1,
+      y: 2,
+      width: 3,
+      height: 4,
+      index: 'a0',
+    }
+    const second = {
+      id: 'b',
+      type: 'rectangle',
+      x: 5,
+      y: 6,
+      width: 3,
+      height: 4,
+      index: 'a1',
+    }
+    expect(sceneChanged([first, second], [second, first])).toBe(true)
+    expect(sceneChanged([first, second], [first, second])).toBe(false)
+  })
+})
+
+describe('scene edits a person made', () => {
+  const text = {
+    id: 'hello',
+    type: 'text',
+    x: 10,
+    y: 12,
+    text: 'Hello',
+    fontSize: 20,
+  }
+
+  it('ignores font measurement, a filled index, and an image status', () => {
+    expect(userSceneChanged([text], [{ ...text, width: 40, height: 24, baseline: 18 }])).toBe(
+      false,
+    )
+    expect(
+      userSceneChanged([text], [{ ...text, index: 'a0', originalText: 'Hello', lineHeight: 1.25 }]),
+    ).toBe(false)
+    const pending = { id: 'img', type: 'image', x: 1, y: 2, status: 'pending', fileId: 'f' }
+    const saved = { ...pending, status: 'saved' }
+    expect(userSceneChanged([pending], [saved])).toBe(false)
+    expect(sceneFollowup([pending], [saved])).toBe('save')
+    expect(sceneFollowup([text], [{ ...text, width: 80 }])).toBe('adopt')
+    expect(userSceneChanged([text], [{ ...text, text: 'Hello!' }])).toBe(true)
+    expect(userSceneChanged([text], [...[text], { id: 'extra', type: 'rectangle' }])).toBe(true)
+  })
+
+  it('counts an indexed reorder and a fixed-width text resize', () => {
+    const front = { id: 'a', type: 'rectangle', x: 1, y: 2, index: 'a0' }
+    const back = { id: 'b', type: 'rectangle', x: 5, y: 6, index: 'a1' }
+    expect(
+      userSceneChanged(
+        [front, back],
+        [
+          { ...front, index: 'a1' },
+          { ...back, index: 'a0' },
+        ],
+      ),
+    ).toBe(true)
+    const fixed = {
+      id: 'label',
+      type: 'text',
+      text: 'Hello',
+      x: 1,
+      y: 2,
+      width: 80,
+      height: 24,
+      baseline: 18,
+      lineHeight: 1.25,
+      autoResize: false,
+    }
+    expect(userSceneChanged([fixed], [{ ...fixed, width: 140 }])).toBe(true)
+    expect(
+      userSceneChanged(
+        [{ ...fixed, autoResize: true, width: 80 }],
+        [{ ...fixed, autoResize: true, width: 140 }],
+      ),
+    ).toBe(false)
+    const typed = { ...fixed, text: 'Hello', originalText: 'Hello' }
+    expect(userSceneChanged([typed], [{ ...typed, text: 'Hello\nthere' }])).toBe(false)
+    expect(userSceneChanged([typed], [{ ...typed, originalText: 'Hello!' }])).toBe(true)
   })
 })

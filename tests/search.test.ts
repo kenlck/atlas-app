@@ -144,10 +144,10 @@ describe('searchVisiblePages', () => {
       body: paragraph(`${token} in the body`),
     })
     await getSql()`
-      update page set updated_at = '2020-01-01' where id = ${titled.id}
+      update page set updated_at = '2020-01-01', last_edited_at = '2020-01-01' where id = ${titled.id}
     `
     await getSql()`
-      update page set updated_at = '2024-06-01' where id = ${body.id}
+      update page set updated_at = '2024-06-01', last_edited_at = '2024-06-01' where id = ${body.id}
     `
     const hits = await searchVisiblePages(owner.user.id, token)
     expect(hits.map((hit) => hit.id)).toEqual([titled.id, body.id])

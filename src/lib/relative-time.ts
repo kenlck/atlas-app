@@ -1,3 +1,14 @@
+export function editedByLine(
+  name: string | null | undefined,
+  iso: string,
+  now = new Date(),
+) {
+  const when = relativeTime(iso, now)
+  const trimmed = name?.trim() ?? ''
+  if (!trimmed) return `Edited ${when}`
+  return `Edited by ${trimmed} · ${when}`
+}
+
 export function relativeTime(iso: string, now = new Date()) {
   const then = new Date(iso)
   const seconds = Math.max(0, Math.floor((now.getTime() - then.getTime()) / 1000))

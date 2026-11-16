@@ -20,4 +20,4 @@ Recipes `4-1` through `4-7` run from `./scripts/verify-fail-conditions.sh`. They
 
 ## Gotchas
 
-Queries shorter than two characters return no rows. Archived pages, pages under an archived parent, another person's personal pages, and another team's pages stay out of the results. The same `searchVisiblePages` function serves the panel and `GET /api/atlas/search`.
+Queries shorter than two characters return no rows. Archived pages, pages under an archived parent, another person's personal pages, and another team's pages stay out of the results. The same `searchVisiblePages` function serves the panel and `GET /api/atlas/search`. Recency order and the hit timestamp follow `last_edited_at`, then `updated_at` when that column is null.

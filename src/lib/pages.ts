@@ -44,6 +44,8 @@ export type PageView = {
   position: number
   updatedAt: string
   updatedByName: string
+  lastEditedAt: string | null
+  lastEditedByName: string | null
   canDelete: boolean
   canLock: boolean
   canEdit: boolean
@@ -205,7 +207,14 @@ export async function getPageView(
   const row = access.page
   if (!row) notFound()
   const db = getDb()
-  const authors = await db
+  const authors = row.lastEditedBy
+    ? await db
+        .select({ name: user.name })
+        .from(user)
+        .where(eq(user.id, row.lastEditedBy))
+        .limit(1)
+    : []
+  const versionAuthors = await db
     .select({ name: user.name })
     .from(user)
     .where(eq(user.id, row.updatedBy))
@@ -231,7 +240,9 @@ export async function getPageView(
     body: row.body as Json,
     position: row.position,
     updatedAt: row.updatedAt.toISOString(),
-    updatedByName: authors[0]?.name ?? spaceRow.name,
+    updatedByName: versionAuthors[0]?.name ?? spaceRow.name,
+    lastEditedAt: row.lastEditedAt ? row.lastEditedAt.toISOString() : null,
+    lastEditedByName: row.lastEditedBy ? (authors[0]?.name ?? null) : null,
     canDelete: canDeletePage(access.role, row.createdBy, userId),
     canLock: canManagePageLock(access.role, row.createdBy, userId),
     canEdit:
@@ -287,6 +298,8 @@ export async function createPage(
       updatedBy: userId,
       createdAt: now,
       updatedAt: now,
+      lastEditedBy: userId,
+      lastEditedAt: now,
     })
     if (kind === 'whiteboard') {
       await tx.insert(drawing).values({
@@ -310,7 +323,13 @@ export async function renamePage(
     await lockWritablePage(tx, userId, input.pageId)
     await tx
       .update(page)
-      .set({ title, updatedBy: userId, updatedAt: new Date() })
+      .set({
+        title,
+        updatedBy: userId,
+        updatedAt: new Date(),
+        lastEditedBy: userId,
+        lastEditedAt: new Date(),
+      })
       .where(eq(page.id, input.pageId))
   })
   return getPageView(userId, input.pageId)
@@ -615,6 +634,8 @@ async function writeDocBody(
         bodyText,
         updatedBy: userId,
         updatedAt: new Date(),
+        lastEditedBy: userId,
+        lastEditedAt: new Date(),
         ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
       })
       .where(eq(page.id, pageId))
@@ -641,7 +662,13 @@ export async function savePage(
       }
       await tx
         .update(page)
-        .set({ title, updatedBy: userId, updatedAt: new Date() })
+        .set({
+          title,
+          updatedBy: userId,
+          updatedAt: new Date(),
+          lastEditedBy: userId,
+          lastEditedAt: new Date(),
+        })
         .where(eq(page.id, input.pageId))
     })
     return getPageView(userId, input.pageId)
@@ -794,6 +821,8 @@ export async function updatePageForToken(
           title,
           updatedBy: userId,
           updatedAt: new Date(),
+          lastEditedBy: userId,
+          lastEditedAt: new Date(),
           updatedViaTokenId: tokenId,
         })
         .where(and(eq(page.id, row.id), eq(page.updatedAt, row.updatedAt)))
@@ -813,6 +842,7 @@ export async function refreshDocText(
   userId: string,
   pageId: string,
   tokenId: string | null,
+  edited = true,
 ) {
   await getDb().transaction(async (tx) => {
     const held = await holdWritablePage(tx, userId, pageId)
@@ -823,6 +853,7 @@ export async function refreshDocText(
       .update(page)
       .set({
         bodyText: await indexedBodyText(tx, body, people),
+        ...(edited ? { lastEditedBy: userId, lastEditedAt: new Date() } : {}),
         ...(tokenId ? { updatedViaTokenId: tokenId } : {}),
       })
       .where(eq(page.id, pageId))
